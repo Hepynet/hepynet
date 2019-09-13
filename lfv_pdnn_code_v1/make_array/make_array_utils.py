@@ -1,98 +1,42 @@
-from ROOT import (TCanvas, TPad, TFile, TPaveLabel, 
-                  TPaveText, gROOT, TH1F, TH1D, TLegend, 
-                  gStyle, TH2F, TChain, TGraphErrors, TText, gPad, gROOT, TTree, vector, TLorentzVector)
-
-from array import array
+import array
 import datetime
 import math
+
 import numpy as np
+import ROOT
 
-from common_utils import *
+import lfv_pdnn_code_v1.common.common_utils
 
-root_vector_double = vector('double')()
-array_length_const = 24
+# root_vector_double = vector('double')()
+# _length_const = 24
 
-def init_dirs():
-  TODAY = datetime.datetime.now().strftime('%Y-%m-%d')
-  import datetime, os
-  for _dir in ["plots", "models"]:
-    today_dir = os.path.join(_dir, TODAY)
-    if not os.path.isdir(today_dir):
-      os.makedirs(today_dir)
+def build_array_withcut(rootfile_path, clean_array=True):
+  """builds array with cuts according to Marc's example code.
 
-# make dedicated cut for lfv analysis
-"""
-def cut_array(data):
-  print "Make cuts on array..."
-  new = []
-  for d in data:
-"""
+  Args:
+    rootfile_path: str, path to the root file to be processed.
+    clean_array: bool, flag to decide whether to remove zero weight events.
 
-# function to calculate delta phi
-def CalDeltaPhi(phi1, phi2):
-  dphi = phi1 - phi2
-  if abs(dphi) > math.pi:
-    if dphi > 0:
-      dphi = 2 * math.pi - dphi
-    else:
-      dphi = 2 * math.pi + dphi
-  return dphi
+  Returns:
+    numpy array built from ntuple with selection applied.
+  """
+  ARRAY_ELEMENT_LENTH = 24  # number of variables to stored for each event
 
-# function to calculate delta R
-def DeltaR(phi1, phi2, eta1, eta2):
-  Dphi = CalDeltaPhi(phi1, phi2)
-  Deta = eta1 - eta2
-  DR = math.sqrt(Dphi * Dphi + Deta * Deta)
-  return DR
+  # Prepare
+  print "\nbuilding array for: ", rootfile_path
+  try:
+    f = ROOT.TFile.Open(rootfile_path)
+    tree = f.nominal  # nominal is the name of ntuple
+  except:
+    print "[ERROR] Can not get tree."
+    return None
+  events_num = tree.GetEntries()
+  data = np.zeros((events_num, ARRAY_ELEMENT_LENTH))
 
-def build_array(fname, should_clean_arrays=True, **kwargs):
-  # used to build array with new sample
-  print "\nbuilding array for: ", fname
-  f = TFile.Open(fname)
-  tree = f.nominal
-  n_events = tree.GetEntries()
-  data = np.zeros((n_events, array_length_const))
-  example_numbers = 0 # used for debug
-  #print "array example: "
+  # Loop
   for n, event in enumerate(tree):
     # get parameters needed
-    weight_mc = event.weight_mc
-    weight_pileup = event.weight_pileup
-    weight_leptonSF = event.weight_leptonSF
-     = event.
-     = event.
-     = event.
-     = event.
-     = event.
-     = event.
-    # = event.
-    # skip the events with 0 weight
-    if should_clean_arrays == True:
-      if weight == 0.:
-        continue
+    event_number = event.eventNumber
 
-    
-    
-      """
-      if example_numbers < 10:
-        if emuChannel:
-          print "emu channel"
-        elif etauChannel:
-          print "etau channel"
-        elif mutauChannel:
-          print "mutao channel"
-        example_numbers += 1
-        for i in range(0, 10):
-          print "{:.2}".format(data[n][i]), "\t",
-        print ""
-        for i in range(10, array_length_const):
-          print "{:.2}".format(data[n][i]), "\t",
-        print ""
-      """
-    
-  return clean_array(data) if should_clean_arrays else data
-
-def unison_shuffled_copies(*arr):
-  assert all(len(a) for a in arr)
-  p = np.random.permutation(len(arr[0]))
-  return (a[p] for a in arr)
+    if n < 10:
+      print "event number:", event_number
