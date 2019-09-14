@@ -7,6 +7,7 @@ import ROOT
 
 import lfv_pdnn_code_v1.common.common_utils
 import lfv_pdnn_code_v1.make_array.make_array_utils
+from lfv_pdnn_code_v1.make_array.make_array_utils import get_lumi
 
 # root_vector_double = vector('double')()
 # _length_const = 24
@@ -20,6 +21,7 @@ def build_array_withcut(rootfile_path, clean_array=True):
 
   Returns:
     numpy array built from ntuple with selection applied.
+
   """
   ARRAY_ELEMENT_LENTH = 24  # number of variables to stored for each event
 
@@ -103,5 +105,17 @@ def build_array_withcut(rootfile_path, clean_array=True):
     tau_bdt = event.tau_BDT
     tau_num_track = event.tau_nTracks
 
+    # Basic info
+    luminosity = get_lumi(run_number)
+    # calculate normalisation factor to be used for weight calculation
+    #norm_factor = Normalisation(mcChannelNumber,runNumber,weight_mc) ####
+    norm_factor = 1
+    weight = luminosity * weight_kfactor * weight_pileup \
+             * weight_mc * norm_factor
+
+    # Select 
+
     if n < 10:
-      print "event number:", event_number
+      print "event number:", event_number,
+      print "lumi:", luminosity,
+      print "weight:", weight
