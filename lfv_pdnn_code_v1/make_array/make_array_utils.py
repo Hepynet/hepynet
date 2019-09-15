@@ -1,13 +1,14 @@
 import numpy as np
 import ROOT
 
-import lfv_pdnn_code_v1.common.common_utils
+from lfv_pdnn_code_v1.common import print_helper
 
 # root_vector_double = vector('double')()
 # _length_const = 24
 
+
 def get_lumi(run_number):
-  """gets luminosity according to given run number.
+  """Gets luminosity according to given run number.
   
   Args:
     run_number: float, run number of the event
@@ -20,5 +21,5 @@ def get_lumi(run_number):
   elif run_number == 310000.0:
     return 58.4501
   else:
-    print_warning("unknown run_number, luminosity set to zero")
+    print_helper.print_warning("unknown run_number, luminosity set to zero")
     return 0

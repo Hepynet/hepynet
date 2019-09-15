@@ -1,6 +1,9 @@
 import os
 
+import json
 import numpy as np
+
+from lfv_pdnn_code_v1.common import print_helper
 
 def clean_array(array, weight_id, remove_negative=False, verbose=False):
   """removes elements with 0 weight.
@@ -71,41 +74,83 @@ def has_none(list):
   return False
 
 
-def print_error(*inputs):
-  """prints uniform error message output.
+def read_dict_from_json(json_input):
+  """reads dict type data from json input
 
   Args:
-    *inputs: variable number of str, error messages to be print
+    json_input: json, used to read dict from
+
+  Returns:
+    dict type data of json input
+
+  """
+  pass
+
+
+def read_dict_from_txt(file_path, key_type='str', value_type='str'):
+  """reads dict type data from text file
   
-  """
-  assert inputs is not None
-  print "[Error]",
-  for input in inputs:
-    print input,  # use comma to aviod changing line
-
-
-def print_warning(*inputs):
-  """prints uniform warning message output.
-
   Args:
-    *inputs: variable number of str, warning messages to be print
+    file_path: str, path to the input text file
+    key_type: str, specify type of key of dict
+      use 'str' for string type
+      use 'float' for float value
+    value_type: str, specify type of value of dict
+      available type same as key_type
+
+  Returns:
+    dict type data of text file input
+
+  """
+  dict_output = {}
   
-  """
-  assert inputs is not None
-  print "[Warning]",
-  for input in inputs:
-    print input,  # use comma to aviod changing line
-
-
-def show_array_example(array, max_row = 5):
-  """shows some rows of given array.
-
-  Args:
-    array: numpy array to be showed.
-    max_row: int, number of rows to be shown.
-
-  """
-  print "show some array examples:"
-  for i, ele in enumerate(array):
-    if i < max_row:
-      print ele
+  with open(file_path, "r") as lines:
+    for line in lines:
+      key_error = False
+      value_error = False
+      content1, content2 = line.strip().split(',', 1)
+      # get key
+      if key_type == 'str':
+        key = content1.strip()
+      elif key_type == 'float':
+        try:
+          key = eval(content1)
+        except ZeroDivisionError:
+          key_error = True
+          print_helper.print_error("float division by zero",
+                                   "in common_utils.read_dict_from_txt")
+          continue  # skip invalid key
+        except:
+          key_error = True
+          print_helper.print_error("unknown evaluation error",
+                                   "in common_utils.read_dict_from_txt")
+          continue  # skip invalid key
+      else:
+        print_helper.print_error("unrecognized key type",
+                                 "in common_utils.read_dict_from_txt")
+      # get value
+      if value_type == 'str':
+        value = content2.strip()
+      elif value_type == 'float':
+        try:
+          value = eval(content2)
+        except ZeroDivisionError:
+          value_error = True
+          value = 0  # set default value
+          print_helper.print_error("float division by zero",
+                                   "in common_utils.read_dict_from_txt")
+        except:
+          value_error = True
+          value = 0  # set default value
+          print_helper.print_error("unknown evaluation error",
+                                   "in common_utils.read_dict_from_txt")
+      else:
+        print_helper.print_error("unrecognized value type",
+                                 "in common_utils.read_dict_from_txt")
+      # save dict item
+      if key in dict_output:
+        print_helper.print_warning("key already exists, overwriting value...")
+        if value_error == True:
+          continue  # skip invalid value if value of key already exists
+      dict_output[key] = value
+  return dict_output
