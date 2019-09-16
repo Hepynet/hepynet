@@ -12,10 +12,11 @@ class Particles(object):
     self.selected_particle = TLorentzVector(0, 0, 0, 0)
     self.selected_particle_charge = 0
     self.num_good_particle = 0
+    self.is_selected = False
 
   def select(self):
     """Makes cuts to all particles"""
-    pass
+    self.is_selected = True
 
 
 class ElectronCandidates(Particles):
@@ -71,6 +72,7 @@ class ElectronCandidates(Particles):
                                             self.el_eta[i], self.el_phi[i], 
                                             ELECTRON_MASS * 0.001)
         self.selected_particle_charge = self.el_charge[i]
+    self.is_selected = True
 
 
 class MuonCandidates(Particles):
@@ -116,6 +118,7 @@ class MuonCandidates(Particles):
         self.selected_particle.SetPtEtaPhiM(0.001 * self.pt[i], self.eta[i], 
                                       self.phi[i], MUON_MASS * 0.001)
         self.selected_particle_charge = self.charge[i]
+    self.is_selected = True
 
 
 class TauCandidates(Particles):
@@ -160,6 +163,7 @@ class TauCandidates(Particles):
         self.selected_neutrino.SetPtEtaPhiM(self.met_met, self.eta[i], 
                                             self.met_phi, 0.0)
         self.selected_particle_charge = self.charge[i]
+    self.is_selected = True    
 
 
 class JetCandidates(Particles):
@@ -195,6 +199,7 @@ class JetCandidates(Particles):
       if self.jet_mv2c10[i] > 0.64:
         self.num_b_jet += 1
         b_tag_jet = True
+    self.is_selected = True    
 
 
 class Propagator(Particles):

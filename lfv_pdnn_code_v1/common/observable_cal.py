@@ -27,7 +27,6 @@ def delta_r(eta1, phi1, eta2, phi2):
   Returns:
     dr: float, calculated by sqrt(dphi * dphi + deta * deta).
   """
-  from lfv_pdnn_code_v1.common.observble_cal import delta_phi
   dphi = delta_phi(phi1, phi2)
   deta = eta1 - eta2
   dr = math.sqrt(dphi * dphi + deta * deta)

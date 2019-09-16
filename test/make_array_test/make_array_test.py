@@ -3,9 +3,24 @@ sys.path.append("..") # add self-defined module in the parent path
 sys.path.append("../..") # add self-defined module in the parent path
 
 from lfv_pdnn_code_v1.make_array import make_array
+from lfv_pdnn_code_v1.make_array.make_array_utils import save_array
+
+output_directory = "/afs/cern.ch/work/y/yangz/public/lfv/lfv_pdnn_code_v1/run/test_run"
 
 print "*" * 80
 print "tests make_array"
-# rootfile_path = "/eos/atlas/atlascerngroupdisk/phys-exotics/lpx/LFVZprime2018/MC/mc16a/Signal/RPV/RPV_emu_2000GeV.root"
-rootfile_path = "/eos/atlas/atlascerngroupdisk/phys-exotics/lpx/LFVZprime2018/MC/mc16a/Signal/RPV/RPV_etau_2000GeV.root"
-make_array.build_array_withcut(rootfile_path)
+
+# build signal arrays
+
+for mass in [500, 2000]:
+  rootfile_path = "/eos/atlas/atlascerngroupdisk/phys-exotics/lpx/LFVZprime2018/MC/mc16a/Signal/RPV/RPV_emu_{}GeV.root".format(mass)
+  array = make_array.build_array_withcut(rootfile_path)
+  save_array(array, output_directory, "rpv_emu_{}GeV".format(mass))
+
+  rootfile_path = "/eos/atlas/atlascerngroupdisk/phys-exotics/lpx/LFVZprime2018/MC/mc16a/Signal/RPV/RPV_etau_{}GeV.root".format(mass)
+  array = make_array.build_array_withcut(rootfile_path)
+  save_array(array, output_directory, "rpv_etau_{}GeV".format(mass))
+
+  rootfile_path = "/eos/atlas/atlascerngroupdisk/phys-exotics/lpx/LFVZprime2018/MC/mc16a/Signal/RPV/RPV_mutau_{}GeV.root".format(mass)
+  array = make_array.build_array_withcut(rootfile_path)
+  save_array(array, output_directory, "rpv_mutau_{}GeV".format(mass))

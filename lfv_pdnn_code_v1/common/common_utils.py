@@ -5,51 +5,12 @@ import numpy as np
 
 from lfv_pdnn_code_v1.common import print_helper
 
-def clean_array(array, weight_id, remove_negative=False, verbose=False):
-  """removes elements with 0 weight.
-
-  Args:
-    array: numpy array, input array to be processed, must be numpy array
-    weight_id: int, indicate which column is weight value.
-    remove_negative: bool, optional, remove zero weight row if set True
-    verbose: bool, optional, show more detailed message if set True.
-
-  Returns:
-    cleaned numpy array.
-
-  """
-  # Start
-  if verbose:
-    print "cleaning array..."
-  
-  # Clean
-  # create new array for output to avoid direct operation on input array
-  new = []
-  if remove_negative == False:
-    for d in array:
-      if d[weight_id] == 0.:  # only remove zero weight row
-        continue
-      new.append(d)
-  elif remove_negative == True:
-    for d in array:
-      if d[weight_id] <= 0.:  # remove zero or negative weight row
-        continue
-      new.append(d)
-
-  # Output
-  out = np.array(new)
-  if verbose:
-    print "shape before", array.shape, 'shape after', out.shape
-  return out
-
-
 def create_folders(foldernames, parent_path="./"):
   """checks existence of given folder names, creats if not exsits.
   
   Args:
     foldernames: list of str, folder names to be checked/created.
     parent_path: str, parent path where to create folders.
-
   """
   for foldername in foldernames:
     today_dir = os.path.join(parent_path, foldername)
@@ -66,7 +27,6 @@ def has_none(list):
   Returns:
     True, if there IS "None" value element.
     False, if there ISN'T "None" value element.
-
   """
   for ele in list:
     if ele is None:
@@ -82,7 +42,6 @@ def read_dict_from_json(json_input):
 
   Returns:
     dict type data of json input
-
   """
   pass
 
@@ -100,7 +59,6 @@ def read_dict_from_txt(file_path, key_type='str', value_type='str'):
 
   Returns:
     dict type data of text file input
-
   """
   dict_output = {}
   
@@ -117,8 +75,8 @@ def read_dict_from_txt(file_path, key_type='str', value_type='str'):
           key = eval(content1)
         except ZeroDivisionError:
           key_error = True
-          print_helper.print_error("float division by zero",
-                                   "in common_utils.read_dict_from_txt")
+          print_helper.print_warning("float division by zero",
+                                     "in common_utils.read_dict_from_txt")
           continue  # skip invalid key
         except:
           key_error = True
@@ -137,8 +95,8 @@ def read_dict_from_txt(file_path, key_type='str', value_type='str'):
         except ZeroDivisionError:
           value_error = True
           value = 0  # set default value
-          print_helper.print_error("float division by zero",
-                                   "in common_utils.read_dict_from_txt")
+          print_helper.print_warning("float division by zero",
+                                     "in common_utils.read_dict_from_txt")
         except:
           value_error = True
           value = 0  # set default value
