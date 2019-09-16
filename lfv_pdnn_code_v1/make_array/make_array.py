@@ -67,10 +67,10 @@ def build_array_withcut(rootfile_path, clean_array=True):
   for n, event in enumerate(tree):
     # Observables
     # get particles
-    electrons = particle.electron_candidates(event)
-    muons = particle.muon_candidates(event)
-    taus = particle.tau_candidates(event)
-    jets = particle.jet_candidates(event)
+    electrons = particle.ElectronCandidates(event)
+    muons = particle.MuonCandidates(event)
+    taus = particle.TauCandidates(event)
+    jets = particle.JetCandidates(event)
     # get extra parameters needed
     weight_mc = event.weight_mc
     weight_pileup = event.weight_pileup
@@ -99,13 +99,15 @@ def build_array_withcut(rootfile_path, clean_array=True):
     weight = luminosity * weight_kfactor * weight_pileup \
              * weight_mc * norm_factor
 
-    # Select electron
+    # Select particles
     electrons.select()
     muons.select()
     taus.select()
     jets.select()
     #print "selected pt: ", taus.selected_tau.Pt(), taus.selected_neutrino.Pt() ########
-    #print "b_tag_jet:", jets.b_tag_jet
+    #print "b_tag_jet:", jets.b_tag_jet #########################################
+
+    # 
 
     if n < 10:
       print "event number:", event_number,
