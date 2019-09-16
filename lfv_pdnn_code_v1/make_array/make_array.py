@@ -94,8 +94,8 @@ def build_array_withcut(rootfile_path, clean_array=True):
       norm_factor = get_norm(mc_channel_number, run_number)
     except KeyError:
       norm_factor = 0
-      #print_helper.print_error("can't get norm factor for current",
-      #                         "mc_channel_number:", mc_channel_number)
+      print_helper.print_error("can't get norm factor for current",
+                               "mc_channel_number:", mc_channel_number)
     weight = luminosity * weight_kfactor * weight_pileup \
              * weight_mc * norm_factor
 
