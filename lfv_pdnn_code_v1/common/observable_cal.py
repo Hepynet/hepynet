@@ -13,7 +13,7 @@ def delta_phi(phi1, phi2):
       dphi = 2 * math.pi - dphi
     else:
       dphi = 2 * math.pi + dphi
-  return dphi
+  return abs(dphi)  # bug fix: don't forget abs
 
 def delta_r(eta1, phi1, eta2, phi2):
   """Calculates delta R.

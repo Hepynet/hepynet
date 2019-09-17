@@ -125,7 +125,7 @@ def build_array_withcut(rootfile_path, should_clean_array=True):
       num_ignored_muti_channel_event += 1
       #print_helper.print_warning("more than one valid channel detected", 
       #                           "in make_array module,", "event ignored")
-      print possible_channels
+      #print possible_channels
       continue
 
     # Post calculation
@@ -170,7 +170,6 @@ def build_array_withcut(rootfile_path, should_clean_array=True):
         lepton_pair_dR = observable_cal.delta_r(eta1, phi1, eta2, phi2)
         is_mutau = True
     
-    observable_cal.delta_phi(1, 2)
     # Save array
     data[n][0] = propagator.Mag()
     data[n][1] = selected_electron.Pt()
@@ -212,7 +211,7 @@ def build_array_withcut(rootfile_path, should_clean_array=True):
     """
   print_helper.print_warning("{} muti channel events among {} events were \
   ignored in (build_array_withcut)".format(num_ignored_muti_channel_event, \
-  len(tree)))
+  tree.GetEntries()))
 
   # remove empty and zero-weight event
   data = array_utils.clean_array(data, -1, remove_negative=False, verbose=False)
