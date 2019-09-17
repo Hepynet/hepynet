@@ -6,6 +6,35 @@ import numpy as np
 
 from lfv_pdnn_code_v1.common import print_helper
 
+def clean_array(data, weight_id, verbose = False, remove_negative = False):
+  """Removes elements with 0 weight
+
+  Args:
+    data: numpy array, array to be cleaned
+    weight_id: int, index of weight in each row
+    verbose: bool, set True to give detailed infomation
+    remove_negative: bool, set True to remove negative weight event
+  """
+  if verbose:
+    print "cleaning array..."
+  new = []
+  if remove_negative == False:
+    for d in data:
+      if d[weight_id] == 0.:
+        continue
+      new.append(d)
+    out = np.array(new)
+  elif remove_negative == True:
+    for d in data:
+      if d[weight_id] <= 0.:
+        continue
+      new.append(d)
+    out = np.array(new)
+  if verbose:
+    print "shape before", data.shape, 'shape after', out.shape
+  return out
+
+
 def create_folders(foldernames, parent_path="./"):
   """Checks existence of given folder names, creats if not exsits.
   
