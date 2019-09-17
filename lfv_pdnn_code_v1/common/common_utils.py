@@ -1,3 +1,4 @@
+import glob
 import os
 
 import json
@@ -6,7 +7,7 @@ import numpy as np
 from lfv_pdnn_code_v1.common import print_helper
 
 def create_folders(foldernames, parent_path="./"):
-  """checks existence of given folder names, creats if not exsits.
+  """Checks existence of given folder names, creats if not exsits.
   
   Args:
     foldernames: list of str, folder names to be checked/created.
@@ -18,8 +19,40 @@ def create_folders(foldernames, parent_path="./"):
       os.makedirs(today_dir)
 
 
+def get_file_list(directory, search_pattern, out_name_pattern = "None"):
+  """Gets a full list of file under given directory with given name pattern
+
+  To use:
+  >>> get_file_list("path/to/directory", "*.root")
+
+  Args:
+    directory: str, path to search files
+    search_pattern: str, pattern of files to search
+
+  Returns:
+    A list of file absolute path & file name 
+  """
+  # Get absolute path
+  absolute_file_list = glob.glob(directory + "/" + search_pattern)
+  if len(absolute_file_list) == 0:
+    print_helper.print_warning("empty file list, please check input",
+                               "(in get_file_list)")
+  # Get file name match the pattern
+  file_name_list = [os.path.basename(path) for path in absolute_file_list]
+  # check duplicated name in file_name_list
+  for name in file_name_list:
+    num_same_name = 0
+    for name_check in file_name_list:
+      if name == name_check:
+        num_same_name += 1
+    if num_same_name > 1:    
+      print_helper.print_warning("same file name detected",
+                                 "(in get_file_list)")
+  return absolute_file_list, file_name_list
+
+
 def has_none(list):
-  """checks whether list's element has "None" value element.
+  """Checks whether list's element has "None" value element.
   
   Args:
     list: list, input list to be checked.
@@ -35,7 +68,7 @@ def has_none(list):
 
 
 def read_dict_from_json(json_input):
-  """reads dict type data from json input
+  """Reads dict type data from json input
 
   Args:
     json_input: json, used to read dict from
@@ -47,7 +80,7 @@ def read_dict_from_json(json_input):
 
 
 def read_dict_from_txt(file_path, key_type='str', value_type='str'):
-  """reads dict type data from text file
+  """Reads dict type data from text file
   
   Args:
     file_path: str, path to the input text file

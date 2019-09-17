@@ -10,7 +10,6 @@ def print_error(*inputs):
   for input in inputs:
     print input,  # use comma to aviod changing line
   print ''
-  raise()
 
 
 def print_warning(*inputs):

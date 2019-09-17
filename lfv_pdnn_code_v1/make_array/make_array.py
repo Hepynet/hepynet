@@ -39,8 +39,7 @@ def build_array_withcut(rootfile_path, should_clean_array=True):
     f = ROOT.TFile.Open(rootfile_path)
     tree = f.nominal  # nominal is the name of ntuple
   except:
-    print_helper.print_error("Can not get tree.",
-                             "in make_array.build_array_withcut")
+    raise OSError("Can not get tree. in make_array.build_array_withcut")
     return None
   events_num = tree.GetEntries()
   data = np.zeros((events_num, ARRAY_ELEMENT_LENTH))
@@ -63,6 +62,7 @@ def build_array_withcut(rootfile_path, should_clean_array=True):
       return norm_310000[float(mc_channel_number)]
 
   # Loop
+  num_ignored_muti_channel_event = 0
   for n, event in enumerate(tree):
     # Observables
     # get particles
@@ -93,15 +93,14 @@ def build_array_withcut(rootfile_path, should_clean_array=True):
       norm_factor = get_norm(mc_channel_number, run_number)
     except KeyError:
       norm_factor = 0
-      print_helper.print_error("can't get norm factor for current",
-                               "mc_channel_number:", mc_channel_number)
+      raise OSError("can't get norm factor for current mc_channel_number:{}".format(mc_channel_number))
     weight = luminosity * weight_kfactor * weight_pileup \
              * weight_mc * norm_factor
 
     # Select particles
     electrons.select()
     muons.select()
-    taus.select()
+    taus.select(electrons, muons)
     jets.select()
     #print "selected pt: ", taus.selected_tau.Pt(), taus.selected_neutrino.Pt() ########
     #print "b_tag_jet:", jets.b_tag_jet #########################################
@@ -123,8 +122,9 @@ def build_array_withcut(rootfile_path, should_clean_array=True):
     if num_valid_channel == 0:
       continue
     if num_valid_channel > 1:
-      print_helper.print_warning("more than one valid channel detected", 
-                                 "in make_array module,", "event ignored")
+      num_ignored_muti_channel_event += 1
+      #print_helper.print_warning("more than one valid channel detected", 
+      #                           "in make_array module,", "event ignored")
       print possible_channels
       continue
 
@@ -210,6 +210,10 @@ def build_array_withcut(rootfile_path, should_clean_array=True):
       print "dphi:", lepton_pair_dphi
       print "dr:", lepton_pair_dR
     """
+  print_helper.print_warning("{} muti channel events among {} events were \
+  ignored in (build_array_withcut)".format(num_ignored_muti_channel_event, \
+  len(tree)))
+
   # remove empty and zero-weight event
   data = array_utils.clean_array(data, -1, remove_negative=False, verbose=False)
   return data
