@@ -2,7 +2,7 @@
 
 The code contains modules to use lfv ntuples of newest round.
 
-## setup
+## Setup
 
 pass
 
