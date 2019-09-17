@@ -209,10 +209,11 @@ def build_array_withcut(rootfile_path, should_clean_array=True):
       print "dphi:", lepton_pair_dphi
       print "dr:", lepton_pair_dR
     """
-  print_helper.print_warning("{} muti channel events among {} events were \
-  ignored in (build_array_withcut)".format(num_ignored_muti_channel_event, \
-  tree.GetEntries()))
+  if num_ignored_muti_channel_event > 0:
+    first_part = "{} muti-channel events among {} events were"\
+                 .format(num_ignored_muti_channel_event, tree.GetEntries())
+    print_helper.print_warning(first_part, "ignored (in build_array_withcut)")
 
   # remove empty and zero-weight event
-  data = array_utils.clean_array(data, -1, remove_negative=False, verbose=False)
+  data = array_utils.clean_array(data, -1, remove_negative=False)
   return data
