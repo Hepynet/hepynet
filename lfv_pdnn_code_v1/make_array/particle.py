@@ -4,8 +4,8 @@ from ROOT import TLorentzVector
 
 from lfv_pdnn_code_v1.common.observable_cal import delta_phi, delta_r
 
-# Constants
-ELECTRON_MASS = 0.511
+# Constants unit: GeV
+ELECTRON_MASS = 0.511e-3
 MUON_MASS = 105.658367e-3
 TAU_MASS = 1.776
 
@@ -74,7 +74,7 @@ class ElectronCandidates(Particles):
       if 0.001 * self.pt[i] > self.selected_particle.Pt():
         self.selected_particle.SetPtEtaPhiM(0.001 * self.pt[i], 
                                             self.eta[i], self.phi[i], 
-                                            ELECTRON_MASS * 0.001)
+                                            ELECTRON_MASS)
         self.selected_particle_charge = self.charge[i]
     self.is_selected = True
 
@@ -120,7 +120,7 @@ class MuonCandidates(Particles):
       # pick highest pt
       if 0.001 * self.pt[i] > self.selected_particle.Pt():
         self.selected_particle.SetPtEtaPhiM(0.001 * self.pt[i], self.eta[i], 
-                                      self.phi[i], MUON_MASS * 0.001)
+                                      self.phi[i], MUON_MASS)
         self.selected_particle_charge = self.charge[i]
     self.is_selected = True
 
@@ -204,7 +204,7 @@ class TauCandidates(Particles):
       # Pick highest pt
       if 0.001 * self.pt[i] > self.selected_particle.Pt():
         self.selected_particle.SetPtEtaPhiM(0.001 * self.pt[i], self.eta[i], 
-                                      self.phi[i], TAU_MASS * 0.001)
+                                      self.phi[i], TAU_MASS)
         self.selected_neutrino.SetPtEtaPhiM(self.met_met, self.eta[i], 
                                             self.met_phi, 0.0)
         self.selected_particle_charge = self.charge[i]
