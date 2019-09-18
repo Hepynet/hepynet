@@ -1,4 +1,6 @@
-def print_error(*inputs):
+import warnings
+
+def print_error(*inputs): # should use raise instead
   """Prints uniform error message output,
      only for debugging and non-important error.
 
@@ -12,17 +14,17 @@ def print_error(*inputs):
   print ''
 
 
-def print_warning(*inputs):
+def print_warning(*inputs): # should use warings instead
   """Prints uniform warning message output.
 
   Args:
     *inputs: Variable number of str, warning messages to be print.
   """
   assert inputs is not None
-  print "Warning:",
+  content = ""
   for input in inputs:
-    print input,  # use comma to aviod changing line
-  print ''
+    content = content + input
+  warnings.warn(content)
 
 
 def show_array_example(array, max_row = 5):
