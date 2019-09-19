@@ -5,6 +5,7 @@ import sys
 import numpy as np
 import matplotlib.pyplot as plt
 from math import sqrt
+from sklearn.metrics import classification_report, accuracy_score, roc_curve, auc
 from sklearn.model_selection import train_test_split
 
 from lfv_pdnn_code_v1.common.common_utils import *
@@ -12,53 +13,86 @@ from lfv_pdnn_code_v1.common.common_utils import *
 MASS_FEATURE_INDEX = 0
 
 def prep_mass(xbtrain, xstrain, norm=None):
+  """Currently not used."""
+  pass
+
+def prep_mass_fast(xbtrain, xstrain, mass_id = 0):
+  """Resets background mass distribution according to signal distribution
+
+  Args:
+    xbtrain: numpy array, background array
+    xstrain: numpy array, siganl array
+    mass_id: index of mass in each row
+
+  Returns:
+  new: new background numpy array with mass distribution reset
+  """
   np.random.seed(42)
   new = xbtrain.copy()
-  total_events =len(new)
+  total_events = len(new)
   sump = sum(xstrain[:,-1])
-  import time, datetime
-  start_time = time.time()
-  for count, d in enumerate(new):
-    mass = np.random.choice(xstrain[:,MASS_FEATURE_INDEX], p=1/sump*xstrain[:,-1])
-    if norm:
-      mass = mass / norm
-    d[MASS_FEATURE_INDEX] = mass
-    if (count % 100 == 0):
-      current_time = time.time()
-      speed = (count + 1.0) / (current_time - start_time)
-      remaining_time = (total_events - count) / speed
-      remaining_time_str = str(datetime.timedelta(seconds = (int)(remaining_time)))
-      s = "%.2f" % (count*100.0/total_events)
-      sys.stdout.write('\r' + s + '% events have been processed, remaining time > ' + remaining_time_str)
-      sys.stdout.flush()
-      #print "\r" + "events have been processed",
-  print "\r100.00% events have been processed"
+  mass_list = np.random.choice(xstrain[:,mass_id], size=total_events, p=1/sump*xstrain[:,-1])
+  for count, entry in enumerate(new):
+    entry[mass_id] = mass_list[count]
   return new
 
-def prep_mass_fast(xbtrain, xstrain, mass_id = 0, norm=None):
-  np.random.seed(42)
-  new = xbtrain.copy()
-  total_events =len(new)
-  sump = sum(xstrain[:,-1])
-  import time, datetime
-  start_time = time.time()
-  mass_list = np.random.choice(xstrain[:,mass_id], size=total_events, p=1/sump*xstrain[:,-1])
-  for count, d in enumerate(new):
-    if norm:
-      mass = mass / norm
-    d[mass_id] = mass_list[count]
-    """
-    if (count % 100 == 0):
-      current_time = time.time()
-      speed = (count + 1.0) / (current_time - start_time)
-      remaining_time = (total_events - count) / speed
-      remaining_time_str = str(datetime.timedelta(seconds = (int)(remaining_time)))
-      s = "%.2f" % (count*100.0/total_events)
-      sys.stdout.write('\r' + s + '% events have been processed, remaining time > ' + remaining_time_str)
-      sys.stdout.flush()
-  print "\r100.00% events have been processed"
-    """
-  return new
+def plot_scores(sig_model_input, bkg_model_input, model, bins = 100, 
+               range = None, density = True, log = False):
+  plt.hist(model.predict(sig_model_input), bins = bins, range = range, 
+           histtype='step', label='signal', density=True, log = log)
+  plt.hist(model.predict(bkg_model_input), bins = bins, range = range, 
+           histtype='step', label='background', density=True, log = log)
+  plt.legend(loc='upper center')
+  plt.xlabel("Output score")
+  plt.ylabel("arb. unit")
+  plt.show()
+
+def quick_model_analysis(model_deep):
+  """Shortly reports training result
+
+  Args:
+    model_deep: self-defined model class
+  """
+  #assert isinstance(model_deep, model_sequential)
+  # display scores
+  plot_scores(model_deep.xs_test_selected, model_deep.xb_test_selected, 
+             model_deep.get_model(), bins = 100, range = (0, 1), 
+             density = True)
+  # summarize history for accuracy
+  plt.plot(model_deep.train_history.history['acc'])
+  plt.plot(model_deep.train_history.history['val_acc'])
+  plt.title('model accuracy')
+  plt.ylabel('accuracy')
+  plt.ylim((0, 1))
+  plt.xlabel('epoch')
+  plt.legend(['train', 'val'], loc='upper center')
+  plt.grid()
+  plt.show()
+  # summarize history for loss
+  plt.plot(model_deep.train_history.history['loss'])
+  plt.plot(model_deep.train_history.history['val_loss'])
+  plt.title('model loss')
+  plt.ylabel('loss')
+  plt.xlabel('epoch')
+  plt.legend(['train', 'val'], loc='upper center')
+  plt.grid()
+  plt.show()
+  # make roc plots for signal
+  print "roc for sig and bkg"
+  plt.ylabel('tpr')
+  plt.xlabel('fpr')
+  predictions_dm = model_deep.get_model().predict(model_deep.x_train_selected)
+  fpr_dm, tpr_dm, threshold = roc_curve(model_deep.y_train, predictions_dm)
+  plt.plot(fpr_dm, tpr_dm)
+  predictions_dm = model_deep.get_model().predict(model_deep.x_test_selected)
+  fpr_dm_test, tpr_dm_test, threshold_test = roc_curve(model_deep.y_test, predictions_dm)
+  plt.plot(fpr_dm_test, tpr_dm_test)
+  plt.legend(['train', 'test'], loc='lower right')
+  plt.grid()
+  plt.show()
+  print "auc for train:", auc(fpr_dm, tpr_dm)
+  print "auc for test: ", auc(fpr_dm_test, tpr_dm_test)
+
 
 def unison_shuffled_copies(*arr):
     assert all(len(a) for a in arr)
@@ -118,7 +152,7 @@ def modify_array(input_array, weight_id = None, remove_negative_weight = False,
   if reset_mass == True:
     if not has_none([reset_mass_array, reset_mass_id]):
       #print "random reseting mass..."
-      new = prep_mass_fast(new, reset_mass_array, mass_id = reset_mass_id, norm=None)
+      new = prep_mass_fast(new, reset_mass_array, mass_id = reset_mass_id)
     else:
       print "missing parameters, skipping mass reset..."
   # normalize weight
@@ -137,11 +171,11 @@ def modify_array(input_array, weight_id = None, remove_negative_weight = False,
   # return result
   return new
 
-def split_and_combine(xs, xb, shuffle_before_return = True):
+def split_and_combine(xs, xb, test_rate = 0.2, shuffle_before_return = True):
     ys = np.ones(len(xs))
     yb = np.zeros(len(xb))
-    xs_train, xs_test, ys_train, ys_test = train_test_split(xs, ys, test_size= 0.2, random_state=1234, shuffle=True)
-    xb_train, xb_test, yb_train, yb_test = train_test_split(xb, yb, test_size= 0.2, random_state=1234, shuffle=True)
+    xs_train, xs_test, ys_train, ys_test = train_test_split(xs, ys, test_size= test_rate, random_state=1234, shuffle=True)
+    xb_train, xb_test, yb_train, yb_test = train_test_split(xb, yb, test_size= test_rate, random_state=1234, shuffle=True)
     x_train = np.concatenate((xs_train, xb_train))
     y_train = np.concatenate((ys_train, yb_train))
     x_test = np.concatenate((xs_test, xb_test))
@@ -330,19 +364,15 @@ def CalculateSignificance(xs, xb, mass_point, mass_min, mass_max,
     print "  signal quantity =", signal_quantity, "background quantity =", background_quantity
     print "  significance =", signal_quantity / sqrt(background_quantity)
     
-def PlotScores(sig_model_input, bkg_model_input, model, bins = 100, range = None, density = True, log = False):
-  plt.hist(model.predict(sig_model_input), bins = bins, range = range, histtype='step', label='signal', density=True, log = log)
-  plt.hist(model.predict(bkg_model_input), bins = bins, range = range, histtype='step', label='background', density=True, log = log)
-  plt.legend(loc='upper center')
-  plt.xlabel("Output score")
-  plt.ylabel("arb. unit")
-  plt.show()
+
     
 def get_mass_range(mass_array, weights):
     average = np.average(mass_array, weights=weights)
     # Fast and numerically precise:
     variance = np.average((mass_array-average)**2, weights=weights)
-    return np.sqrt(variance)
+    lower_limit = average - np.sqrt(variance)
+    upper_limit = average + np.sqrt(variance)
+    return lower_limit, upper_limit
 
 def plot_different_mass(mass_scan_map, input_path, para_index, model = "zprime", bins = 50, range = (-10000, 10000), 
                         density = True, xlabel="x axis", ylabel="y axis"):
