@@ -5,113 +5,29 @@ import sys
 import numpy as np
 import matplotlib.pyplot as plt
 from math import sqrt
-from sklearn.metrics import classification_report, accuracy_score, roc_curve, auc
+from sklearn.metrics import classification_report, accuracy_score, auc
 from sklearn.model_selection import train_test_split
 
 from lfv_pdnn_code_v1.common.common_utils import *
+from model import *
 
 MASS_FEATURE_INDEX = 0
-
-def prep_mass(xbtrain, xstrain, norm=None):
-  """Currently not used."""
-  pass
-
-def prep_mass_fast(xbtrain, xstrain, mass_id = 0):
-  """Resets background mass distribution according to signal distribution
-
-  Args:
-    xbtrain: numpy array, background array
-    xstrain: numpy array, siganl array
-    mass_id: index of mass in each row
-
-  Returns:
-  new: new background numpy array with mass distribution reset
-  """
-  np.random.seed(42)
-  new = xbtrain.copy()
-  total_events = len(new)
-  sump = sum(xstrain[:,-1])
-  mass_list = np.random.choice(xstrain[:,mass_id], size=total_events, p=1/sump*xstrain[:,-1])
-  for count, entry in enumerate(new):
-    entry[mass_id] = mass_list[count]
-  return new
-
-def plot_scores(sig_model_input, bkg_model_input, model, bins = 100, 
-               range = None, density = True, log = False):
-  plt.hist(model.predict(sig_model_input), bins = bins, range = range, 
-           histtype='step', label='signal', density=True, log = log)
-  plt.hist(model.predict(bkg_model_input), bins = bins, range = range, 
-           histtype='step', label='background', density=True, log = log)
-  plt.legend(loc='upper center')
-  plt.xlabel("Output score")
-  plt.ylabel("arb. unit")
-  plt.show()
-
-def quick_model_analysis(model_deep):
-  """Shortly reports training result
-
-  Args:
-    model_deep: self-defined model class
-  """
-  #assert isinstance(model_deep, model_sequential)
-  # display scores
-  plot_scores(model_deep.xs_test_selected, model_deep.xb_test_selected, 
-             model_deep.get_model(), bins = 100, range = (0, 1), 
-             density = True)
-  # summarize history for accuracy
-  plt.plot(model_deep.train_history.history['acc'])
-  plt.plot(model_deep.train_history.history['val_acc'])
-  plt.title('model accuracy')
-  plt.ylabel('accuracy')
-  plt.ylim((0, 1))
-  plt.xlabel('epoch')
-  plt.legend(['train', 'val'], loc='upper center')
-  plt.grid()
-  plt.show()
-  # summarize history for loss
-  plt.plot(model_deep.train_history.history['loss'])
-  plt.plot(model_deep.train_history.history['val_loss'])
-  plt.title('model loss')
-  plt.ylabel('loss')
-  plt.xlabel('epoch')
-  plt.legend(['train', 'val'], loc='upper center')
-  plt.grid()
-  plt.show()
-  # make roc plots for signal
-  print "roc for sig and bkg"
-  plt.ylabel('tpr')
-  plt.xlabel('fpr')
-  predictions_dm = model_deep.get_model().predict(model_deep.x_train_selected)
-  fpr_dm, tpr_dm, threshold = roc_curve(model_deep.y_train, predictions_dm)
-  plt.plot(fpr_dm, tpr_dm)
-  predictions_dm = model_deep.get_model().predict(model_deep.x_test_selected)
-  fpr_dm_test, tpr_dm_test, threshold_test = roc_curve(model_deep.y_test, predictions_dm)
-  plt.plot(fpr_dm_test, tpr_dm_test)
-  plt.legend(['train', 'test'], loc='lower right')
-  plt.grid()
-  plt.show()
-  print "auc for train:", auc(fpr_dm, tpr_dm)
-  print "auc for test: ", auc(fpr_dm_test, tpr_dm_test)
-
-
-def unison_shuffled_copies(*arr):
-    assert all(len(a) for a in arr)
-    p = np.random.permutation(len(arr[0]))
-    return (a[p] for a in arr)
-    
-
-def norweight(wt, norm=1000):
-    totalWt = sum(wt)
-    #print "sum of weight is: ", totalWt
-    frac = norm/totalWt
-    wt = frac*wt
-    return wt
 
 def get_part_feature(xtrain, nf):
     #nf = [0,1,2,3,4]
     #nf = [20,21,22,23,24,25,26,27,28,31,34,35,36,37,38,39]
     xtrain = xtrain[:,nf]
     return xtrain
+
+
+def get_mass_range(mass_array, weights):
+    average = np.average(mass_array, weights=weights)
+    # Fast and numerically precise:
+    variance = np.average((mass_array-average)**2, weights=weights)
+    lower_limit = average - np.sqrt(variance)
+    upper_limit = average + np.sqrt(variance)
+    return lower_limit, upper_limit
+
 
 def modify_array(input_array, weight_id = None, remove_negative_weight = False,
                  select_channel = False, channel_id = None, 
@@ -171,6 +87,72 @@ def modify_array(input_array, weight_id = None, remove_negative_weight = False,
   # return result
   return new
 
+
+def norweight(wt, norm=1000):
+    totalWt = sum(wt)
+    #print "sum of weight is: ", totalWt
+    frac = norm/totalWt
+    wt = frac*wt
+    return wt
+
+
+def plot_different_mass(mass_scan_map, input_path, para_index, model = "zprime", bins = 50, range = (-10000, 10000), 
+                        density = True, xlabel="x axis", ylabel="y axis"):
+    # model could be "zprime", "rpv", "qbhrs", "qbhadd"
+    for i, mass in enumerate(mass_scan_map):
+        # load signal
+        if model == "zprime":
+            xs_add = np.load(input_path + '/data_npy/emu/tree_{}00GeV.npy'.format(mass))
+            """ # only use emu channel currently
+            xs_temp = np.load(input_path + '/data_npy/etau/tree_{}00GeV.npy'.format(mass))
+            xs_add = np.concatenate((xs_add, xs_temp))
+            xs_temp = np.load(input_path + '/data_npy/mutau/tree_{}00GeV.npy'.format(mass))
+            xs_add = np.concatenate((xs_add, xs_temp))
+            """
+        elif model == "rpv":
+            xs_add = np.load(input_path + '/data_npy/emu/rpv_{}00GeV.npy'.format(mass))
+            """ # only use emu channel currently
+            xs_temp = np.load(input_path + '/data_npy/etau/rpv_{}00GeV.npy'.format(mass))
+            xs_add = np.concatenate((xs_add, xs_temp))
+            xs_temp = np.load(input_path + '/data_npy/mutau/rpv_{}00GeV.npy'.format(mass))
+            xs_add = np.concatenate((xs_add, xs_temp))
+            """
+        xs_emu = xs_add.copy()
+        # select emu channel and shuffle
+        xs_emu = modify_array(xs_emu, weight_id = -1, 
+                              select_channel = True, channel_id = -4,
+                              norm = True, shuffle = True, shuffle_seed = 485)
+
+        # make plots
+        plt.hist(xs_emu[:, para_index], bins = bins, weights = xs_emu[:,-1], 
+                 histtype='step', label='signal {}00GeV'.format(mass), range = range, density = density)
+    plt.legend(prop={'size': 10})
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.show()
+
+
+def prep_mass_fast(xbtrain, xstrain, mass_id = 0):
+  """Resets background mass distribution according to signal distribution
+
+  Args:
+    xbtrain: numpy array, background array
+    xstrain: numpy array, siganl array
+    mass_id: index of mass in each row
+
+  Returns:
+  new: new background numpy array with mass distribution reset
+  """
+  np.random.seed(42)
+  new = xbtrain.copy()
+  total_events = len(new)
+  sump = sum(xstrain[:,-1])
+  mass_list = np.random.choice(xstrain[:,mass_id], size=total_events, p=1/sump*xstrain[:,-1])
+  for count, entry in enumerate(new):
+    entry[mass_id] = mass_list[count]
+  return new
+
+
 def split_and_combine(xs, xb, test_rate = 0.2, shuffle_before_return = True):
     ys = np.ones(len(xs))
     yb = np.zeros(len(xb))
@@ -185,6 +167,13 @@ def split_and_combine(xs, xb, test_rate = 0.2, shuffle_before_return = True):
         x_train, x2, y_train, y2 = train_test_split(x_train, y_train, test_size= 0, random_state=3456, shuffle=True)
         x_test, x2, y_test, y2 = train_test_split(x_test, y_test, test_size= 0, random_state=5672, shuffle=True)
     return x_train, x_test, y_train, y_test, xs_test, xb_test
+
+
+def unison_shuffled_copies(*arr):
+    assert all(len(a) for a in arr)
+    p = np.random.permutation(len(arr[0]))
+    return (a[p] for a in arr)
+    
 
 def MakePlots(sig_array, bkg_array, para_index, bins=100, range=(0,100), density = False,
               xlabel="x axis", ylabel="y axis", show_plot=False, 
@@ -363,48 +352,4 @@ def CalculateSignificance(xs, xb, mass_point, mass_min, mass_max,
     print "for mass =", mass_point, "range = (", mass_min, mass_max, "):"
     print "  signal quantity =", signal_quantity, "background quantity =", background_quantity
     print "  significance =", signal_quantity / sqrt(background_quantity)
-    
-
-    
-def get_mass_range(mass_array, weights):
-    average = np.average(mass_array, weights=weights)
-    # Fast and numerically precise:
-    variance = np.average((mass_array-average)**2, weights=weights)
-    lower_limit = average - np.sqrt(variance)
-    upper_limit = average + np.sqrt(variance)
-    return lower_limit, upper_limit
-
-def plot_different_mass(mass_scan_map, input_path, para_index, model = "zprime", bins = 50, range = (-10000, 10000), 
-                        density = True, xlabel="x axis", ylabel="y axis"):
-    # model could be "zprime", "rpv", "qbhrs", "qbhadd"
-    for i, mass in enumerate(mass_scan_map):
-        # load signal
-        if model == "zprime":
-            xs_add = np.load(input_path + '/data_npy/emu/tree_{}00GeV.npy'.format(mass))
-            """ # only use emu channel currently
-            xs_temp = np.load(input_path + '/data_npy/etau/tree_{}00GeV.npy'.format(mass))
-            xs_add = np.concatenate((xs_add, xs_temp))
-            xs_temp = np.load(input_path + '/data_npy/mutau/tree_{}00GeV.npy'.format(mass))
-            xs_add = np.concatenate((xs_add, xs_temp))
-            """
-        elif model == "rpv":
-            xs_add = np.load(input_path + '/data_npy/emu/rpv_{}00GeV.npy'.format(mass))
-            """ # only use emu channel currently
-            xs_temp = np.load(input_path + '/data_npy/etau/rpv_{}00GeV.npy'.format(mass))
-            xs_add = np.concatenate((xs_add, xs_temp))
-            xs_temp = np.load(input_path + '/data_npy/mutau/rpv_{}00GeV.npy'.format(mass))
-            xs_add = np.concatenate((xs_add, xs_temp))
-            """
-        xs_emu = xs_add.copy()
-        # select emu channel and shuffle
-        xs_emu = modify_array(xs_emu, weight_id = -1, 
-                              select_channel = True, channel_id = -4,
-                              norm = True, shuffle = True, shuffle_seed = 485)
-
-        # make plots
-        plt.hist(xs_emu[:, para_index], bins = bins, weights = xs_emu[:,-1], 
-                 histtype='step', label='signal {}00GeV'.format(mass), range = range, density = density)
-    plt.legend(prop={'size': 10})
-    plt.xlabel(xlabel)
-    plt.ylabel(ylabel)
-    plt.show()   
+       
