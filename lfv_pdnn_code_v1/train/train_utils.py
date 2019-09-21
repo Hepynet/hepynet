@@ -8,8 +8,7 @@ from math import sqrt
 from sklearn.metrics import classification_report, accuracy_score, auc
 from sklearn.model_selection import train_test_split
 
-from lfv_pdnn_code_v1.common.common_utils import *
-from model import *
+from ..common.common_utils import *
 
 MASS_FEATURE_INDEX = 0
 

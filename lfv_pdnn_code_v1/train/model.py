@@ -9,8 +9,8 @@ import numpy as np
 from sklearn.metrics import roc_curve, auc
 import warnings
 
-from lfv_pdnn_code_v1.common import print_helper
-from lfv_pdnn_code_v1.train import train_utils 
+from ..common import print_helper
+import train_utils 
 from train_utils import split_and_combine, get_part_feature
 
 class model_base(object):
