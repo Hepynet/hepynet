@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 import ROOT
 
@@ -29,6 +31,9 @@ def build_array_withcut(rootfile_path, should_clean_array=True):
   Returns:
     numpy array built from ntuple with selection applied.
 
+  Note:
+    For multi-channel events, only one channel will be chosen.
+    Priority: emu > etau > mutau
   """
   ARRAY_ELEMENT_LENTH = 24  # number of variables to stored for each event
 
@@ -62,7 +67,7 @@ def build_array_withcut(rootfile_path, should_clean_array=True):
       return norm_310000[float(mc_channel_number)]
 
   # Loop
-  num_ignored_muti_channel_event = 0
+  num_muti_channel_event = 0
   for n, event in enumerate(tree):
     # Observables
     # get particles
@@ -102,8 +107,6 @@ def build_array_withcut(rootfile_path, should_clean_array=True):
     muons.select()
     taus.select(electrons, muons)
     jets.select()
-    #print "selected pt: ", taus.selected_tau.Pt(), taus.selected_neutrino.Pt() ########
-    #print "b_tag_jet:", jets.b_tag_jet #########################################
 
     # Set propagator
     possible_channels = get_early_channel(electrons, muons, taus)
@@ -122,11 +125,14 @@ def build_array_withcut(rootfile_path, should_clean_array=True):
     if num_valid_channel == 0:
       continue
     if num_valid_channel > 1:
-      num_ignored_muti_channel_event += 1
-      #print_helper.print_warning("more than one valid channel detected", 
-      #                           "in make_array module,", "event ignored")
-      #print possible_channels
-      continue
+      num_muti_channel_event += 1
+      # chose one channel with priority emu > etau > mutau
+      if "emu" in possible_channels:
+        selected_channel = "emu"
+      elif "etau" in possible_channels:
+        selected_channel = "etau"
+      elif "mutau" in possible_channels:
+        selected_channel = "mutau"
 
     # Post calculation
     selected_electron = electrons.selected_particle
@@ -209,10 +215,12 @@ def build_array_withcut(rootfile_path, should_clean_array=True):
       print "dphi:", lepton_pair_dphi
       print "dr:", lepton_pair_dR
     """
-  if num_ignored_muti_channel_event > 0:
-    first_part = "{} muti-channel events among {} events were"\
-                 .format(num_ignored_muti_channel_event, tree.GetEntries())
-    print_helper.print_warning(first_part, "ignored (in build_array_withcut)")
+  if num_muti_channel_event > 0:
+    first_info = "{} muti-channel events among {} events were found"\
+                 .format(num_muti_channel_event, tree.GetEntries())
+    second_info = "(in build_array_withcut)"
+    third_info = "channel was chosen with priority emu > etau > mutau" 
+    print "Warning: " + first_info + second_info + ", " + third_info
 
   # remove empty and zero-weight event
   data = array_utils.clean_array(data, -1, remove_negative=False)
