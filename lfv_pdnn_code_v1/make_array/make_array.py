@@ -124,15 +124,20 @@ def build_array_withcut(rootfile_path, should_clean_array=True):
         propagator = propagator_temp
     if num_valid_channel == 0:
       continue
+    if num_valid_channel == 1:
+      propagator = get_final_channel(electrons, muons, taus, selected_channel)
     if num_valid_channel > 1:
       num_muti_channel_event += 1
       # chose one channel with priority emu > etau > mutau
       if "emu" in possible_channels:
         selected_channel = "emu"
+        _, propagator = get_final_channel(electrons, muons, taus, "emu")
       elif "etau" in possible_channels:
         selected_channel = "etau"
+        _, propagator = get_final_channel(electrons, muons, taus, "etau")
       elif "mutau" in possible_channels:
         selected_channel = "mutau"
+        _, propagator = get_final_channel(electrons, muons, taus, "mutau")
 
     # Post calculation
     selected_electron = electrons.selected_particle

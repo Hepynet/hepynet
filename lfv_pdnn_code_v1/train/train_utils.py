@@ -19,12 +19,12 @@ def get_part_feature(xtrain, nf):
     return xtrain
 
 
-def get_mass_range(mass_array, weights):
+def get_mass_range(mass_array, weights, nsig = 1):
     average = np.average(mass_array, weights=weights)
     # Fast and numerically precise:
     variance = np.average((mass_array-average)**2, weights=weights)
-    lower_limit = average - np.sqrt(variance)
-    upper_limit = average + np.sqrt(variance)
+    lower_limit = average - np.sqrt(variance) * nsig
+    upper_limit = average + np.sqrt(variance) * nsig
     return lower_limit, upper_limit
 
 
