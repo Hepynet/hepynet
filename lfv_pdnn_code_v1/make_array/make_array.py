@@ -125,7 +125,7 @@ def build_array_withcut(rootfile_path, should_clean_array=True):
     if num_valid_channel == 0:
       continue
     if num_valid_channel == 1:
-      propagator = get_final_channel(electrons, muons, taus, selected_channel)
+      _, propagator = get_final_channel(electrons, muons, taus, selected_channel)
     if num_valid_channel > 1:
       num_muti_channel_event += 1
       # chose one channel with priority emu > etau > mutau
