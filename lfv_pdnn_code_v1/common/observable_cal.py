@@ -1,19 +1,20 @@
 import math
 
 def delta_phi(phi1, phi2):
-  """Calculates delta phi.
+  """Calculates delta phi = phi1 - phi2.
+  If delta phi is out of range [-PI, PI], k * 2PI will be added to the result
+  to make delta phi is in range [-PI, PI], k is integer
 
   Args:
     phi1: float, first phi value.
     phi2: float, second phi value.
   """
   dphi = phi1 - phi2
-  if abs(dphi) > math.pi:
-    if dphi > 0:
-      dphi = 2 * math.pi - dphi
-    else:
-      dphi = 2 * math.pi + dphi
-  return abs(dphi)  # bug fix: don't forget abs
+  while dphi > math.pi:
+    dphi -= 2 * math.pi
+  while dphi < -math.pi:
+    dphi += 2 * math.pi
+  return dphi
 
 def delta_r(eta1, phi1, eta2, phi2):
   """Calculates delta R.
