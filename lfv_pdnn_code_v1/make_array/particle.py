@@ -1,5 +1,7 @@
 import math
+import sys
 
+import ROOT
 from ROOT import TLorentzVector
 
 from lfv_pdnn_code_v1.common.observable_cal import delta_phi, delta_r
@@ -55,15 +57,20 @@ class ElectronCandidates(Particles):
     # - variables like is_medium was saved as a single value
     # - it's same for muon and tau
     for i in range(self.pt.size()):
+      #if self.pt.size() != 1:
+        #print "electron pt size is not 1 but:", self.pt.size() # debug
+        #print "is_medium size:", self.is_medium.size()
+        #print "is_medium type", type(self.is_medium)
+        #print "is_medium[i]:", bool(self.is_medium[i])
       if self.pt[i] < 65000.0:  # pt is an collection
         continue
       if abs(self.eta[i]) > 2.47:
         continue
       if abs(self.eta[i]) > 1.37 and abs(self.eta[i]) < 1.52:
         continue
-      if not self.is_medium:  # is_medium is a single value
+      if not bool(self.is_medium[i]):  # is_medium is a single value
         continue
-      if not self.isolation_fixed_cut_tight:
+      if not bool(self.isolation_fixed_cut_tight[i]):
         continue
       if abs(self.delta_z0_sintheta[i]) > 0.5:
         continue
@@ -108,9 +115,9 @@ class MuonCandidates(Particles):
         continue
       if abs(self.eta[i]) > 2.5:
         continue
-      if not self.is_high_pt:
+      if not bool(self.is_high_pt[i]):
         continue
-      if not self.isolation_fixed_cut_loose:
+      if not bool(self.isolation_fixed_cut_loose[i]):
         continue
       if abs(self.delta_z0_sintheta[i]) > 0.5:
         continue
@@ -162,7 +169,7 @@ class TauCandidates(Particles):
         continue
       if abs(self.eta[i]) > 1.37 and abs(self.eta[i]) < 1.52:
         continue
-      if not self.is_medium:
+      if not bool(self.is_medium[i]):
         continue
       if abs(self.charge[i]) != 1.0:
         continue
@@ -174,7 +181,7 @@ class TauCandidates(Particles):
       dphi_etau = delta_phi(electron.Phi(), self.phi[i])
       dphi_enu = delta_phi(electron.Phi(), self.met_phi)
       mt_etau = math.sqrt(2.0 * electron.Pt() * self.met_met 
-                          * (1.0 - math.cos(dphi_enu)))
+                          * (1.0 - math.cos(dphi_enu))) # transverse mass cut
       is_fake_tau = False
       for el_id in range(electrons.pt.size()):
         dr = delta_r(electrons.eta[el_id], electrons.phi[el_id], 
@@ -187,7 +194,7 @@ class TauCandidates(Particles):
       dphi_mutau = delta_phi(muon.Phi(), self.phi[i])
       dphi_munu = delta_phi(muon.Phi(), self.met_phi)
       mt_mutau = math.sqrt(2.0 * muon.Pt() * self.met_met
-                           * (1.0 - math.cos(dphi_munu)))
+                           * (1.0 - math.cos(dphi_munu))) # transverse mass cut
       is_fake_tau = False
       for el_id in range(muons.pt.size()):
         dr = delta_r(muons.eta[el_id], muons.phi[el_id], 
@@ -197,8 +204,8 @@ class TauCandidates(Particles):
       if is_fake_tau:
         continue
       # mt/dphi cut
-      pass_etau = (mt_etau > 80.0) and (dphi_etau > 2.7)
-      pass_mutau = (mt_mutau > 80.0) and (dphi_mutau > 2.7)
+      pass_etau = (mt_etau > 80.0) and (abs(dphi_etau) > 2.7)
+      pass_mutau = (mt_mutau > 80.0) and (abs(dphi_mutau) > 2.7)
       if not (pass_etau or pass_mutau):
         continue
       # Pick highest pt

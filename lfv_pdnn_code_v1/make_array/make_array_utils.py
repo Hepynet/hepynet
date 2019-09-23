@@ -93,7 +93,7 @@ def get_final_channel(electrons, muons, taus, channel):
     if propagator.Mag() > INV_MASS_LIMIT and pair_delta_phi > 2.7:
       channel_is_true = True
   elif channel == "mutau":
-    propagator = muon + tau
+    propagator = muon + tau + neutrino
     pair_delta_phi = delta_phi(muon.Phi(), tau.Phi())
     if propagator.Mag() > INV_MASS_LIMIT and pair_delta_phi > 2.7:
       channel_is_true = True
