@@ -170,6 +170,8 @@ def build_array_withcut(rootfile_path, should_clean_array=True):
         lepton_pair_dphi = observable_cal.delta_phi(phi1, phi2)
         lepton_pair_dR = observable_cal.delta_r(eta1, phi1, eta2, phi2)
         is_etau = True
+        # debug
+        #print "etau channel, tau_pt =", taus.selected_particle.Pt()
     elif selected_channel == 'mutau':
       if mc_channel_number != 0:
         weight *= weight_lepton_sf * weight_tau_sf
@@ -180,6 +182,8 @@ def build_array_withcut(rootfile_path, should_clean_array=True):
         lepton_pair_dphi = observable_cal.delta_phi(phi1, phi2)
         lepton_pair_dR = observable_cal.delta_r(eta1, phi1, eta2, phi2)
         is_mutau = True
+        # debug
+        #print "mutau channel, tau_pt =", taus.selected_particle.Pt()
     
     # Save array
     data[n][0] = propagator.Mag()

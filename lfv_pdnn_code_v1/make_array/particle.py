@@ -175,7 +175,6 @@ class TauCandidates(Particles):
         continue
       if self.num_track[i] != 1.0 and self.num_track[i] != 3.0:
         continue
-      self.num_good_particle += 1
       # Remove fake tau
       # remove fake electron tau
       dphi_etau = delta_phi(electron.Phi(), self.phi[i])
@@ -208,6 +207,7 @@ class TauCandidates(Particles):
       pass_mutau = (mt_mutau > 80.0) and (abs(dphi_mutau) > 2.7)
       if not (pass_etau or pass_mutau):
         continue
+      self.num_good_particle += 1
       # Pick highest pt
       if 0.001 * self.pt[i] > self.selected_particle.Pt():
         self.selected_particle.SetPtEtaPhiM(0.001 * self.pt[i], self.eta[i], 
