@@ -31,7 +31,7 @@ class ElectronCandidates(Particles):
     # intialize variables to be used
     Particles.__init__(self)
     # get info from event
-    self.pt = event.el_pt
+    self.pt = event.el_pt  # unit: MeV
     self.eta = event.el_eta
     self.cl_eta = event.el_cl_eta
     self.phi = event.el_phi
@@ -94,7 +94,7 @@ class MuonCandidates(Particles):
     # get info from event
     self.mu = event.mu
     self.has_bad_muon = event.hasBadMuon
-    self.pt = event.mu_pt
+    self.pt = event.mu_pt  # unit: MeV
     self.eta = event.mu_eta
     self.phi = event.mu_phi
     self.e = event.mu_e
@@ -139,7 +139,7 @@ class TauCandidates(Particles):
     Particles.__init__(self)
     self.selected_neutrino = TLorentzVector(0, 0, 0, 0)
     # get info from event
-    self.pt = event.tau_pt
+    self.pt = event.tau_pt  # unit: MeV
     self.eta = event.tau_eta
     self.phi = event.tau_phi
     self.charge = event.tau_charge
@@ -147,8 +147,12 @@ class TauCandidates(Particles):
     #self.is_loose = event.tau_isLoose  # not available in all trees
     self.bdt = event.tau_BDT
     self.num_track = event.tau_nTracks
-    self.met_met = event.met_met
+    self.met_met = event.met_met  # unit: MeV
     self.met_phi = event.met_phi
+    #debug
+    #if self.met_met > 100 * 1000:
+    #  print "met_met:", self.met_met
+    #  print "met_phi:", self.met_phi
 
   def select(self, electrons, muons):
     """Makes cuts to all tau candidate
@@ -179,7 +183,7 @@ class TauCandidates(Particles):
       # remove fake electron tau
       dphi_etau = delta_phi(electron.Phi(), self.phi[i])
       dphi_enu = delta_phi(electron.Phi(), self.met_phi)
-      mt_etau = math.sqrt(2.0 * electron.Pt() * self.met_met 
+      mt_etau = math.sqrt(2.0 * electron.Pt() * self.met_met * 0.001  # met_met unit: MeV
                           * (1.0 - math.cos(dphi_enu))) # transverse mass cut
       is_fake_tau = False
       for el_id in range(electrons.pt.size()):
@@ -192,7 +196,7 @@ class TauCandidates(Particles):
       # remove fake muon tau
       dphi_mutau = delta_phi(muon.Phi(), self.phi[i])
       dphi_munu = delta_phi(muon.Phi(), self.met_phi)
-      mt_mutau = math.sqrt(2.0 * muon.Pt() * self.met_met
+      mt_mutau = math.sqrt(2.0 * muon.Pt() * self.met_met * 0.001  # met_met unit: MeV
                            * (1.0 - math.cos(dphi_munu))) # transverse mass cut
       is_fake_tau = False
       for el_id in range(muons.pt.size()):
@@ -212,7 +216,7 @@ class TauCandidates(Particles):
       if 0.001 * self.pt[i] > self.selected_particle.Pt():
         self.selected_particle.SetPtEtaPhiM(0.001 * self.pt[i], self.eta[i], 
                                       self.phi[i], TAU_MASS)
-        self.selected_neutrino.SetPtEtaPhiM(self.met_met, self.eta[i], 
+        self.selected_neutrino.SetPtEtaPhiM(0.001 * self.met_met, self.eta[i], 
                                             self.met_phi, 0.0)
         self.selected_particle_charge = self.charge[i]
     self.is_selected = True    
