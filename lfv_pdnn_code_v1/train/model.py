@@ -1,3 +1,7 @@
+# -*- coding: utf-8 -*-
+"""Model class for DNN training"""
+import os
+
 from datetime import datetime
 from keras.models import Sequential, Model, load_model
 from keras.layers import Concatenate, Dense, Input
@@ -14,12 +18,27 @@ import train_utils
 from train_utils import split_and_combine, get_part_feature
 
 class model_base(object):
-  """base model of deep neural network for pdnn training"""
+  """Base model of deep neural network for pdnn training.
+  
+  Attributes:
+    model_create_time: datetime.datetime
+      Time stamp of model object created time.
+    model_is_compiled: bool
+      Whether the model has been compiled.
+    model_name: str
+      Name of the model.
+    train_history: 
+      Training of keras model, include 'acc', 'loss', 'val_acc' and 'val_loss'.
+
+  """
+
   def __init__(self, name):
-    """ initialize model
+    """Initialize model.
 
     Args: 
-      name: str, name of the model
+      name: str
+        Name of the model.
+
     """
     self.model_create_time = datetime.now()
     self.model_is_compiled = False
@@ -27,9 +46,67 @@ class model_base(object):
     self.train_history = None
 
 class model_sequential(model_base):
-  """Sequential model base"""
+  """Sequential model base.
+
+  Attributes:
+    model_input_dim: int
+      Number of input variables.
+    model_num_node: int
+      Number of nodes in each layer. 
+    model_learn_rate: float
+    model_decay: float
+    model: keras model
+      Keras training model object.
+    array_prepared = bool
+      Whether the array for training has been prepared.
+    x_train: numpy array
+      x array for training.
+    x_test: numpy array
+      x array for testing.
+    y_train: numpy array
+      y array for training.
+    y_test: numpy array
+      y array for testing.
+    xs_test: numpy array
+      Signal component of x array for testing.
+    xb_test: numpy array
+      Background component of x array for testing.
+    selected_features: list
+      Column id of input array of features that will be used for training.
+    x_train_selected: numpy array
+      x array for training with feature selection.
+    x_test_selected: numpy array
+      x array for testing with feature selection.
+    xs_test_selected: numpy array
+      Signal component of x array for testing with feature selection.
+    xb_test_selected: numpy array
+      Background component of x array for testing with feature selection.
+    xs_selected: numpy array
+      Signal component of x array (train + test) with feature selection.
+    xb_selected: numpy array
+      Background component of x array (train + test) with feature selection.
+
+    Example:
+    To use to model class, first to create the class:
+    >>> model_name = "test model"
+    >>> selected_features = [1, 3, 5, 7, 9]
+    >>> model_deep = model.model_0913(model_name, len(selected_features))
+    Then compile model:
+    >>> model_deep.compile()
+    Prepare array for training:
+    >>> xs_emu = np.load('path/to/numpy/signal/array.npy')
+    >>> xb_emu = np.load('path/to/numpy/background/array.npy')
+    >>> model_deep.prepare_array(xs_emu, xb_emu, selected_features)
+    Perform training:
+    >>> model_deep.train(epochs = epochs, val_split = 0.1, verbose = 0)
+    Make plots to shoe training performance:
+    >>> model_deep.show_performance()
+  
+  """
+
   def __init__(self, name, input_dim, num_node = 300, learn_rate = 0.025, 
                decay = 1e-6):
+    """Initialize model."""
     model_base.__init__(self, name)
     # Model parameters
     self.model_input_dim = input_dim
@@ -57,13 +134,13 @@ class model_sequential(model_base):
     pass
 
   def get_model(self):
-    """Returns model"""
+    """Returns model."""
     if not self.model_is_compiled:
       warnings.warn("Model is not compiled")
     return self.model
 
   def get_train_history(self):
-    """Returns train history"""
+    """Returns train history."""
     if not self.model_is_compiled:
       warnings.warn("Model is not compiled")
     if self.train_history is None:
@@ -71,7 +148,7 @@ class model_sequential(model_base):
     return self.train_history
 
   def plot_accuracy(self, ax):
-    """Plots accuracy vs training epoch"""
+    """Plots accuracy vs training epoch."""
     # Plot
     ax.plot(self.get_train_history().history['acc'])
     ax.plot(self.get_train_history().history['val_acc'])
@@ -91,7 +168,7 @@ class model_sequential(model_base):
     return auc(self.fpr_dm_test, self.tpr_dm_test)
 
   def plot_loss(self, ax):
-    """Plots loss vs training epoch"""
+    """Plots loss vs training epoch."""
     #Plot
     ax.plot(self.get_train_history().history['loss'])
     ax.plot(self.get_train_history().history['val_loss'])
@@ -104,7 +181,7 @@ class model_sequential(model_base):
     return ax
 
   def plot_roc(self, ax):
-    """Plots roc curve"""
+    """Plots roc curve."""
     # Check
     if not self.model_is_compiled:
       warnings.warn("Model is not compiled")
@@ -120,6 +197,7 @@ class model_sequential(model_base):
     return ax
 
   def plot_scores(self, ax, bins=100, range=None, density=True, log=False):
+    """Plots training score distribution for siganl and background."""
     ax.hist(self.get_model().predict(self.xs_test_selected), bins=bins, 
             range=range, histtype='step', label='signal', density=True, 
             log=log)
@@ -134,7 +212,7 @@ class model_sequential(model_base):
     return ax
 
   def prepare_array(self, xs, xb, selected_features, test_rate = 0.2):
-    # get training data
+    """Prepares array for training."""
     self.xs = xs
     self.xb = xb
     self.x_train, self.x_test, self.y_train, self.y_test, self.xs_test, \
@@ -152,13 +230,31 @@ class model_sequential(model_base):
     print "> signal shape:", self.xs_selected.shape
     print "> background shape:", self.xb_selected.shape
 
+  def save_model(self, save_path):
+    """Saves trained model.
+    
+    Args:
+      save_path: str
+        Path to save model.
+
+    """
+    # Check path
+    parent_path = os.path.split(save_path)[0]
+    if not os.path.exists(parent_path):
+      os.makedirs(parent_path)
+    # Save
+    self.model.save(save_path)
+    print "model:", self.model_name, "has been saved to:", save_path
+
   def show_performance(self, figsize=(16, 9)):
-    """Shortly reports training result
+    """Shortly reports training result.
 
     Args:
-      model_deep: self-defined model class
+      figsize: tuple
+        Defines plot size.
+
     """
-    # Check imput
+    # Check input
     assert isinstance(self, model_base)
     print "Model performance:"
     # Plots
@@ -177,7 +273,7 @@ class model_sequential(model_base):
 
 
 class model_0913(model_sequential):
-  """Sequential model optimized with old ntuple at Sep. 9th 2019"""
+  """Sequential model optimized with old ntuple at Sep. 9th 2019."""
   def __init__(self, name, input_dim, num_node = 300, learn_rate = 0.025, 
                decay = 1e-6):
     model_sequential.__init__(self, name, input_dim, num_node = 300, 
@@ -186,7 +282,7 @@ class model_0913(model_sequential):
                       + " at Sep. 9th 2019"
 
   def compile(self):
-    """ Compile model, function to be changed in the future"""
+    """ Compile model, function to be changed in the future."""
     # Add layers
     # input
     self.model.add(Dense(self.model_num_node, kernel_initializer='uniform', 
@@ -228,6 +324,7 @@ class model_0913(model_sequential):
 
   def train(self, weight_id = -1, batch_size = 100, epochs = 20, 
             val_split = 0.25, verbose = 1):
+    """Performs training."""
     # Check
     if self.model_is_compiled == False:
       raise ValueError("DNN model is not yet compiled")
