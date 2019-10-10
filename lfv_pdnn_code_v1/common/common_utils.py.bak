@@ -16,7 +16,7 @@ def clean_array(data, weight_id, verbose = False, remove_negative = False):
     remove_negative: bool, set True to remove negative weight event
   """
   if verbose:
-    print("cleaning array...")
+    print "cleaning array..."
   new = []
   if remove_negative == False:
     for d in data:
@@ -31,7 +31,7 @@ def clean_array(data, weight_id, verbose = False, remove_negative = False):
       new.append(d)
     out = np.array(new)
   if verbose:
-    print("shape before", data.shape, 'shape after', out.shape)
+    print "shape before", data.shape, 'shape after', out.shape
   return out
 
 

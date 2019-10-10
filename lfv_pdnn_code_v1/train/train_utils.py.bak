@@ -100,7 +100,7 @@ def modify_array(input_array, weight_id=None, remove_negative_weight=False,
         if ele[channel_id] != 1.0:
           ele[weight_id] = 0
     else:
-      print("missing parameters, skipping channel selection...")
+      print "missing parameters, skipping channel selection..."
   # select mass range
   if select_mass == True:
     if not has_none([mass_id, mass_min, mass_max]):
@@ -108,7 +108,7 @@ def modify_array(input_array, weight_id=None, remove_negative_weight=False,
         if ele[mass_id] < mass_min or ele[mass_id] > mass_max:
           ele[weight_id] = 0
     else:
-      print("missing parameters, skipping mass selection...")
+      print "missing parameters, skipping mass selection..."
   # clean array
   new = clean_array(new, -1, remove_negative=remove_negative_weight, 
                     verbose=False)
@@ -117,13 +117,13 @@ def modify_array(input_array, weight_id=None, remove_negative_weight=False,
     if not has_none([reset_mass_array, reset_mass_id]):
       new = prep_mass_fast(new, reset_mass_array, mass_id=reset_mass_id)
     else:
-      print("missing parameters, skipping mass reset...")
+      print "missing parameters, skipping mass reset..."
   # normalize weight
   if norm == True:
     if not has_none([weight_id]):
       new[:, weight_id] = norweight(new[:, weight_id], norm=sumofweight)
     else:
-      print("missing parameters, skipping normalization...")
+      print "missing parameters, skipping normalization..."
   # shuffle array
   if shuffle == True:
     # use time as random seed if not specified
@@ -151,7 +151,7 @@ def norarray_min_max(array, min, max, axis=None):
   middle = (min + max) / 2.0
   output_array = array.copy() - middle
   if max < min:
-    print("ERROR: max shouldn't be smaller than min.")
+    print "ERROR: max shouldn't be smaller than min."
     return None
   ratio = (max - min) / 2.0
   output_array = output_array / ratio
@@ -337,6 +337,6 @@ def calculate_significance(xs, xb, mass_point, mass_min, mass_max, model=None,
       if entry[0] > mass_min and entry[0] < mass_max:
         background_quantity += entry[-1]
           
-  print("for mass =", mass_point, "range = (", mass_min, mass_max, "):")
-  print("  signal quantity =", signal_quantity, "background quantity =", background_quantity)
-  print("  significance =", signal_quantity / sqrt(background_quantity))
+  print "for mass =", mass_point, "range = (", mass_min, mass_max, "):"
+  print "  signal quantity =", signal_quantity, "background quantity =", background_quantity
+  print "  significance =", signal_quantity / sqrt(background_quantity)

@@ -14,7 +14,7 @@ def clean_array(array, weight_id, remove_negative=False, verbose=False):
   """
   # Start
   if verbose:
-    print("cleaning array...")
+    print "cleaning array..."
   
   # Clean
   # create new array for output to avoid direct operation on input array
@@ -33,5 +33,5 @@ def clean_array(array, weight_id, remove_negative=False, verbose=False):
   # Output
   out = np.array(new)
   if verbose:
-    print("shape before", array.shape, 'shape after', out.shape)
+    print "shape before", array.shape, 'shape after', out.shape
   return out

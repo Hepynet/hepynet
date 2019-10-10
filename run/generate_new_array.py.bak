@@ -13,7 +13,7 @@ output_parent_directory = "/afs/cern.ch/work/y/yangz/public/lfv/lfv_pdnn_code_v1
 # Build signal arrays
 output_directory = output_parent_directory + "/signal"
 for mass in [500, 2000]:  # currently only mc16a 500/2000GeV signal ready (09/17/2019)
-  print("*" * 80)
+  print "*" * 80
   rootfile_path = input_parent_directory + "/mc16a/Signal/RPV/RPV_emu_{}GeV.root".format(mass)
   array = make_array.build_array_withcut(rootfile_path)
   save_array(array, output_directory, "rpv_emu_{}GeV".format(mass))
@@ -33,7 +33,7 @@ output_directory = output_parent_directory + "/di_boson"
 search_pattern = "*/*.root"
 absolute_file_list, file_name_list = get_file_list(input_directory, search_pattern, out_name_pattern = "None")
 for i, path in enumerate(absolute_file_list):
-  print("*" * 80)
+  print "*" * 80
   array = make_array.build_array_withcut(path)
   save_array(array, output_directory, file_name_list[i])
 
@@ -43,7 +43,7 @@ output_directory = output_parent_directory + "/top_quark"
 search_pattern = "*/*.root"
 absolute_file_list, file_name_list = get_file_list(input_directory, search_pattern, out_name_pattern = "None")
 for i, path in enumerate(absolute_file_list):
-  print("*" * 80)
+  print "*" * 80
   array = make_array.build_array_withcut(path)
   save_array(array, output_directory, file_name_list[i])
 
@@ -53,7 +53,7 @@ output_directory = output_parent_directory + "/w_jets"
 search_pattern = "*/*.root"
 absolute_file_list, file_name_list = get_file_list(input_directory, search_pattern, out_name_pattern = "None")
 for i, path in enumerate(absolute_file_list):
-  print("*" * 80)
+  print "*" * 80
   array = make_array.build_array_withcut(path)
   save_array(array, output_directory, file_name_list[i])
 
@@ -63,6 +63,6 @@ output_directory = output_parent_directory + "/z_ll"
 search_pattern = "*/*.root"
 absolute_file_list, file_name_list = get_file_list(input_directory, search_pattern, out_name_pattern = "None")
 for i, path in enumerate(absolute_file_list):
-  print("*" * 80)
+  print "*" * 80
   array = make_array.build_array_withcut(path)
   save_array(array, output_directory, file_name_list[i])

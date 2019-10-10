@@ -15,8 +15,8 @@ from sklearn.metrics import roc_curve, auc
 import warnings
 
 from ..common import print_helper
-from . import train_utils 
-from .train_utils import *
+import train_utils 
+from train_utils import *
 
 class model_base(object):
   """Base model of deep neural network for pdnn training.
@@ -228,9 +228,9 @@ class model_sequential(model_base):
     self.xb_selected = get_part_feature(self.xb, selected_features)
     self.array_prepared = True
     if verbose == 1:
-      print("Training array prepared.")
-      print("> signal shape:", self.xs_selected.shape)
-      print("> background shape:", self.xb_selected.shape)
+      print "Training array prepared."
+      print "> signal shape:", self.xs_selected.shape
+      print "> background shape:", self.xb_selected.shape
 
   def save_model(self, save_path):
     """Saves trained model.
@@ -246,7 +246,7 @@ class model_sequential(model_base):
       os.makedirs(parent_path)
     # Save
     self.model.save(save_path)
-    print("model:", self.model_name, "has been saved to:", save_path)
+    print "model:", self.model_name, "has been saved to:", save_path
 
   def show_performance(self, figsize=(16, 9)):
     """Shortly reports training result.
@@ -258,7 +258,7 @@ class model_sequential(model_base):
     """
     # Check input
     assert isinstance(self, model_base)
-    print("Model performance:")
+    print "Model performance:"
     # Plots
     fig, ax = plt.subplots(nrows=2, ncols=2, figsize=figsize)
     self.plot_scores(ax[0, 0])
@@ -267,8 +267,8 @@ class model_sequential(model_base):
     self.plot_loss(ax[1, 1])
     fig.tight_layout()
     plt.show()
-    print("> auc for train:", self.get_auc_train())
-    print("> auc for test: ", self.get_auc_test())
+    print "> auc for train:", self.get_auc_train()
+    print "> auc for test: ", self.get_auc_test()
 
   def train(self):
     pass
@@ -333,21 +333,21 @@ class Model_0913(model_sequential):
     if self.array_prepared == False:
       raise ValueError("Training data is not ready.")
     # Train
-    print("Training start. Using model:", self.model_name)
-    print("Model info:", self.model_note)
+    print "Training start. Using model:", self.model_name
+    print "Model info:", self.model_note
     self.train_history = self.get_model().fit(self.x_train_selected, 
                          self.y_train, batch_size = batch_size, 
                          epochs = epochs, validation_split = val_split, 
                          sample_weight = self.x_train[:, weight_id],
                          verbose = verbose)
-    print("Training finished.")
+    print "Training finished."
     # Quick evaluation
-    print("Quick evaluation:")
+    print "Quick evaluation:"
     score = self.get_model().evaluate(self.x_test_selected, 
                                       self.y_test, verbose = verbose, 
                                       sample_weight = self.x_test[:, -1])
-    print('> test loss:', score[0])
-    print('> test accuracy:', score[1])
+    print '> test loss:', score[0]
+    print '> test accuracy:', score[1]
     # Save train history
     # for train sample
     predictions_dm_train = self.get_model().predict(self.x_train_selected)
@@ -444,21 +444,21 @@ class Model_1002(model_sequential):
     if self.array_prepared == False:
       raise ValueError("Training data is not ready.")
     # Train
-    print("Training start. Using model:", self.model_name)
-    print("Model info:", self.model_note)
+    print "Training start. Using model:", self.model_name
+    print "Model info:", self.model_note
     self.train_history = self.get_model().fit(self.x_train_selected, 
                          self.y_train, batch_size = batch_size, 
                          epochs = epochs, validation_split = val_split, 
                          sample_weight = self.x_train[:, weight_id],
                          verbose = verbose)
-    print("Training finished.")
+    print "Training finished."
     # Quick evaluation
-    print("Quick evaluation:")
+    print "Quick evaluation:"
     score = self.get_model().evaluate(self.x_test_selected, 
                                       self.y_test, verbose = verbose, 
                                       sample_weight = self.x_test[:, -1])
-    print('> test loss:', score[0])
-    print('> test accuracy:', score[1])
+    print '> test loss:', score[0]
+    print '> test accuracy:', score[1]
     # Save train history
     # for train sample
     predictions_dm_train = self.get_model().predict(self.x_train_selected)

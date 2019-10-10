@@ -6,7 +6,7 @@ import ROOT
 from lfv_pdnn_code_v1.common import common_utils, observable_cal, print_helper
 from lfv_pdnn_code_v1.common import array_utils
 from lfv_pdnn_code_v1.make_array import make_array_utils, particle
-from .make_array_utils import get_lumi, get_early_channel, get_final_channel
+from make_array_utils import get_lumi, get_early_channel, get_final_channel
 
 
 # normalization file path
@@ -39,7 +39,7 @@ def build_array_withcut(rootfile_path, should_clean_array=True):
 
   # Prepare
   # load tree
-  print("building array for: ", rootfile_path)
+  print "building array for: ", rootfile_path
   try:
     f = ROOT.TFile.Open(rootfile_path)
     tree = f.nominal  # nominal is the name of ntuple
@@ -229,7 +229,7 @@ def build_array_withcut(rootfile_path, should_clean_array=True):
                  .format(num_muti_channel_event, tree.GetEntries())
     second_info = "(in build_array_withcut)"
     third_info = "channel was chosen with priority emu > etau > mutau" 
-    print("Warning: " + first_info + second_info + ", " + third_info)
+    print "Warning: " + first_info + second_info + ", " + third_info
 
   # remove empty and zero-weight event
   data = array_utils.clean_array(data, -1, remove_negative=False)
