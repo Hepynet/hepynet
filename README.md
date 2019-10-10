@@ -17,13 +17,47 @@ About pDNN for LFV:
 * The method has already being used/under development for several analyses, for example: low-mass Z', high mass H4l, di-Higgs->llbb&nu;&nu; and etc.
 * A related paper can be found [here](https://arxiv.org/pdf/1601.07913.pdf)
 
-## Requirements 
+## Requirements (work on Windows 10)
 
-1. Install python packages: 
-    * numpy, ROOT (for data manipulation)
+### Install Used Softwares
+1. Install [python 3.7+](https://www.python.org/downloads/windows/)
+2. Install [conda](https://docs.conda.io/projects/conda/en/latest/user-guide/install/windows.html)
+3. Install [Git](https://git-scm.com/downloads)
+4. Install [VsCode](https://code.visualstudio.com/docs/setup/windows)
+
+### Install Python Packages
+1. Install python packages(you can run following commands in Git Bash): 
+    Open a powershell terminal in VsCodecreate conda environment and activate.
+    ```
+    > conda create -n pdnn pip python=3.7
+    ```
+    * numpy:
+    ```
+    > conda install numpy
+    ```
     * matplotlib (for plots)
-    * keras, sklearn, tensorflow (for DNN training)
-2. System:
+    ```
+    > conda install matplotlib
+    ```
+    * keras with tensorflow backend (for DNN training)  
+    First install tensorflow in conda.
+    ```
+    > conda install tensorflow
+    ```
+    Then install keras (with tensorflow backend).
+    ```
+    > conda install keras
+    ```
+    * jupyter lab
+    ```
+    > conda install -c conda-forge jupyterlab
+    ```
+    * sklearn
+    ```
+    > conda install scikit-learn
+    ```
+    
+### System:
     * Work on Linux and WSL([Windows Subsystem for Linux](https://docs.microsoft.com/en-us/windows/wsl/install-win10)). If run on Win10 OS, the make_array module and train module can't work together due the conflct of x86/x64 instruction set conflicts.
     * Hardware need to support tensorflow. (better training speed with an tensorflow supported dedicated graphics/calcution cards)
 
