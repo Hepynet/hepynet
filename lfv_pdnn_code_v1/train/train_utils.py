@@ -138,6 +138,25 @@ def modify_array(input_array, weight_id=None, remove_negative_weight=False,
   return new
 
 
+def norarray(array, axis=None, weights=None):
+  """Normalizes input array for each feature."""
+  average = np.average(array, axis=axis, weights=weights)
+  variance = np.average((array-average)**2, axis=axis, weights=weights)
+  output_array = (array.copy() - average) / np.sqrt(variance)
+  return output_array
+
+
+def norarray_min_max(array, min, max, axis=None):
+  """Normalizes input array to (-1, +1)"""
+  middle = (min + max) / 2.0
+  output_array = array.copy() - middle
+  if max < min:
+    print "ERROR: max shouldn't be smaller than min."
+    return None
+  ratio = (max - min) / 2.0
+  output_array = output_array / ratio
+
+
 def norweight(weight_array, norm=1000):
   """Normalize given weight array to certain value
 

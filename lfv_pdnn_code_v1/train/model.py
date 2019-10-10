@@ -3,8 +3,9 @@
 import os
 
 from datetime import datetime
+from keras import backend as K
 from keras.models import Sequential, Model, load_model
-from keras.layers import Concatenate, Dense, Input
+from keras.layers import Concatenate, Dense, Input, Layer
 from keras.layers.normalization import BatchNormalization
 from keras.optimizers import Adagrad, SGD, RMSprop, Adam
 from keras.wrappers.scikit_learn import KerasClassifier
@@ -15,7 +16,7 @@ import warnings
 
 from ..common import print_helper
 import train_utils 
-from train_utils import split_and_combine, get_part_feature
+from train_utils import *
 
 class model_base(object):
   """Base model of deep neural network for pdnn training.
@@ -211,7 +212,7 @@ class model_sequential(model_base):
     ax.grid()
     return ax
 
-  def prepare_array(self, xs, xb, selected_features, test_rate = 0.2):
+  def prepare_array(self, xs, xb, selected_features, test_rate=0.2, verbose=1):
     """Prepares array for training."""
     self.xs = xs
     self.xb = xb
@@ -226,9 +227,10 @@ class model_sequential(model_base):
     self.xs_selected = get_part_feature(self.xs, selected_features)
     self.xb_selected = get_part_feature(self.xb, selected_features)
     self.array_prepared = True
-    print "Training array prepared."
-    print "> signal shape:", self.xs_selected.shape
-    print "> background shape:", self.xb_selected.shape
+    if verbose == 1:
+      print "Training array prepared."
+      print "> signal shape:", self.xs_selected.shape
+      print "> background shape:", self.xb_selected.shape
 
   def save_model(self, save_path):
     """Saves trained model.
@@ -272,7 +274,7 @@ class model_sequential(model_base):
     pass
 
 
-class model_0913(model_sequential):
+class Model_0913(model_sequential):
   """Sequential model optimized with old ntuple at Sep. 9th 2019."""
   def __init__(self, name, input_dim, num_node = 300, learn_rate = 0.025, 
                decay = 1e-6):
@@ -318,11 +320,122 @@ class model_0913(model_sequential):
                          activation="sigmoid"))
     # Compile
     self.model.compile(loss="binary_crossentropy", 
-                       optimizer=SGD(lr=0.025, decay=1e-6), 
-                       metrics=["accuracy"])
+                       optimizer=SGD(lr=self.model_learn_rate, 
+                       decay=self.model_decay), metrics=["accuracy"])
     self.model_is_compiled = True
 
   def train(self, weight_id = -1, batch_size = 100, epochs = 20, 
+            val_split = 0.25, verbose = 1):
+    """Performs training."""
+    # Check
+    if self.model_is_compiled == False:
+      raise ValueError("DNN model is not yet compiled")
+    if self.array_prepared == False:
+      raise ValueError("Training data is not ready.")
+    # Train
+    print "Training start. Using model:", self.model_name
+    print "Model info:", self.model_note
+    self.train_history = self.get_model().fit(self.x_train_selected, 
+                         self.y_train, batch_size = batch_size, 
+                         epochs = epochs, validation_split = val_split, 
+                         sample_weight = self.x_train[:, weight_id],
+                         verbose = verbose)
+    print "Training finished."
+    # Quick evaluation
+    print "Quick evaluation:"
+    score = self.get_model().evaluate(self.x_test_selected, 
+                                      self.y_test, verbose = verbose, 
+                                      sample_weight = self.x_test[:, -1])
+    print '> test loss:', score[0]
+    print '> test accuracy:', score[1]
+    # Save train history
+    # for train sample
+    predictions_dm_train = self.get_model().predict(self.x_train_selected)
+    self.fpr_dm_train, self.tpr_dm_train, self.threshold_train = \
+      roc_curve(self.y_train, predictions_dm_train)
+    # for test sample
+    predictions_dm_test = self.get_model().predict(self.x_test_selected)
+    self.fpr_dm_test, self.tpr_dm_test, self.threshold_test = \
+      roc_curve(self.y_test, predictions_dm_test)
+
+class Model_1002(model_sequential):
+  """Sequential model optimized with old ntuple at Sep. 9th 2019.
+  
+  Major modification based on 0913 model:
+    1. Optimized to train on full mass range. (Used to be on bkg samples with
+       cut to have similar mass range as signal.)
+    2. Use normalized data for training.
+  
+  """
+  def __init__(self, name, input_dim, num_node=400, learn_rate=0.02, 
+               decay=1e-6):
+    model_sequential.__init__(self, name, input_dim, num_node=num_node, 
+                              learn_rate=learn_rate, decay=decay)
+    self.model_note = "Sequential model optimized with old ntuple"\
+                      + " at Oct. 2rd 2019"\
+                      + " to deal with training with full bkg mass."
+
+  def compile(self):
+    """ Compile model, function to be changed in the future."""
+    # Add layers
+    # input
+    self.model.add(Dense(self.model_num_node, kernel_initializer='uniform', 
+                         input_dim = self.model_input_dim))
+
+    # hidden 1
+    #self.model.add(BatchNormalization())
+    self.model.add(Dense(self.model_num_node, 
+                         kernel_initializer="glorot_normal", 
+                         activation="relu"))
+    # hidden 2
+    self.model.add(BatchNormalization())
+    self.model.add(Dense(self.model_num_node, 
+                         kernel_initializer="glorot_normal", 
+                         activation="relu"))
+    # hidden 3
+    #self.model.add(BatchNormalization())
+    self.model.add(Dense(self.model_num_node, 
+                         kernel_initializer="glorot_normal", 
+                         activation="relu"))
+    
+    # hidden 4
+    #self.model.add(BatchNormalization())
+    self.model.add(Dense(self.model_num_node, 
+                         kernel_initializer="glorot_normal", 
+                         activation="relu"))
+    # hidden 5
+    #self.model.add(BatchNormalization())
+    self.model.add(Dense(self.model_num_node, 
+                         kernel_initializer="glorot_normal", 
+                         activation="relu"))
+    
+    # output
+    #self.model.add(BatchNormalization())
+    self.model.add(Dense(1, kernel_initializer="glorot_uniform", 
+                         activation="sigmoid"))
+    # Compile
+    self.model.compile(loss="binary_crossentropy", 
+                       optimizer=SGD(lr=self.model_learn_rate, 
+                       decay=self.model_decay), metrics=["accuracy"])
+    self.model_is_compiled = True
+
+  def prepare_array(self, xs, xb, selected_features, test_rate=0.2, verbose=1):
+    """Prepares array for training.
+    
+    Note:
+      Use normalized array for training.
+
+    """
+    xs_norm = xs.copy()
+    xb_norm = xb.copy()
+    #xs_norm[:, 0] = norarray_min_max(xs[:, 0], 0, 8000)
+    #xb_norm[:, 0] = norarray_min_max(xb[:, 0], 0, 8000)
+    xs_norm[:, 0:-2] = norarray(xs[:, 0:-2], axis=0, weights=xs[:, -1])
+    xb_norm[:, 0:-2] = norarray(xb[:, 0:-2], axis=0, weights=xb[:, -1])
+    model_sequential.prepare_array(self, xs_norm, xb_norm, selected_features, 
+                                   test_rate=test_rate, verbose=verbose)
+
+  def train(self, weight_id = -1, batch_size = 128, epochs = 20, 
             val_split = 0.25, verbose = 1):
     """Performs training."""
     # Check
