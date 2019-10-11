@@ -56,6 +56,10 @@ About pDNN for LFV:
     ```
     > conda install scikit-learn
     ```
+    * pandas (optional)
+    ```
+    > conda install pandas
+    ```
     
 ### System:
     * Work on Linux and WSL([Windows Subsystem for Linux](https://docs.microsoft.com/en-us/windows/wsl/install-win10)). If run on Win10 OS, the make_array module and train module can't work together due the conflct of x86/x64 instruction set conflicts.
