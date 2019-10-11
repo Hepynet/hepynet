@@ -29,7 +29,7 @@ About pDNN for LFV:
 1. Install python packages(you can run following commands in Git Bash): 
     Open a powershell terminal in VsCodecreate conda environment and activate.
     ```
-    > conda create -n pdnn pip python=3.7
+    > conda create -n pdnn python=3.7
     ```
     * numpy:
     ```
