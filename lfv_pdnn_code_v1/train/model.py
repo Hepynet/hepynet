@@ -428,10 +428,9 @@ class Model_1002(model_sequential):
     """
     xs_norm = xs.copy()
     xb_norm = xb.copy()
-    #xs_norm[:, 0] = norarray_min_max(xs[:, 0], 0, 8000)
-    #xb_norm[:, 0] = norarray_min_max(xb[:, 0], 0, 8000)
-    xs_norm[:, 0:-2] = norarray(xs[:, 0:-2], axis=0, weights=xs[:, -1])
-    xb_norm[:, 0:-2] = norarray(xb[:, 0:-2], axis=0, weights=xb[:, -1])
+    average, variance = get_mean_var(xb_norm[:, 0:-2], axis=0, weights=xb_norm[:, -1])
+    xs_norm[:, 0:-2] = norarray(xs_norm[:, 0:-2], average=average, variance=variance)
+    xb_norm[:, 0:-2] = norarray(xb_norm[:, 0:-2], average=average, variance=variance)
     model_sequential.prepare_array(self, xs_norm, xb_norm, selected_features, 
                                    test_rate=test_rate, verbose=verbose)
 

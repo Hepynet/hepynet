@@ -138,6 +138,28 @@ def modify_array(input_array, weight_id=None, remove_negative_weight=False,
   return new
 
 
+def get_mean_var(array, axis=None, weights=None):
+  """Calculate average and variance of an array."""
+  average = np.average(array, axis=axis, weights=weights)
+  variance = np.average((array-average)**2, axis=axis, weights=weights)
+  return average, variance
+
+
+def norarray(array, average=None, variance=None, axis=None, weights=None):
+  """Normalizes input array for each feature.
+  
+  Note:
+    Do not normalize bkg and sig separately, bkg and sig should be normalized
+    in the same way. (i.e. use same average and variance for normalization.)
+
+  """
+  if (average is None) or (variance is None):
+    print("Warning! unspecified average or variance.")
+    average, variance = get_mean_var(array, axis=axis, weights=weights)
+  output_array = (array.copy() - average) / np.sqrt(variance)
+  return output_array
+
+
 def norarray(array, axis=None, weights=None):
   """Normalizes input array for each feature."""
   average = np.average(array, axis=axis, weights=weights)
