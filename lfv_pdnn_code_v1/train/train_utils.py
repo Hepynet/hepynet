@@ -129,7 +129,7 @@ def modify_array(input_array, weight_id=None, remove_negative_weight=False,
     # use time as random seed if not specified
     if has_none([shuffle_seed]):
       shuffle_seed = int(time.time())
-    new, x2, y1, y2 = train_test_split(new, np.zeros(len(new)), test_size=0,
+    new, x2, y1, y2 = train_test_split(new, np.zeros(len(new)), test_size=0.01, ########################
                                        random_state=shuffle_seed, shuffle=True)
   # clean array
   new = clean_array(new, -1, remove_negative=remove_negative_weight, 
@@ -142,7 +142,7 @@ def get_mean_var(array, axis=None, weights=None):
   """Calculate average and variance of an array."""
   average = np.average(array, axis=axis, weights=weights)
   variance = np.average((array-average)**2, axis=axis, weights=weights)
-  return average, variance
+  return average, variance + 0.000001
 
 
 def norarray(array, average=None, variance=None, axis=None, weights=None):
@@ -156,14 +156,6 @@ def norarray(array, average=None, variance=None, axis=None, weights=None):
   if (average is None) or (variance is None):
     print("Warning! unspecified average or variance.")
     average, variance = get_mean_var(array, axis=axis, weights=weights)
-  output_array = (array.copy() - average) / np.sqrt(variance)
-  return output_array
-
-
-def norarray(array, axis=None, weights=None):
-  """Normalizes input array for each feature."""
-  average = np.average(array, axis=axis, weights=weights)
-  variance = np.average((array-average)**2, axis=axis, weights=weights)
   output_array = (array.copy() - average) / np.sqrt(variance)
   return output_array
 
@@ -317,9 +309,9 @@ def split_and_combine(xs, xb, test_rate=0.2, shuffle_before_return=True, shuffle
   # shuffle the array
   if shuffle_before_return:
     x_train, x2, y_train, y2 = train_test_split(x_train, y_train, 
-      test_size= 0, random_state=shuffle_seed, shuffle=True)
+      test_size= 0.01, random_state=shuffle_seed, shuffle=True)  ##################
     x_test, x2, y_test, y2 = train_test_split(x_test, y_test, 
-      test_size= 0, random_state=shuffle_seed, shuffle=True)
+      test_size= 0.01, random_state=shuffle_seed, shuffle=True)  #############
   return x_train, x_test, y_train, y_test, xs_test, xb_test
 
 
