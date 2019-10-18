@@ -5,6 +5,10 @@
 # Compiled source #
 ###################
 *.pyc
+*.bak
+.ipynb_checkpoints/*
+*/.ipynb_checkpoints/*
+*/*/.ipynb_checkpoints/*
 
 # Packages #
 ############
