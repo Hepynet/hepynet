@@ -32,34 +32,43 @@ About pDNN for LFV:
     > conda create -n pdnn python=3.7
     > conda activate pdnn
     ```
-    * numpy:
+    * numpy (use -n pdnn to only install package for specified environment):
     ```
-    > conda install numpy
+    > conda install -n pdnn numpy
     ```
     * matplotlib (for plots)
     ```
-    > conda install matplotlib
+    > conda install -n pdnn matplotlib
     ```
     * keras with tensorflow backend (for DNN training)  
     First install tensorflow in conda. If you have a GPU supporting [CUDA](https://developer.nvidia.com/cuda-zone), following instructions to install [tensorflow-gpu](https://www.tensorflow.org/install/gpu). Otherwise:
     ```
-    > conda install tensorflow
+    > conda install -n pdnn tensorflow
+    ```
+    To install the tensorflow 2.0 (currently not available in conda), use pip for installation:
+    ```
+    > pip install --upgrade pip
+    > pip install tensorflow
     ```
     Then install keras (with tensorflow backend).
     ```
     > conda install keras
     ```
+    Or to use newest version:
+    ```
+    > pip install keras
+    ```
     * sklearn
     ```
-    > conda install scikit-learn
+    > conda install -n pdnn scikit-learn
     ```
     * pandas (optional)
     ```
-    > conda install pandas
+    > conda install -n pdnn pandas
     ```
     * jupyter lab
     ```
-    > conda install jupyterlab
+    > conda install -n pdnn jupyterlab
     ```
     
 ### System:
