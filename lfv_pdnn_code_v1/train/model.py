@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Model class for DNN training"""
 import os
+import time
 
 from datetime import datetime
 from keras import backend as K
@@ -151,8 +152,13 @@ class model_sequential(model_base):
   def plot_accuracy(self, ax):
     """Plots accuracy vs training epoch."""
     # Plot
-    ax.plot(self.get_train_history().history['acc'])
-    ax.plot(self.get_train_history().history['val_acc'])
+    try:
+      ax.plot(self.get_train_history().history['acc'])
+      ax.plot(self.get_train_history().history['val_acc'])
+    except KeyError:  # updated for tensorflow2.0
+      ax.plot(self.get_train_history().history['accuracy'])
+      ax.plot(self.get_train_history().history['val_accuracy'])
+    
     # Config
     ax.set_title('model accuracy')
     ax.set_ylabel('accuracy')
@@ -200,12 +206,58 @@ class model_sequential(model_base):
   def plot_scores(self, ax, bins=100, range=None, density=True, log=False):
     """Plots training score distribution for siganl and background."""
     ax.hist(self.get_model().predict(self.xs_test_selected), bins=bins, 
-            range=range, histtype='step', label='signal', density=True, 
+            range=range, weights=self.xs_test[:,-1], histtype='step', label='signal', density=True, 
             log=log)
     ax.hist(self.get_model().predict(self.xb_test_selected), bins=bins, 
-            range=range, histtype='step', label='background', density=True, 
+            range=range, weights=self.xb_test[:,-1], histtype='step', label='background', density=True, 
             log=log)
     ax.set_title('training scores')
+    ax.legend(loc='upper center')
+    ax.set_xlabel("Output score")
+    ax.set_ylabel("arb. unit")
+    ax.grid()
+    return ax
+
+  def plot_scores_separate(self, ax, arr_dict, key_list, selected_features,
+                           sig_arr=None, sig_weights=None, plot_title='training scores',
+                           bins=40, range=(-0.25, 1.25), density=True, log=False):
+    """Plots training score distribution for different background."""
+    predict_arr_list = []
+    predict_arr_weight_list = []
+
+    average=self.norm_average
+    variance=self.norm_variance
+
+    for arr_key in key_list:
+      bkg_arr_temp = arr_dict[arr_key]
+      average=self.norm_average
+      variance=self.norm_variance
+      #average, variance = get_mean_var(bkg_arr_temp[:, 0:-2], axis=0, weights=bkg_arr_temp[:, -1])
+      bkg_arr_temp[:, 0:-2] = norarray(bkg_arr_temp[:, 0:-2], average=average, variance=variance)
+
+      selected_arr = get_part_feature(bkg_arr_temp, selected_features)
+      #print("debug", self.get_model().predict(selected_arr))
+      predict_arr_list.append(np.array(self.get_model().predict(selected_arr)))
+      predict_arr_weight_list.append(bkg_arr_temp[:, -1])
+
+    try:
+      ax.hist(np.transpose(predict_arr_list), bins=bins, 
+              range=range, weights=np.transpose(predict_arr_weight_list), histtype='bar', label=key_list, density=True, 
+              stacked=True, log=log)
+    except:
+      ax.hist(predict_arr_list[0], bins=bins, 
+              range=range, weights=predict_arr_weight_list[0], histtype='bar', label=key_list, density=True, 
+              stacked=True, log=log)
+
+    if sig_arr is None:
+      sig_arr=self.xs_selected
+      sig_weights=self.xs[:,-1]
+
+    ax.hist(self.get_model().predict(sig_arr), bins=bins, 
+            range=range, weights=sig_weights, histtype='step', label='signal', density=True, 
+            log=log)
+    
+    ax.set_title(plot_title)
     ax.legend(loc='upper center')
     ax.set_xlabel("Output score")
     ax.set_ylabel("arb. unit")
@@ -216,12 +268,25 @@ class model_sequential(model_base):
     """Prepares array for training."""
     self.xs = xs
     self.xb = xb
-    self.x_train, self.x_test, self.y_train, self.y_test, self.xs_test, \
-    self.xb_test = split_and_combine(xs, xb, test_rate = test_rate)
+    rdm_seed = int(time.time())
+    # get train data set, reset bkg mass first
+    xb_reset_mass = xb_norm = modify_array(xb, weight_id=-1,
+      reset_mass=True, reset_mass_array=xs, reset_mass_id=0)
+    self.x_train, _, self.y_train, _, self.xs_train, _, self.xb_train, _ = \
+      split_and_combine(xs, xb_reset_mass, test_rate=test_rate,
+      shuffle_seed=rdm_seed)
+    # get test data set, use same random seed
+    _, self.x_test, _, self.y_test, _, self.xs_test, _, self.xb_test = \
+      split_and_combine(xs, xb_reset_mass, test_rate=test_rate,
+      shuffle_seed=rdm_seed)
     # select features wanted
     self.selected_features = selected_features
     self.x_train_selected = get_part_feature(self.x_train, selected_features)
     self.x_test_selected = get_part_feature(self.x_test, selected_features)
+
+    self.xs_train_selected = get_part_feature(self.xs_train, selected_features)
+    self.xb_train_selected = get_part_feature(self.xb_train, selected_features)
+
     self.xs_test_selected = get_part_feature(self.xs_test, selected_features)
     self.xb_test_selected = get_part_feature(self.xb_test, selected_features)
     self.xs_selected = get_part_feature(self.xs, selected_features)
@@ -231,6 +296,7 @@ class model_sequential(model_base):
       print("Training array prepared.")
       print("> signal shape:", self.xs_selected.shape)
       print("> background shape:", self.xb_selected.shape)
+
 
   def save_model(self, save_path):
     """Saves trained model.
@@ -248,7 +314,7 @@ class model_sequential(model_base):
     self.model.save(save_path)
     print("model:", self.model_name, "has been saved to:", save_path)
 
-  def show_performance(self, figsize=(16, 9)):
+  def show_performance(self, figsize=(15, 12)):
     """Shortly reports training result.
 
     Args:
@@ -260,11 +326,22 @@ class model_sequential(model_base):
     assert isinstance(self, model_base)
     print("Model performance:")
     # Plots
-    fig, ax = plt.subplots(nrows=2, ncols=2, figsize=figsize)
+    fig, ax = plt.subplots(nrows=3, ncols=2, figsize=figsize)
     self.plot_scores(ax[0, 0])
     self.plot_roc(ax[0, 1])
     self.plot_accuracy(ax[1, 0])
     self.plot_loss(ax[1, 1])
+
+    train_bkg_dict = {'bkg': self.xb_train}
+    test_bkg_dict = {'bkg': self.xb_test }
+    bkg_list = ['bkg']
+    self.plot_scores_separate(ax[2, 0], train_bkg_dict, bkg_list, 
+      self.selected_features, sig_arr=self.xs_train_selected, 
+      sig_weights=self.xs_train[:,-1], plot_title='train scores', bins=80, range=(-0.1, 1.1))
+    self.plot_scores_separate(ax[2, 1], test_bkg_dict,  bkg_list,
+      self.selected_features, sig_arr=self.xs_test_selected,
+      sig_weights=self.xs_test[:,-1],  plot_title='test scores',  bins=80, range=(-0.1, 1.1))
+    
     fig.tight_layout()
     plt.show()
     print("> auc for train:", self.get_auc_train())
@@ -388,7 +465,7 @@ class Model_1002(model_sequential):
                          kernel_initializer="glorot_normal", 
                          activation="relu"))
     # hidden 2
-    self.model.add(BatchNormalization())
+    #self.model.add(BatchNormalization())
     self.model.add(Dense(self.model_num_node, 
                          kernel_initializer="glorot_normal", 
                          activation="relu"))
@@ -400,14 +477,14 @@ class Model_1002(model_sequential):
     
     # hidden 4
     #self.model.add(BatchNormalization())
-    self.model.add(Dense(self.model_num_node, 
-                         kernel_initializer="glorot_normal", 
-                         activation="relu"))
+    #self.model.add(Dense(self.model_num_node, 
+    #                     kernel_initializer="glorot_normal", 
+    #                     activation="relu"))
     # hidden 5
     #self.model.add(BatchNormalization())
-    self.model.add(Dense(self.model_num_node, 
-                         kernel_initializer="glorot_normal", 
-                         activation="relu"))
+    #self.model.add(Dense(self.model_num_node, 
+    #                     kernel_initializer="glorot_normal", 
+    #                     activation="relu"))
     
     # output
     #self.model.add(BatchNormalization())
@@ -416,23 +493,37 @@ class Model_1002(model_sequential):
     # Compile
     self.model.compile(loss="binary_crossentropy", 
                        optimizer=SGD(lr=self.model_learn_rate, 
-                       decay=self.model_decay), metrics=["accuracy"])
+                       decay=self.model_decay), metrics=["accuracy", "mean_squared_error"])
     self.model_is_compiled = True
 
-  def prepare_array(self, xs, xb, selected_features, test_rate=0.2, verbose=1):
+  def prepare_array(self, xs, xb, selected_features, channel_id,
+                    rm_neg_weight=True, bs_weight_ratio=1., test_rate=0.2,
+                    verbose=1):
     """Prepares array for training.
     
     Note:
       Use normalized array for training.
 
     """
-    xs_norm = xs.copy()
-    xb_norm = xb.copy()
+    # first make basic selection
+    xs_norm = modify_array(xs, weight_id=-1, select_channel=True,
+      channel_id=channel_id, norm=True, sumofweight=1000, shuffle=True,
+      shuffle_seed = int(time.time()))
+    
+    xb_norm = modify_array(xb, weight_id=-1,
+      remove_negative_weight=rm_neg_weight, select_channel=True,
+      channel_id=channel_id, norm=True,
+      sumofweight=1000*bs_weight_ratio, shuffle=True,
+      shuffle_seed=int(time.time()))
+    # stadard input normalization for training.
     average, variance = get_mean_var(xb_norm[:, 0:-2], axis=0, weights=xb_norm[:, -1])
+    self.norm_average = average
+    self.norm_variance = variance
     xs_norm[:, 0:-2] = norarray(xs_norm[:, 0:-2], average=average, variance=variance)
     xb_norm[:, 0:-2] = norarray(xb_norm[:, 0:-2], average=average, variance=variance)
     model_sequential.prepare_array(self, xs_norm, xb_norm, selected_features, 
                                    test_rate=test_rate, verbose=verbose)
+
 
   def train(self, weight_id = -1, batch_size = 128, epochs = 20, 
             val_split = 0.25, verbose = 1):
@@ -462,11 +553,11 @@ class Model_1002(model_sequential):
     # for train sample
     predictions_dm_train = self.get_model().predict(self.x_train_selected)
     self.fpr_dm_train, self.tpr_dm_train, self.threshold_train = \
-      roc_curve(self.y_train, predictions_dm_train)
+      roc_curve(self.y_train, predictions_dm_train, sample_weight=self.x_train[:,-1])
     # for test sample
     predictions_dm_test = self.get_model().predict(self.x_test_selected)
     self.fpr_dm_test, self.tpr_dm_test, self.threshold_test = \
-      roc_curve(self.y_test, predictions_dm_test)
+      roc_curve(self.y_test, predictions_dm_test, sample_weight=self.x_test[:,-1])
 
 class Model_1016(model_sequential):
   """Sequential model optimized with old ntuple at Sep. 9th 2019.
@@ -487,7 +578,7 @@ class Model_1016(model_sequential):
     """ Compile model, function to be changed in the future."""
     # Add layers
     # input
-    self.model.add(Dense(400, kernel_initializer='uniform', 
+    self.model.add(Dense(500, kernel_initializer='uniform', 
                          input_dim = self.model_input_dim))
 
     # hidden 1
@@ -496,18 +587,18 @@ class Model_1016(model_sequential):
                          kernel_initializer="glorot_normal", 
                          activation="relu"))
     # hidden 2
-    self.model.add(BatchNormalization())
+    #self.model.add(BatchNormalization())
     self.model.add(Dense(300, 
                          kernel_initializer="glorot_normal", 
                          activation="relu"))
     # hidden 3
-    self.model.add(BatchNormalization())
+    #self.model.add(BatchNormalization())
     self.model.add(Dense(200, 
                          kernel_initializer="glorot_normal", 
                          activation="relu"))
     
     # hidden 4
-    self.model.add(BatchNormalization())
+    #self.model.add(BatchNormalization())
     self.model.add(Dense(100, 
                          kernel_initializer="glorot_normal", 
                          activation="relu"))
@@ -524,23 +615,37 @@ class Model_1016(model_sequential):
     # Compile
     self.model.compile(loss="binary_crossentropy", 
                        optimizer=SGD(lr=self.model_learn_rate, 
-                       decay=self.model_decay), metrics=["accuracy"])
+                       decay=self.model_decay, momentum=0.5, nesterov=True), metrics=["accuracy"])
     self.model_is_compiled = True
 
-  def prepare_array(self, xs, xb, selected_features, test_rate=0.2, verbose=1):
+  def prepare_array(self, xs, xb, selected_features, channel_id,
+                    rm_neg_weight=True, bs_weight_ratio=1., test_rate=0.2,
+                    verbose=1):
     """Prepares array for training.
     
     Note:
       Use normalized array for training.
 
     """
-    xs_norm = xs.copy()
-    xb_norm = xb.copy()
+    # first make basic selection
+    xs_norm = modify_array(xs, weight_id=-1, select_channel=True,
+      channel_id=channel_id, norm=True, sumofweight=1000, shuffle=True,
+      shuffle_seed = int(time.time()))
+    
+    xb_norm = modify_array(xb, weight_id=-1,
+      remove_negative_weight=rm_neg_weight, select_channel=True,
+      channel_id=channel_id, norm=True,
+      sumofweight=1000*bs_weight_ratio, shuffle=True,
+      shuffle_seed=int(time.time()))
+    # stadard input normalization for training.
     average, variance = get_mean_var(xb_norm[:, 0:-2], axis=0, weights=xb_norm[:, -1])
+    self.norm_average = average
+    self.norm_variance = variance
     xs_norm[:, 0:-2] = norarray(xs_norm[:, 0:-2], average=average, variance=variance)
     xb_norm[:, 0:-2] = norarray(xb_norm[:, 0:-2], average=average, variance=variance)
     model_sequential.prepare_array(self, xs_norm, xb_norm, selected_features, 
                                    test_rate=test_rate, verbose=verbose)
+
 
   def train(self, weight_id = -1, batch_size = 128, epochs = 20, 
             val_split = 0.25, verbose = 1):
@@ -570,8 +675,8 @@ class Model_1016(model_sequential):
     # for train sample
     predictions_dm_train = self.get_model().predict(self.x_train_selected)
     self.fpr_dm_train, self.tpr_dm_train, self.threshold_train = \
-      roc_curve(self.y_train, predictions_dm_train)
+      roc_curve(self.y_train, predictions_dm_train, sample_weight=self.x_train[:,-1])
     # for test sample
     predictions_dm_test = self.get_model().predict(self.x_test_selected)
     self.fpr_dm_test, self.tpr_dm_test, self.threshold_test = \
-      roc_curve(self.y_test, predictions_dm_test)
+      roc_curve(self.y_test, predictions_dm_test, sample_weight=self.x_test[:,-1])

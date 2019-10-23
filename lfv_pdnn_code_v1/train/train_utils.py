@@ -312,7 +312,7 @@ def split_and_combine(xs, xb, test_rate=0.2, shuffle_before_return=True, shuffle
       test_size= 0.01, random_state=shuffle_seed, shuffle=True)  ##################
     x_test, x2, y_test, y2 = train_test_split(x_test, y_test, 
       test_size= 0.01, random_state=shuffle_seed, shuffle=True)  #############
-  return x_train, x_test, y_train, y_test, xs_test, xb_test
+  return x_train, x_test, y_train, y_test, xs_train, xs_test, xb_train, xb_test
 
 
 def unison_shuffled_copies(*arr):

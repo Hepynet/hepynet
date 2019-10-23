@@ -120,5 +120,37 @@ def get_old_sig(data_path):
       xs_old_norm = np.concatenate((xs_old_norm, xs_add_norm))
   xs_dict_old['all'] = xs_old
   xs_dict_old['all_norm'] = xs_old_norm
+  # Add extra mass combination
+  # min_1500: 1500 - 5000 GeV
+  xs_min_1500 = None
+  for mass in OLD_MASS_MAP:
+    if mass >= 1500:
+      xs_temp = xs_dict_old['{}GeV'.format(mass)]
+      xs_temp_norm = modify_array(xs_temp, weight_id=-1, norm=True)
+      if xs_min_1500 is None:
+        xs_min_1500 = xs_temp_norm.copy()
+      else:
+        xs_min_1500 = np.concatenate((xs_min_1500, xs_temp_norm))
+  xs_dict_old['min_1500'] = xs_min_1500
+  # 3-point: 500, 1000, 2000 GeV
+  xs_3point = None
+  for mass in [500, 1000, 2000]:
+    xs_temp = xs_dict_old['{}GeV'.format(mass)]
+    xs_temp_norm = modify_array(xs_temp, weight_id=-1, norm=True)
+    if xs_3point is None:
+      xs_3point = xs_temp_norm.copy()
+    else:
+      xs_3point = np.concatenate((xs_3point, xs_temp_norm))
+  xs_dict_old['3point'] = xs_3point
+  # 4-point: 500, 700, 1000, 2000 GeV
+  xs_4point = None
+  for mass in [500, 1000, 2000]:
+    xs_temp = xs_dict_old['{}GeV'.format(mass)]
+    xs_temp_norm = modify_array(xs_temp, weight_id=-1, norm=True)
+    if xs_4point is None:
+      xs_4point = xs_temp_norm.copy()
+    else:
+      xs_4point = np.concatenate((xs_4point, xs_temp_norm))
+  xs_dict_old['4point'] = xs_4point
   print("Done.")
   return xs_dict_old
