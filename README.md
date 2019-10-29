@@ -26,8 +26,8 @@ About pDNN for LFV:
 4. Install [VsCode](https://code.visualstudio.com/docs/setup/windows)
 
 ### Install Python Packages
-1. Install python packages(you can run following commands in Git Bash): 
-    Open a Anaconda powershell Prompt (powshell in VsCodecreate is **NOT RECOMMENDED**) to create conda environment and activate.
+1. Install python packages(you can run following commands in Git Bash):  
+    Open a Anaconda powershell Prompt (powshell in VsCode is **NOT RECOMMENDED**) to create conda environment and activate.
     ```
     > conda create -n pdnn python=3.7
     > conda activate pdnn
