@@ -27,7 +27,7 @@ About pDNN for LFV:
 
 ### Install Python Packages
 1. Install python packages(you can run following commands in Git Bash):  
-    Open a Anaconda powershell Prompt (powshell in VsCode is **NOT RECOMMENDED**) to create conda environment and activate.
+    Open a **Anaconda powershell Prompt** (powshell in VsCode is **NOT RECOMMENDED**) to create conda environment and activate.
     ```
     > conda create -n pdnn python=3.7
     > conda activate pdnn
@@ -73,8 +73,10 @@ About pDNN for LFV:
     ```
     
 ### System:
-    * Work on Linux, Windows and WSL([Windows Subsystem for Linux](https://docs.microsoft.com/en-us/windows/wsl/install-win10)). If run on Win10 OS, the make_array module and train module can't work together due the conflct of x86/x64 instruction set conflicts.
-    * Hardware need to support tensorflow. (better training speed with an tensorflow supported dedicated graphics/calcution cards)
+* Work on Linux, Windows and WSL ([Windows Subsystem for Linux](https://docs.microsoft.com/en-us/windows/wsl/install-win10))  
+If run on Win10 OS, the make_array module and train module can't work together due the conflct of x86/x64 instruction set.
+* Hardware need to support tensorflow.  
+Better training speed obtained with an tensorflow supported dedicated graphics/calcution cards.
 
 ## Usage
 (Will be updated with test codes and examples.)
