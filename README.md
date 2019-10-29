@@ -41,22 +41,23 @@ About pDNN for LFV:
     > conda install -n pdnn matplotlib
     ```
     * keras with tensorflow backend (for DNN training)  
-    First install tensorflow in conda. If you have a GPU supporting [CUDA](https://developer.nvidia.com/cuda-zone), following instructions to install [tensorflow-gpu](https://www.tensorflow.org/install/gpu). Otherwise:
-    ```
-    > conda install -n pdnn tensorflow
-    ```
-    To install the tensorflow 2.0 (currently not available in conda), use pip for installation:
+    First install tensorflow in conda. If you have a GPU supporting [CUDA](https://developer.nvidia.com/cuda-zone), following instructions to install [tensorflow-gpu](https://www.tensorflow.org/install/gpu). Otherwise, to install the tensorflow 2.0 (currently not available in conda), use pip for installation:
     ```
     > pip install --upgrade pip
     > pip install tensorflow
     ```
-    Then install keras (with tensorflow backend).
+    &nbsp; &nbsp; Or use conda (not recommended)
     ```
-    > conda install keras
+    > conda install -n pdnn tensorflow
     ```
-    Or to use newest version:
+    * keras  
+    To install newest version(recommended), use pip:
     ```
     > pip install keras
+    ```
+    &nbsp; &nbsp; Or with conda (newest version not available, not recommended).
+    ```
+    > conda install -n pdnn keras
     ```
     * sklearn
     ```
