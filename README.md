@@ -26,51 +26,51 @@ About pDNN for LFV:
 4. Install [VsCode](https://code.visualstudio.com/docs/setup/windows)
 
 ### Install Python Packages
-1. Install python packages(you can run following commands in Git Bash):  
-    Open a **Anaconda powershell Prompt** (powshell in VsCode is **NOT RECOMMENDED**) to create conda environment and activate.
-    ```
-    > conda create -n pdnn python=3.7
-    > conda activate pdnn
-    ```
-    * numpy (use -n pdnn to only install package for specified environment):
-    ```
-    > conda install -n pdnn numpy
-    ```
-    * matplotlib (for plots)
-    ```
-    > conda install -n pdnn matplotlib
-    ```
-    * keras with tensorflow backend (for DNN training)  
-    First install tensorflow in conda. If you have a GPU supporting [CUDA](https://developer.nvidia.com/cuda-zone), following instructions to install [tensorflow-gpu](https://www.tensorflow.org/install/gpu). Otherwise, to install the tensorflow 2.0 (currently not available in conda), use pip for installation:
-    ```
-    > pip install --upgrade pip
-    > pip install tensorflow
-    ```
-    &nbsp; &nbsp; Or use conda (not recommended)
-    ```
-    > conda install -n pdnn tensorflow
-    ```
-    * keras  
-    To install newest version(recommended), use pip:
-    ```
-    > pip install keras
-    ```
-    &nbsp; &nbsp; Or with conda (newest version not available, not recommended).
-    ```
-    > conda install -n pdnn keras
-    ```
-    * sklearn
-    ```
-    > conda install -n pdnn scikit-learn
-    ```
-    * pandas (optional)
-    ```
-    > conda install -n pdnn pandas
-    ```
-    * jupyter lab
-    ```
-    > conda install -n pdnn jupyterlab
-    ```
+Open a **Anaconda powershell Prompt** (powshell in VSCode is **NOT RECOMMENDED**) to create conda environment and activate.
+```
+> conda create -n pdnn python=3.7
+> conda activate pdnn
+```
+Then install python packages (you can run following commands in Git Bash):  
+* numpy (use -n pdnn to only install package for specified environment):
+```
+> conda install -n pdnn numpy
+```
+* matplotlib (for plots)
+```
+> conda install -n pdnn matplotlib
+```
+* keras with tensorflow backend (for DNN training)  
+First install tensorflow in conda. If you have a GPU supporting [CUDA](https://developer.nvidia.com/cuda-zone), following instructions to install [tensorflow-gpu](https://www.tensorflow.org/install/gpu). Otherwise, to install the tensorflow 2.0 (currently not available in conda), use pip for installation:
+```
+> pip install --upgrade pip
+> pip install tensorflow
+```
+&nbsp; &nbsp; Or use conda (not recommended)
+```
+> conda install -n pdnn tensorflow
+```
+* keras  
+To install newest version(recommended), use pip:
+```
+> pip install keras
+```
+&nbsp; &nbsp; Or with conda (newest version not available, not recommended).
+```
+> conda install -n pdnn keras
+```
+* sklearn
+```
+> conda install -n pdnn scikit-learn
+```
+* pandas (optional)
+```
+> conda install -n pdnn pandas
+```
+* jupyter lab
+```
+> conda install -n pdnn jupyterlab
+```
     
 ### System:
 * Work on Linux, Windows and WSL ([Windows Subsystem for Linux](https://docs.microsoft.com/en-us/windows/wsl/install-win10))  
