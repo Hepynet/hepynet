@@ -19,6 +19,22 @@ from sklearn.model_selection import train_test_split
 from ..common.common_utils import *
 
 
+def get_input_array(sig_dict, sig_key, bkg_dict, bkg_key, channel_id,
+                    rm_neg=True):
+  """Get training array from dictionary and select channel.
+  
+  Args:
+      rm_neg: bool, optional (default = True)
+          whether to remove negtive weight events
+  
+  """
+  xs = modify_array(sig_dict[sig_key], weight_id=-1, select_channel=True,
+                    channel_id=channel_id, remove_negative_weight=rm_neg)
+  xb = modify_array(bkg_dict[bkg_key], weight_id=-1, select_channel=True,
+                    channel_id=channel_id, remove_negative_weight=rm_neg)
+  return xs, xb
+
+
 def get_part_feature(xtrain, nf):
   """Gets sub numpy array using given column index"""
   xtrain = xtrain[:,nf]

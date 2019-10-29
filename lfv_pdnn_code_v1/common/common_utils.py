@@ -48,6 +48,22 @@ def create_folders(foldernames, parent_path="./"):
       os.makedirs(today_dir)
 
 
+def dict_key_strtoint(json_data):
+  """Cast string keys to int keys"""
+  correctedDict = {}
+  for key, value in json_data.items():
+    if isinstance(value, list):
+      value = [dict_key_strtoint(item) if isinstance(item, dict) else item for item in value]
+    elif isinstance(value, dict):
+      value = dict_key_strtoint(value)
+    try:
+      key = int(key)
+    except Exception as ex:
+      pass
+    correctedDict[key] = value
+  return correctedDict
+
+
 def get_file_list(directory, search_pattern, out_name_pattern = "None"):
   """Gets a full list of file under given directory with given name pattern
 
