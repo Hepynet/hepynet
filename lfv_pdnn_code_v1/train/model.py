@@ -54,6 +54,7 @@ class model_base(object):
     self.model_create_time = str(datetime.datetime.now())
     self.model_is_compiled = False
     self.model_is_loaded = False
+    self.model_is_saved = False
     self.model_is_trained = False
     self.model_name = name
     self.train_history = None
@@ -180,8 +181,6 @@ class model_sequential(model_base):
       custom_objects={'plain_acc': plain_acc})  # it's important to specify
                                                 # custom objects
     self.model_is_loaded = True
-    self.model_is_compiled = True
-    self.model_is_trained = True
     # Load parameters
     #try:
     paras_path = os.path.splitext(model_path)[0] + "_paras.json"
@@ -200,6 +199,9 @@ class model_sequential(model_base):
     self.model_create_time = paras_dict['model_create_time']
     self.model_decay = paras_dict['model_decay']
     self.model_input_dim = paras_dict['model_input_dim']
+    self.model_is_compiled = paras_dict['model_is_compiled']
+    self.model_is_saved = paras_dict['model_is_saved']
+    self.model_is_trained = paras_dict['model_is_trained']
     self.model_label = paras_dict['model_label']
     self.model_learn_rate = paras_dict['model_learn_rate']
     self.model_name = paras_dict['model_name']
@@ -209,6 +211,59 @@ class model_sequential(model_base):
     self.train_history_val_accuracy = paras_dict['train_history_val_accuracy']
     self.train_history_loss = paras_dict['train_history_loss']
     self.train_history_val_loss = paras_dict['train_history_val_loss']
+
+  def plot_auc_text(self, ax, titles, auc_values):
+    """Plots auc information on roc curve."""
+    auc_text = ''
+    for (title, auc_value) in zip(titles, auc_values):
+      auc_text = auc_text + title + ": " + str(auc_value) + '\n'
+    auc_text = auc_text[:-1]
+    props = dict(boxstyle='round', facecolor='wheat', alpha=0.3)
+    ax.text(0.3, 0.3, auc_text, transform=ax.transAxes, fontsize=10,
+      verticalalignment='top', bbox=props)
+
+  def plot_final_roc(self, ax):
+    """Plots roc curve for to check final training result on original samples.
+    (backgound sample mass not reset according to signal)
+
+    """
+     # Check
+    if not self.model_is_trained:
+      warnings.warn("Model is not trained yet.")
+    # Make plots
+    auc_value, _, _ = self.plot_roc(
+      ax, self.xs, self.xb,
+      class_weight=self.class_weight
+      )
+    # Show auc value:
+    self.plot_auc_text(ax, ['auc'], [auc_value])
+    # Extra plot config
+    ax.grid()
+
+  def plot_roc(self, ax, xs, xb, class_weight=None):
+    """Plots roc curve on given axes."""
+    # Get data
+    xs_plot = xs.copy()
+    xb_plot = xb.copy()
+    if class_weight is not None:
+      xs_plot[:,-1] = xs_plot[:,-1] * class_weight[1]
+      xb_plot[:,-1] = xb_plot[:,-1] * class_weight[0]
+    xs_selected = get_part_feature(xs, self.selected_features)
+    xb_selected = get_part_feature(xb, self.selected_features)
+    x_plot = np.concatenate((xs_plot, xb_plot))
+    x_plot_selected = np.concatenate((xs_selected, xb_selected))
+    y_plot = np.concatenate((np.ones(xs_plot.shape[0]), np.zeros(xb_plot.shape[0])))
+    y_pred = self.get_model().predict(x_plot_selected)
+    fpr_dm, tpr_dm, threshold = roc_curve(y_plot, y_pred,
+      sample_weight=x_plot[:,-1])
+    # Make plots
+    ax.plot(fpr_dm, tpr_dm)
+    ax.set_title("roc curve")
+    ax.set_xlabel('fpr')
+    ax.set_ylabel('tpr')
+    # Calculate auc and return parameters
+    auc_value = auc(fpr_dm, tpr_dm)
+    return auc_value, fpr_dm, tpr_dm
 
   def plot_train_accuracy(self, ax):
     """Plots accuracy vs training epoch."""
@@ -223,7 +278,6 @@ class model_sequential(model_base):
     ax.set_xlabel('epoch')
     ax.legend(['train', 'val'], loc='upper center')
     ax.grid()
-    return ax
 
   def plot_train_loss(self, ax):
     """Plots loss vs training epoch."""
@@ -236,55 +290,23 @@ class model_sequential(model_base):
     ax.set_ylabel('loss')
     ax.legend(['train', 'val'], loc='upper center')
     ax.grid()
-    return ax
 
-  def plot_train_roc(self, ax):
+  def plot_train_test_roc(self, ax):
     """Plots roc curve."""
     # Check
     if not self.model_is_trained:
       warnings.warn("Model is not trained yet.")
     # First plot roc for train dataset
-    xs_train_plot = self.xs_train.copy()
-    xb_train_plot = self.xb_train.copy()
-    xs_train_plot[:,-1] = xs_train_plot[:,-1] * self.class_weight[1]
-    xb_train_plot[:,-1] = xb_train_plot[:,-1] * self.class_weight[0]
-    x_train_plot = np.concatenate((xs_train_plot, xb_train_plot))
-    x_train_plot_selected = np.concatenate((self.xs_train_selected,
-                                            self.xb_train_selected))
-    y_train_plot = np.concatenate((np.ones(xs_train_plot.shape[0]),
-                                   np.zeros(xb_train_plot.shape[0])))
-    predictions_dm_train = self.get_model().predict(x_train_plot_selected)
-    fpr_dm_train, tpr_dm_train, threshold_train = roc_curve(y_train_plot,
-      predictions_dm_train, sample_weight=x_train_plot[:,-1])
-    ax.plot(fpr_dm_train, tpr_dm_train)
+    auc_train, _, _ = self.plot_roc(ax, self.xs_train, self.xb_train,
+      class_weight=self.class_weight)
     # Then plot roc for test dataset
-    xs_test_plot = self.xs_test.copy()
-    xb_test_plot = self.xb_test.copy()
-    xs_test_plot[:,-1] = xs_test_plot[:,-1] * self.class_weight[1]
-    xb_test_plot[:,-1] = xb_test_plot[:,-1] * self.class_weight[0]
-    x_test_plot = np.concatenate((xs_test_plot, xb_test_plot))
-    x_test_plot_selected = np.concatenate((self.xs_test_selected,
-                                            self.xb_test_selected))
-    y_test_plot = np.concatenate((np.ones(xs_test_plot.shape[0]),
-                                   np.zeros(xb_test_plot.shape[0])))
-    predictions_dm_test = self.get_model().predict(x_test_plot_selected)
-    fpr_dm_test, tpr_dm_test, threshold_test = roc_curve(y_test_plot,
-      predictions_dm_test, sample_weight=x_test_plot[:,-1])
-    ax.plot(fpr_dm_test, tpr_dm_test)
+    auc_test, _, _ = self.plot_roc(ax, self.xs_test, self.xb_test,
+      class_weight=self.class_weight)
     # Show auc value:
-    auc_text = '\n'.join((
-      "train auc: {}".format(auc(fpr_dm_train, tpr_dm_train)),
-      "test auc: {}".format(auc(fpr_dm_test, tpr_dm_test))))
-    props = dict(boxstyle='round', facecolor='wheat', alpha=0.3)
-    ax.text(0.3, 0.3, auc_text, transform=ax.transAxes, fontsize=10,
-        verticalalignment='top', bbox=props)
-    # Config
-    ax.set_title("roc curve")
-    ax.set_xlabel('fpr')
-    ax.set_ylabel('tpr')
-    ax.legend(['train', 'test'], loc='lower right')
+    self.plot_auc_text(ax, ['train+val', 'test'], [auc_train, auc_test])
+    # Extra plot config
+    ax.legend(['train+val', 'test'], loc='lower right')
     ax.grid()
-    return ax
 
   def plot_test_scores(self, ax, bins=100, range=(-0.25, 1.25), density=True, log=False):
     """Plots training score distribution for siganl and background."""
@@ -299,7 +321,6 @@ class model_sequential(model_base):
     ax.set_xlabel("Output score")
     ax.set_ylabel("arb. unit")
     ax.grid()
-    return ax
 
   def plot_train_scores(self, ax, bins=100, range=(-0.25, 1.25), density=True, log=False):
     """Plots training score distribution for siganl and background."""
@@ -314,7 +335,6 @@ class model_sequential(model_base):
     ax.set_xlabel("Output score")
     ax.set_ylabel("arb. unit")
     ax.grid()
-    return ax
 
   def plot_scores_separate(self, ax, arr_dict, key_list, selected_features,
                            sig_arr=None, sig_weights=None, plot_title='all input scores',
@@ -410,32 +430,30 @@ class model_sequential(model_base):
 
     """
     # Define save path
+    version_id = 0
     if save_dir is None:
       save_dir = "./models"
     if file_name is None:
       datestr = datetime.date.today().strftime("%Y-%m-%d")
       file_name = self.model_name + '_' + self.model_label + '_' + datestr
     # Check path
-    save_path = save_dir + '/' + file_name + '.h5'
+    save_path = save_dir + '/' + file_name + '_v{}.h5'.format(f"{version_id:02d}")
     if not os.path.exists(save_dir):
       os.makedirs(save_dir)
-    if os.path.exists(save_path):
-      version_id = 0
-      while os.path.exists(save_path):
-        version_id += 1
-        save_path = save_dir + '/' + file_name + \
-          '_v{}'.format(f"{version_id:02d}") + '.h5'
-      if version_id > 99:
-        warnings.warn("Too much model version detected at same date. \
-          Will only keep maximum 99 different versions.")
-        warnings.warn("Version 99 will be overwrite!")
-        version_id = 99
-      file_name = file_name + '_v{}'.format(f"{version_id:02d}")
+    while os.path.exists(save_path):
+      version_id += 1
+      save_path = save_dir + '/' + file_name + \
+        '_v{}.h5'.format(f"{version_id:02d}")
+    if version_id > 99:
+      warnings.warn("Too much model version detected at same date. \
+        Will only keep maximum 99 different versions.")
+      warnings.warn("Version 99 will be overwrite!")
+      version_id = 99
     # Save
-    save_path = save_dir + '/' + file_name + '.h5'  # update path
     self.model.save(save_path)
     print("model:", self.model_name, "has been saved to:", save_path)
-    save_path = save_dir + '/' + file_name + '_paras.json'  # update path for json
+    save_path = save_dir + '/' + file_name + \
+      '_v{}_paras.json'.format(f"{version_id:02d}")  # update path for json
     self.save_model_paras(save_path)
     print("model parameters has been saved to:", save_path)
     self.model_is_saved = True
@@ -448,6 +466,9 @@ class model_sequential(model_base):
     paras_dict['model_create_time'] = self.model_create_time
     paras_dict['model_decay'] = self.model_decay
     paras_dict['model_input_dim'] = self.model_input_dim
+    paras_dict['model_is_compiled'] = self.model_is_compiled
+    paras_dict['model_is_saved'] = self.model_is_saved
+    paras_dict['model_is_trained'] = self.model_is_trained
     paras_dict['model_label'] = self.model_label
     paras_dict['model_learn_rate'] = self.model_learn_rate
     paras_dict['model_name'] = self.model_name
@@ -475,9 +496,10 @@ class model_sequential(model_base):
     fig, ax = plt.subplots(nrows=2, ncols=3, figsize=figsize)
     self.plot_train_scores(ax[0, 0])
     self.plot_test_scores(ax[0, 1])
-    self.plot_train_roc(ax[1, 0])
-    self.plot_train_accuracy(ax[1, 1])
-    self.plot_train_loss(ax[1, 2])
+    self.plot_train_test_roc(ax[0, 2])
+    self.plot_train_accuracy(ax[1, 0])
+    self.plot_train_loss(ax[1, 1])
+    self.plot_final_roc(ax[1, 2])
     '''
     train_bkg_dict = {'bkg': self.xb_train}
     test_bkg_dict = {'bkg': self.xb_test}

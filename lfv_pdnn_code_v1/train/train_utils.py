@@ -14,7 +14,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from math import sqrt
 from sklearn.metrics import classification_report, accuracy_score, auc
-from sklearn.model_selection import train_test_split
+#from sklearn.model_selection import train_test_split
 
 from ..common.common_utils import *
 
@@ -143,10 +143,17 @@ def modify_array(input_array, weight_id=None, remove_negative_weight=False,
   # shuffle array
   if shuffle == True:
     # use time as random seed if not specified
+    """
     if has_none([shuffle_seed]):
       shuffle_seed = int(time.time())
     new, x2, y1, y2 = train_test_split(new, np.zeros(len(new)), test_size=0.01, ########################
                                        random_state=shuffle_seed, shuffle=True)
+    """
+    new, _, _, _ = shuffle_and_split(
+      new, np.zeros(len(new)), split_ratio=0.,
+      shuffle_seed=shuffle_seed
+      )
+
   # clean array
   new = clean_array(new, -1, remove_negative=remove_negative_weight, 
                     verbose=False)
@@ -284,6 +291,30 @@ def prep_mass_fast(xbtrain, xstrain, mass_id=0, shuffle_seed=None):
   return new
 
 
+def shuffle_and_split(x, y, split_ratio=0., shuffle_seed=None):
+  """Self defined function to replace train_test_split in sklearn to allow
+  more flexibility.
+  """
+  # Check consistance of length of x, y
+  if len(x) != len(y):
+    raise ValueError("Length of x and y is not same.")
+  array_len = len(y)
+  np.random.seed(shuffle_seed)
+  # get index for the first part of the splited array
+  first_part_index = np.random.choice(
+    range(array_len),
+    int(array_len * 1. * split_ratio),
+    replace=False
+  )
+  # get index for last part of the splited array
+  last_part_index = np.setdiff1d(np.array(range(array_len)), first_part_index)
+  first_part_x = x[first_part_index]
+  first_part_y = y[first_part_index]
+  last_part_x = x[last_part_index]
+  last_part_y = y[last_part_index]
+  return first_part_x, last_part_x, first_part_y, last_part_y
+
+
 def split_and_combine(xs, xb, test_rate=0.2, shuffle_before_return=True, shuffle_seed=None):
   """Prepares array for training & validation
 
@@ -314,20 +345,21 @@ def split_and_combine(xs, xb, test_rate=0.2, shuffle_before_return=True, shuffle
   yb = np.zeros(len(xb))
   if has_none([shuffle_seed]):
     shuffle_seed = int(time.time())
-  xs_train, xs_test, ys_train, ys_test = train_test_split(xs, ys, 
-    test_size=test_rate, random_state=shuffle_seed, shuffle=True)
-  xb_train, xb_test, yb_train, yb_test = train_test_split(xb, yb, 
-    test_size=test_rate, random_state=shuffle_seed, shuffle=True)
+
+  xs_train, xs_test, ys_train, ys_test = shuffle_and_split(
+    xs, ys, split_ratio=test_rate,
+    shuffle_seed=shuffle_seed
+    )
+  xb_train, xb_test, yb_train, yb_test = shuffle_and_split(
+    xb, yb, split_ratio=test_rate,
+    shuffle_seed=shuffle_seed
+    )
+
   x_train = np.concatenate((xs_train, xb_train))
   y_train = np.concatenate((ys_train, yb_train))
   x_test = np.concatenate((xs_test, xb_test))
   y_test = np.concatenate((ys_test, yb_test))
-  # shuffle the array
-  if shuffle_before_return:
-    x_train, x2, y_train, y2 = train_test_split(x_train, y_train, 
-      test_size= 0.01, random_state=shuffle_seed, shuffle=True)  ##################
-    x_test, x2, y_test, y2 = train_test_split(x_test, y_test, 
-      test_size= 0.01, random_state=shuffle_seed, shuffle=True)  #############
+  
   return x_train, x_test, y_train, y_test, xs_train, xs_test, xb_train, xb_test
 
 
