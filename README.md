@@ -27,49 +27,53 @@ About pDNN for LFV:
 
 ### Install Python Packages
 Open a **Anaconda powershell Prompt** (powshell in VSCode is **NOT RECOMMENDED**) to create conda environment and activate.
-```
+```shell
 > conda create -n pdnn python=3.7
 > conda activate pdnn
 ```
 Then install python packages (you can run following commands in Git Bash):  
 * numpy (use -n pdnn to only install package for specified environment):
-```
+```shell
 > conda install -n pdnn numpy
 ```
 * matplotlib (for plots)
-```
+```shell
 > conda install -n pdnn matplotlib
 ```
 * keras with tensorflow backend (for DNN training)  
 First install tensorflow in conda. If you have a GPU supporting [CUDA](https://developer.nvidia.com/cuda-zone), following instructions to install [tensorflow-gpu](https://www.tensorflow.org/install/gpu). Otherwise, to install the tensorflow 2.0 (currently not available in conda), use pip for installation:
-```
+```shell
 > pip install --upgrade pip
 > pip install tensorflow
 ```
 &nbsp; &nbsp; Or use conda (not recommended)
-```
+```shell
 > conda install -n pdnn tensorflow
 ```
 * keras  
 To install newest version(recommended), use pip:
-```
+```shell
 > pip install keras
 ```
 &nbsp; &nbsp; Or with conda (newest version not available, not recommended).
-```
+```shell
 > conda install -n pdnn keras
 ```
 * sklearn
-```
+```shell
 > conda install -n pdnn scikit-learn
 ```
 * pandas (optional)
-```
+```shell
 > conda install -n pdnn pandas
 ```
 * jupyter lab
-```
+```shell
 > conda install -n pdnn jupyterlab
+```
+* ConfigParser
+```shell
+> conda install -n pdnn ConfigParser
 ```
     
 ### System:
@@ -79,7 +83,9 @@ If run on Win10 OS, the make_array module and train module can't work together d
 Better training speed obtained with an tensorflow supported dedicated graphics/calcution cards.
 
 ## Usage
-(Will be updated with test codes and examples.)
-```python
-pass
+1. First time run:
+```shell
+> python setup_path.py
 ```
+2. 
+To be added.
