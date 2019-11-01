@@ -17,7 +17,8 @@ About pDNN for LFV:
 * The method has already being used/under development for several analyses, for example: low-mass Z', high mass H4l, di-Higgs->llbb&nu;&nu; and etc.
 * A related paper can be found [here](https://arxiv.org/pdf/1601.07913.pdf)
 
-## Requirements (work on Windows 10)
+## Requirements
+Test on Windows 10 & Linux OS
 
 ### Install Used Softwares
 1. Install [python 3.7+](https://www.python.org/downloads/windows/)
