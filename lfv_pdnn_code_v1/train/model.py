@@ -233,7 +233,7 @@ class model_sequential(model_base):
     # Make plots
     auc_value, _, _ = self.plot_roc(
       ax, self.xs, self.xb,
-      class_weight=self.class_weight
+      class_weight=None
       )
     # Show auc value:
     self.plot_auc_text(ax, ['auc'], [auc_value])
@@ -297,11 +297,9 @@ class model_sequential(model_base):
     if not self.model_is_trained:
       warnings.warn("Model is not trained yet.")
     # First plot roc for train dataset
-    auc_train, _, _ = self.plot_roc(ax, self.xs_train, self.xb_train,
-      class_weight=self.class_weight)
+    auc_train, _, _ = self.plot_roc(ax, self.xs_train, self.xb_train)
     # Then plot roc for test dataset
-    auc_test, _, _ = self.plot_roc(ax, self.xs_test, self.xb_test,
-      class_weight=self.class_weight)
+    auc_test, _, _ = self.plot_roc(ax, self.xs_test, self.xb_test)
     # Show auc value:
     self.plot_auc_text(ax, ['train+val', 'test'], [auc_train, auc_test])
     # Extra plot config
