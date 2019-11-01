@@ -231,12 +231,14 @@ class model_sequential(model_base):
     if not self.model_is_trained:
       warnings.warn("Model is not trained yet.")
     # Make plots
+    xs_plot = self.xs.copy()
+    xb_plot = self.xb.copy()
     auc_value, _, _ = self.plot_roc(
-      ax, self.xs, self.xb,
+      ax, xs_plot, xb_plot,
       class_weight=None
       )
     # Show auc value:
-    self.plot_auc_text(ax, ['auc'], [auc_value])
+    self.plot_auc_text(ax, ['non-mass-reset auc'], [auc_value])
     # Extra plot config
     ax.grid()
 
@@ -345,7 +347,7 @@ class model_sequential(model_base):
     variance=self.norm_variance
 
     for arr_key in key_list:
-      bkg_arr_temp = arr_dict[arr_key]
+      bkg_arr_temp = arr_dict[arr_key].copy()
       average=self.norm_average
       variance=self.norm_variance
       #average, variance = get_mean_var(bkg_arr_temp[:, 0:-2], axis=0, weights=bkg_arr_temp[:, -1])
@@ -366,7 +368,7 @@ class model_sequential(model_base):
               stacked=True)
 
     if sig_arr is None:
-      sig_arr=self.xs_selected
+      sig_arr=self.xs_selected.copy()
       sig_weights=self.xs[:,-1]
 
     ax.hist(self.get_model().predict(sig_arr), bins=bins, range=range,
@@ -575,7 +577,7 @@ class Model_1002(model_sequential):
     # Compile
     self.model.compile(loss="binary_crossentropy", 
                        optimizer=SGD(lr=self.model_learn_rate, 
-                       decay=self.model_decay), metrics=["accuracy", "mean_squared_error"])
+                       decay=self.model_decay), metrics=[plain_acc], weighted_metrics=["accuracy"])
     self.model_is_compiled = True
 
 

@@ -161,6 +161,18 @@ def modify_array(input_array, weight_id=None, remove_negative_weight=False,
   return new
 
 
+def generate_shuffle_index(array_len, shuffle_seed=None):
+  """Generates array shuffle index.
+  
+  To use a consist shuffle index to have different arrays shuffle in same way.
+
+  """
+  shuffle_index = np.array(range(array_len))
+  if shuffle_seed is not None:
+    np.random.seed(shuffle_seed)
+  np.random.shuffle(shuffle_index)
+  return shuffle_index
+
 def get_mean_var(array, axis=None, weights=None):
   """Calculate average and variance of an array."""
   average = np.average(array, axis=axis, weights=weights)
@@ -315,7 +327,7 @@ def shuffle_and_split(x, y, split_ratio=0., shuffle_seed=None):
   return first_part_x, last_part_x, first_part_y, last_part_y
 
 
-def split_and_combine(xs, xb, test_rate=0.2, shuffle_before_return=True, shuffle_seed=None):
+def split_and_combine(xs, xb, test_rate=0.2, shuffle_combined_array=True, shuffle_seed=None):
   """Prepares array for training & validation
 
   Args:
@@ -325,7 +337,7 @@ def split_and_combine(xs, xb, test_rate=0.2, shuffle_before_return=True, shuffle
       Background array for training.
     test_rate: float, optional (default = 0.2)
       Portion of samples (array rows) to be used as independant test samples.
-    shuffle_before_return: bool, optional (default=True)
+    shuffle_combined_array: bool, optional (default=True)
       Whether to shuffle outputs arrays before return.
     shuffle_seed: int or None, optional (default=None)
       Seed for randomization process.
@@ -343,8 +355,6 @@ def split_and_combine(xs, xb, test_rate=0.2, shuffle_before_return=True, shuffle
   """
   ys = np.ones(len(xs))
   yb = np.zeros(len(xb))
-  if has_none([shuffle_seed]):
-    shuffle_seed = int(time.time())
 
   xs_train, xs_test, ys_train, ys_test = shuffle_and_split(
     xs, ys, split_ratio=test_rate,
@@ -359,6 +369,22 @@ def split_and_combine(xs, xb, test_rate=0.2, shuffle_before_return=True, shuffle
   y_train = np.concatenate((ys_train, yb_train))
   x_test = np.concatenate((xs_test, xb_test))
   y_test = np.concatenate((ys_test, yb_test))
+
+  if shuffle_combined_array:
+    # shuffle train dataset
+    shuffle_index = generate_shuffle_index(
+      len(y_train),
+      shuffle_seed=shuffle_seed
+      )
+    x_train = x_train[shuffle_index]
+    y_train = y_train[shuffle_index]
+    # shuffle test dataset
+    shuffle_index = generate_shuffle_index(
+      len(y_test),
+      shuffle_seed=shuffle_seed
+      )
+    x_test = x_test[shuffle_index]
+    y_test = y_test[shuffle_index]
   
   return x_train, x_test, y_train, y_test, xs_train, xs_test, xb_train, xb_test
 
