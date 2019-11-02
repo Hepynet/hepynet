@@ -1,24 +1,18 @@
 # Don't track content of these folders
-# example_folder/
+
+# Temparary folders
+backups/*
 
 
-# Compiled source #
-###################
+# Side files that are not needed to be saved #
 *.pyc
 *.bak
-.ipynb_checkpoints/*
-*/.ipynb_checkpoints/*
-*/*/.ipynb_checkpoints/*
+*.ipynb_checkpoints*
+
+
+# Output data (local only)
+*.json
+*.h5
+
 
 # Packages #
-############
-# it's better to unpack these files and commit the raw source
-# git has its own built in compression methods
-*.7z
-*.dmg
-*.gz
-*.iso
-*.jar
-*.rar
-*.tar
-*.zip
