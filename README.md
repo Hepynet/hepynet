@@ -76,6 +76,10 @@ To install newest version(recommended), use pip:
 ```shell
 > conda install -n pdnn ConfigParser
 ```
+* Reportlab
+```shell
+> conda install -n pdnn reportlab
+```
     
 ### System:
 * Work on Linux, Windows and WSL ([Windows Subsystem for Linux](https://docs.microsoft.com/en-us/windows/wsl/install-win10))  
