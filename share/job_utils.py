@@ -2,10 +2,19 @@ import datetime
 
 from configparser import ConfigParser
 import json
+import matplotlib.pyplot as plt
+import platform
+import re
+from reportlab.lib.enums import TA_JUSTIFY
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import Image, PageBreak, Paragraph, Spacer, SimpleDocTemplate
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
 
 from lfv_pdnn_code_v1.data_io.get_arrays import *
 from lfv_pdnn_code_v1.train import model
 from lfv_pdnn_code_v1.train.train_utils import get_input_array
+
 
 class job_executor(object):
   """Core class to execute a pdnn job based on given cfg file."""
@@ -17,6 +26,8 @@ class job_executor(object):
     self.cfg_path = input_path
     self.cfg_is_collected = False
     self.array_is_loaded = False
+    # [job] section
+    self.job_name = None
     # [array] section
     self.arr_version = None
     self.bkg_dict_path = None
@@ -39,6 +50,9 @@ class job_executor(object):
     self.bkg_class_weight = None
     # [report] section
     self.plot_bkg_list = None
+    self.show_report = None
+    self.save_pdf_report = None
+    self.save_pdf_path = None
     self.verbose = None
 
   def execute_dnn(self):
@@ -71,6 +85,39 @@ class job_executor(object):
       bkg_class_weight=self.bkg_class_weight,
       verbose=self.verbose
       )
+    if self.show_report or self.save_pdf_report:
+      # Performance plots
+      # setup save parameters if reports need to be saved
+      fig_save_path = None
+      datestr = datetime.date.today().strftime("%Y-%m-%d")
+      if self.save_pdf_report:
+        if not os.path.exists(self.save_pdf_path):
+          os.makedirs(self.save_pdf_path)
+        fig_save_path = self.save_pdf_path + '/' + self.job_name \
+          + '_performance_' + datestr + '.png'
+      # show and save according to setting
+      self.model.show_performance(
+        show_fig=self.show_report,
+        save_fig=self.save_pdf_report,
+        save_path=fig_save_path
+        )
+      # Extra plots (use model on non-mass-reset arrays)
+      fig, ax = plt.subplots(ncols=2, figsize=(16, 4))
+      self.model.plot_scores_separate(
+        ax[0], self.plot_bkg_dict, self.plot_bkg_list, self.selected_features,
+        plot_title='training scores (lin)', bins=40, range=(-0.25, 1.25),
+        density=True, log=False
+        )
+      self.model.plot_scores_separate(
+        ax[1], self.plot_bkg_dict, self.plot_bkg_list, self.selected_features,
+        plot_title='training scores (log)', bins=40, range=(-0.25, 1.25),
+        density=True, log=True
+        )
+      if self.save_pdf_report:
+        fig_save_path = self.save_pdf_path + '/' + self.job_name \
+            + '_non-mass-reset_' + datestr + '.png'
+        fig.savefig(fig_save_path)
+        self.generate_report()
 
   def get_config(self, path=None):
     """Retrieves configurations from ini file."""
@@ -89,6 +136,8 @@ class job_executor(object):
       pass
     if default_ini_path is not None:
       self.get_config(default_ini_path)
+    # Load [job] section
+    self.try_parse_str('job_name', config, 'job', 'job_name')
     # Load [array] section
     self.try_parse_str('arr_version', config, 'array', 'arr_version')
     self.try_parse_str('bkg_dict_path', config, 'array', 'bkg_dict_path')
@@ -112,11 +161,130 @@ class job_executor(object):
     self.try_parse_float('val_split', config, 'model', 'val_split')
     self.try_parse_float('sig_class_weight', config, 'model', 'sig_class_weight')
     self.try_parse_float('bkg_class_weight', config, 'model', 'bkg_class_weight')
+    self.try_parse_bool('save_model', config, 'model', 'save_model')
     # Load [report] section
     self.try_parse_list('plot_bkg_list', config, 'report', 'plot_bkg_list')
+    self.try_parse_bool('show_report', config, 'report', 'show_report')
+    self.try_parse_bool('save_pdf_report', config, 'report', 'save_pdf_report')
+    self.try_parse_str('save_pdf_path', config, 'report', 'save_pdf_path')
     self.try_parse_int('verbose', config, 'report', 'verbose')
 
     self.cfg_is_collected = True
+
+  def generate_report(self):
+    """Generate a brief report to show how is the model."""
+    # Initalize
+    datestr = datetime.date.today().strftime("%Y-%m-%d")
+    pdf_save_path = self.save_pdf_path + '/' + self.job_name \
+      + '_report_' + datestr + '.pdf'
+    doc = SimpleDocTemplate(
+      pdf_save_path, pagesize=letter,
+      rightMargin=72, leftMargin=72, topMargin=72, bottomMargin=18
+      )
+    styles=getSampleStyleSheet()
+    styles.add(ParagraphStyle(name='Justify', alignment=TA_JUSTIFY))
+    reports=[]
+    # Reports
+    # head
+    ptext = "JOB NAME: " + self.job_name
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = "DATE: " + self.job_create_time
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    reports.append(Spacer(1, 12))
+    # machine info
+    ptext = "MACHINE INFO:"
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = "-" * 80
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = 'machine:' + platform.machine()
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = 'version:' + platform.version()
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = 'platform:' + platform.platform()
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = 'system:' + platform.system()
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = 'processor:' + platform.processor()
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    reports.append(Spacer(1, 12))
+    # plots
+    ptext = "PERFORMANCE PLOTS:"
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = "-" * 80
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    fig = "results/reports/test_job_performance_2019-11-02.png"
+    im = Image(fig, 6.4*inch, 3.6*inch)
+    reports.append(im)
+    fig = "results/reports/test_job_non-mass-reset_2019-11-02.png"
+    im = Image(fig, 6.4*inch, 1.6*inch)
+    reports.append(im)
+    # parameters
+    reports.append(PageBreak())
+    ptext = "KEY PARAMETERS:"
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = "-" * 80
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    reports.append(Spacer(1, 12))
+    ptext = "config file location: " + re.sub('[\s+]', '', self.cfg_path)
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = "[array]"
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = "array version           :    " + self.arr_version
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = "channel id              :    " + self.interpret_channel_id(self.channel_id)
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = "selected features id    :    " + str(self.selected_features)
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    reports.append(Spacer(1, 12))
+    ptext = "bkg arrays path         :    " + self.bkg_dict_path
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = "bkg arrays used         :    " + self.bkg_key
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = "bkg total weight set    :    " + str(self.bkg_sumofweight)
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = "sig arrays path         :    " + self.sig_dict_path
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = "sig arrays used         :    " + self.sig_key
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = "sig total weight        :    " + str(self.sig_sumofweight)
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    reports.append(Spacer(1, 12))
+    ptext = "[model]"
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = "name                    :    " + self.model_name
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = "class                   :    " + self.model_class
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = "test ratio              :    " + str(self.test_rate)
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = "validation split        :    " + str(self.val_split)
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = "batch size              :    " + str(self.batch_size)
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = "epochs                  :    " + str(self.epochs)
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = "signal class weight     :    " + str(self.sig_class_weight)
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = "background class weight :    " + str(self.bkg_class_weight)
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = "model saved             :    " + str(self.save_model)
+    reports.append(Paragraph(ptext, styles["Justify"]))
+
+    # build/save
+    doc.build(reports)
+
+  def interpret_channel_id(self, channel_id, interpret_dict=None):
+    """Gives channel id real meaning."""
+    if interpret_dict is None:
+      interpret_dict = {
+        -4: 'emu',
+        -3: 'etau',
+        -2: 'mutau'
+      }
+    try:
+      return interpret_dict[channel_id]
+    except:
+      raise ValueError("Invalid channel key detected.")
 
   def load_arrays(self):
     """Get training arrays."""
@@ -124,6 +292,14 @@ class job_executor(object):
       self.bkg_dict = get_old_bkg(self.bkg_dict_path)
       self.sig_dict = get_old_sig(self.sig_dict_path)
     self.array_is_loaded = True
+    if self.show_report or self.save_pdf_report:
+      self.plot_bkg_dict = {key:self.bkg_dict[key] for key in self.plot_bkg_list}
+
+  def try_parse_bool(self, parsed_val, config_parse, section, val_name):
+    try:
+      setattr(self, parsed_val, config_parse.getboolean(section, val_name))
+    except:
+      pass
 
   def try_parse_float(self, parsed_val, config_parser, section, val_name):
     try:

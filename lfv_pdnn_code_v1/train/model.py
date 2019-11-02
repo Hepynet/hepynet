@@ -382,6 +382,8 @@ class model_sequential(model_base):
     if log is True:
       ax.set_yscale('log')
       ax.set_title(plot_title+"(log)")
+    else:
+      ax.set_title(plot_title+"(lin)")
 
   def prepare_array(self, xs, xb, selected_features, norm_array=True,
                     sig_weight=1000, bkg_weight=1000, test_rate=0.2,
@@ -481,7 +483,10 @@ class model_sequential(model_base):
     with open(save_path, 'w') as write_file:
       json.dump(paras_dict, write_file, indent=2)
 
-  def show_performance(self, figsize=(15, 12)):
+  def show_performance(
+    self, figsize=(16, 9), show_fig=True,
+    save_fig=False, save_path=None
+    ):
     """Shortly reports training result.
 
     Args:
@@ -512,7 +517,10 @@ class model_sequential(model_base):
       sig_weights=self.xs_test[:,-1],  plot_title='test scores',  bins=80, range=(-0.1, 1.1))
     '''
     fig.tight_layout()
-    plt.show()
+    if show_fig:
+      plt.show()
+    if save_fig:
+      fig.savefig(save_path)
 
   def train(self):
     pass
