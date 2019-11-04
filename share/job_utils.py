@@ -48,6 +48,8 @@ class job_executor(object):
     self.val_split = None
     self.sig_class_weight = None
     self.bkg_class_weight = None
+    self.save_model = None
+    self.save_model_path = None
     # [report] section
     self.plot_bkg_list = None
     self.show_report = None
@@ -87,14 +89,19 @@ class job_executor(object):
       )
     if self.show_report or self.save_pdf_report:
       # Performance plots
+      self.fig_performance_path = None
+      self.fig_non_mass_reset_path = None
+      self.report_path = None
       # setup save parameters if reports need to be saved
       fig_save_path = None
       datestr = datetime.date.today().strftime("%Y-%m-%d")
+      save_dir = self.save_pdf_path + '/' + datestr + '_' + self.job_name
       if self.save_pdf_report:
-        if not os.path.exists(self.save_pdf_path):
-          os.makedirs(self.save_pdf_path)
-        fig_save_path = self.save_pdf_path + '/' + self.job_name \
+        if not os.path.exists(save_dir):
+          os.makedirs(save_dir)
+        fig_save_path = save_dir + '/' + self.job_name \
           + '_performance_' + datestr + '.png'
+      self.fig_performance_path = fig_save_path
       # show and save according to setting
       self.model.show_performance(
         show_fig=self.show_report,
@@ -113,11 +120,18 @@ class job_executor(object):
         plot_title='training scores (log)', bins=40, range=(-0.25, 1.25),
         density=True, log=True
         )
+      if self.save_model:
+        mod_save_path = self.save_model_path
+        self.model.save_model(save_dir=mod_save_path)
       if self.save_pdf_report:
-        fig_save_path = self.save_pdf_path + '/' + self.job_name \
+        fig_save_path = save_dir + '/' + self.job_name \
             + '_non-mass-reset_' + datestr + '.png'
         fig.savefig(fig_save_path)
-        self.generate_report()
+        self.fig_non_mass_reset_path = fig_save_path
+        pdf_save_path = save_dir + '/' + self.job_name \
+          + '_report_' + datestr + '.pdf'
+        self.generate_report(pdf_save_path=pdf_save_path)
+        self.report_path = pdf_save_path
 
   def get_config(self, path=None):
     """Retrieves configurations from ini file."""
@@ -162,6 +176,7 @@ class job_executor(object):
     self.try_parse_float('sig_class_weight', config, 'model', 'sig_class_weight')
     self.try_parse_float('bkg_class_weight', config, 'model', 'bkg_class_weight')
     self.try_parse_bool('save_model', config, 'model', 'save_model')
+    self.try_parse_str('save_model_path', config, 'model', 'save_model_path')
     # Load [report] section
     self.try_parse_list('plot_bkg_list', config, 'report', 'plot_bkg_list')
     self.try_parse_bool('show_report', config, 'report', 'show_report')
@@ -171,12 +186,14 @@ class job_executor(object):
 
     self.cfg_is_collected = True
 
-  def generate_report(self):
+  def generate_report(self, pdf_save_path=None):
     """Generate a brief report to show how is the model."""
     # Initalize
-    datestr = datetime.date.today().strftime("%Y-%m-%d")
-    pdf_save_path = self.save_pdf_path + '/' + self.job_name \
-      + '_report_' + datestr + '.pdf'
+    if pdf_save_path is None:
+      datestr = datetime.date.today().strftime("%Y-%m-%d")
+      save_dir = self.save_pdf_path + '/' + datestr + '_' + self.job_name
+      pdf_save_path = save_dir + '/' + self.job_name \
+        + '_report_' + datestr + '.pdf'
     doc = SimpleDocTemplate(
       pdf_save_path, pagesize=letter,
       rightMargin=72, leftMargin=72, topMargin=72, bottomMargin=18
@@ -188,7 +205,7 @@ class job_executor(object):
     # head
     ptext = "JOB NAME: " + self.job_name
     reports.append(Paragraph(ptext, styles["Justify"]))
-    ptext = "DATE: " + self.job_create_time
+    ptext = "DATE TIME: " + self.job_create_time
     reports.append(Paragraph(ptext, styles["Justify"]))
     reports.append(Spacer(1, 12))
     # machine info
@@ -212,10 +229,10 @@ class job_executor(object):
     reports.append(Paragraph(ptext, styles["Justify"]))
     ptext = "-" * 80
     reports.append(Paragraph(ptext, styles["Justify"]))
-    fig = "results/reports/test_job_performance_2019-11-02.png"
+    fig = self.fig_performance_path
     im = Image(fig, 6.4*inch, 3.6*inch)
     reports.append(im)
-    fig = "results/reports/test_job_non-mass-reset_2019-11-02.png"
+    fig = self.fig_non_mass_reset_path
     im = Image(fig, 6.4*inch, 1.6*inch)
     reports.append(im)
     # parameters
