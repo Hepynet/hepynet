@@ -94,7 +94,7 @@ Better training speed obtained with an tensorflow supported dedicated graphics/c
 ## Usage
 1. First time run:
 ```shell
-> conda develop .
+> pip install -e .
 ```
 2. 
 To be added.
