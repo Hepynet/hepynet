@@ -1,5 +1,7 @@
 import glob
+import math
 import os
+import warnings
 
 import json
 import numpy as np
@@ -94,6 +96,37 @@ def get_file_list(directory, search_pattern, out_name_pattern = "None"):
       print_helper.print_warning("same file name detected",
                                  "(in get_file_list)")
   return absolute_file_list, file_name_list
+
+
+def get_newest_file_version(path_pattern, n_digit=2, ver_num=None):
+  """Check existed file and return last available file path with version.
+
+  Version range 00 -> 99 (or 999)
+  If reach limit, last available version will be used. 99/999
+
+  """
+  # return file path if ver_num is given
+  if ver_num is not None:
+    return {
+      'ver_num': ver_num,
+      'path': path_pattern.format(str(ver_num).zfill(n_digit))
+      }
+  # otherwise try to find ver_num
+  max_version = int(math.pow(10, n_digit) - 1)
+  ver_num = 0
+  path = path_pattern.format(str(ver_num).zfill(n_digit))
+  while os.path.exists(path):
+    ver_num += 1
+    path = path_pattern.format(str(ver_num).zfill(n_digit))
+  if ver_num > max_version:
+    warnings.warn("Too much model version detected at same date. \
+      Will only keep maximum {} different versions.".format(max_version))
+    warnings.warn("Version {} will be overwrite!".format(max_version))
+    ver_num = max_version
+  return {
+    'ver_num': ver_num,
+    'path': path_pattern.format(str(ver_num).zfill(n_digit))
+    }
 
 
 def has_none(list):
