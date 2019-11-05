@@ -80,6 +80,10 @@ To install newest version(recommended), use pip:
 ```shell
 > conda install -n pdnn reportlab
 ```
+* conda-build (for this package development & manage)
+```shell
+> conda install -n pdnn conda-build
+```
     
 ### System:
 * Work on Linux, Windows and WSL ([Windows Subsystem for Linux](https://docs.microsoft.com/en-us/windows/wsl/install-win10))  
@@ -90,7 +94,7 @@ Better training speed obtained with an tensorflow supported dedicated graphics/c
 ## Usage
 1. First time run:
 ```shell
-> python setup_path.py
+> conda develop .
 ```
 2. 
 To be added.
