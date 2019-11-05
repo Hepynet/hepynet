@@ -10,7 +10,7 @@ setup(
           'tensorflow>1.14',
           'keras>2.3',
           'scikit-learn>0.20',
-          'ConfigParser>4.0',
+          'ConfigParser>3.6',
           'reportlab>3.5'
       ],
   entry_points={
