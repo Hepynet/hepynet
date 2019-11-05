@@ -18,8 +18,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.metrics import roc_curve, auc
 
-from ..common import print_helper
-from ..common.common_utils import dict_key_strtoint
+from ..common.common_utils import *
 from . import train_utils 
 from .train_utils import *
 
@@ -57,6 +56,7 @@ class model_base(object):
     self.model_is_saved = False
     self.model_is_trained = False
     self.model_name = name
+    self.model_save_path = None
     self.train_history = None
 
 class model_sequential(model_base):
@@ -432,30 +432,28 @@ class model_sequential(model_base):
 
     """
     # Define save path
-    version_id = 0
     if save_dir is None:
       save_dir = "./models"
     if file_name is None:
       datestr = datetime.date.today().strftime("%Y-%m-%d")
       file_name = self.model_name + '_' + self.model_label + '_' + datestr
     # Check path
-    save_path = save_dir + '/' + file_name + '_v{}.h5'.format(f"{version_id:02d}")
-    if not os.path.exists(save_dir):
-      os.makedirs(save_dir)
-    while os.path.exists(save_path):
-      version_id += 1
-      save_path = save_dir + '/' + file_name + \
-        '_v{}.h5'.format(f"{version_id:02d}")
-    if version_id > 99:
-      warnings.warn("Too much model version detected at same date. \
-        Will only keep maximum 99 different versions.")
-      warnings.warn("Version 99 will be overwrite!")
-      version_id = 99
+    path_pattern = save_dir + '/' + file_name + '_v{}.h5'
+    save_path = get_newest_file_version(path_pattern)['path']
+    version_id = get_newest_file_version(path_pattern)['ver_num']
+    if not os.path.exists(os.path.dirname(save_path)):
+      os.makedirs(os.path.dirname(save_path))
+
     # Save
     self.model.save(save_path)
+    self.model_save_path = save_path
     print("model:", self.model_name, "has been saved to:", save_path)
-    save_path = save_dir + '/' + file_name + \
-      '_v{}_paras.json'.format(f"{version_id:02d}")  # update path for json
+    # update path for json
+    path_pattern = save_dir + '/' + file_name + '_v{}_paras.json'
+    save_path = get_newest_file_version(
+      path_pattern,
+      ver_num=version_id
+      )['path']
     self.save_model_paras(save_path)
     print("model parameters has been saved to:", save_path)
     self.model_is_saved = True
@@ -519,6 +517,8 @@ class model_sequential(model_base):
     fig.tight_layout()
     if show_fig:
       plt.show()
+    else:
+      print("(Plots-show skipped according to settings)")
     if save_fig:
       fig.savefig(save_path)
 
