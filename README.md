@@ -92,7 +92,7 @@ If run on Win10 OS, the make_array module and train module can't work together d
 Better training speed obtained with an tensorflow supported dedicated graphics/calcution cards.
 
 ## Usage
-1. First time run:
+1. First time run (on main folder, where setup.py exists.):
 ```shell
 > pip install -e .
 ```
