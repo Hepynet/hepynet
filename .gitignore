@@ -2,7 +2,10 @@
 
 # Temparary folders
 backups/*
-
+test/*
+run/results/*
+lfv_pdnn.egg-info/*
+env_setup/*
 
 # Side files that are not needed to be saved #
 *.pyc

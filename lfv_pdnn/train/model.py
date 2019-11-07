@@ -17,7 +17,8 @@ from keras.layers import Concatenate, Dense, Input, Layer
 from keras.layers.normalization import BatchNormalization
 from keras.optimizers import Adagrad, SGD, RMSprop, Adam
 from keras.wrappers.scikit_learn import KerasClassifier, KerasRegressor
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plot_test_scores
+from matplotlib.ticker import NullFormatter, FixedLocator
 import numpy as np
 from sklearn.metrics import roc_curve, auc
 
@@ -158,6 +159,14 @@ class model_sequential(model_base):
     self.xb_test_selected = np.array([])
     self.xs_selected = np.array([])
     self.xb_selected = np.array([])
+    self.xs_train_original_mass = np.array([])
+    self.xs_test_original_mass = np.array([])
+    self.xb_train_original_mass = np.array([])
+    self.xb_test_original_mass = np.array([])
+    self.xs_train_original_mass = np.array([])
+    self.xs_test_original_mass = np.array([])
+    self.xb_train_original_mass = np.array([])
+    self.xb_test_original_mass = np.array([])
   
   def compile(self):
     pass
@@ -227,14 +236,27 @@ class model_sequential(model_base):
     self.train_history_loss = paras_dict['train_history_loss']
     self.train_history_val_loss = paras_dict['train_history_val_loss']
 
+  def plot_accuracy(self, ax):
+    """Plots accuracy vs training epoch."""
+    # Plot
+    ax.plot(self.train_history_accuracy)
+    ax.plot(self.train_history_val_accuracy)
+    # Config
+    ax.set_title('model accuracy')
+    ax.set_ylabel('accuracy')
+    ax.set_ylim((0, 1))
+    ax.set_xlabel('epoch')
+    ax.legend(['train', 'val'], loc='lower left')
+    ax.grid()
+
   def plot_auc_text(self, ax, titles, auc_values):
     """Plots auc information on roc curve."""
-    auc_text = ''
+    auc_text = 'auc values:\n'
     for (title, auc_value) in zip(titles, auc_values):
       auc_text = auc_text + title + ": " + str(auc_value) + '\n'
     auc_text = auc_text[:-1]
-    props = dict(boxstyle='round', facecolor='wheat', alpha=0.3)
-    ax.text(0.3, 0.3, auc_text, transform=ax.transAxes, fontsize=10,
+    props = dict(boxstyle='round', facecolor='white', alpha=0.3)
+    ax.text(0.5, 0.6, auc_text, transform=ax.transAxes, fontsize=10,
       verticalalignment='top', bbox=props)
 
   def plot_final_roc(self, ax):
@@ -255,6 +277,18 @@ class model_sequential(model_base):
     # Show auc value:
     self.plot_auc_text(ax, ['non-mass-reset auc'], [auc_value])
     # Extra plot config
+    ax.grid()
+
+  def plot_loss(self, ax):
+    """Plots loss vs training epoch."""
+    #Plot
+    ax.plot(self.train_history_loss)
+    ax.plot(self.train_history_val_loss)
+    # Config
+    ax.set_title('model loss')
+    ax.set_xlabel('epoch')
+    ax.set_ylabel('loss')
+    ax.legend(['train', 'val'], loc='lower left')
     ax.grid()
 
   def plot_roc(self, ax, xs, xb, class_weight=None):
@@ -278,35 +312,12 @@ class model_sequential(model_base):
     ax.set_title("roc curve")
     ax.set_xlabel('fpr')
     ax.set_ylabel('tpr')
+    ax.set_ylim(0.1, 1 - 1e-4)
+    ax.set_yscale('logit')
+    ax.yaxis.set_minor_formatter(NullFormatter())
     # Calculate auc and return parameters
     auc_value = auc(fpr_dm, tpr_dm)
     return auc_value, fpr_dm, tpr_dm
-
-  def plot_train_accuracy(self, ax):
-    """Plots accuracy vs training epoch."""
-    # Plot
-    ax.plot(self.train_history_accuracy)
-    ax.plot(self.train_history_val_accuracy)
-    
-    # Config
-    ax.set_title('model accuracy')
-    ax.set_ylabel('accuracy')
-    ax.set_ylim((0, 1))
-    ax.set_xlabel('epoch')
-    ax.legend(['train', 'val'], loc='upper center')
-    ax.grid()
-
-  def plot_train_loss(self, ax):
-    """Plots loss vs training epoch."""
-    #Plot
-    ax.plot(self.train_history_loss)
-    ax.plot(self.train_history_val_loss)
-    # Config
-    ax.set_title('model loss')
-    ax.set_xlabel('epoch')
-    ax.set_ylabel('loss')
-    ax.legend(['train', 'val'], loc='upper center')
-    ax.grid()
 
   def plot_train_test_roc(self, ax):
     """Plots roc curve."""
@@ -317,36 +328,101 @@ class model_sequential(model_base):
     auc_train, _, _ = self.plot_roc(ax, self.xs_train, self.xb_train)
     # Then plot roc for test dataset
     auc_test, _, _ = self.plot_roc(ax, self.xs_test, self.xb_test)
+    # Then plot roc for train dataset without reseting mass
+    auc_train_original, _, _ = self.plot_roc(
+      ax, self.xs_train_original_mass, self.xb_train_original_mass
+      )
+    # Lastly, plot roc for test dataset without reseting mass
+    auc_test_original, _, _ = self.plot_roc(
+      ax, self.xs_test_original_mass, self.xb_test_original_mass
+    )
     # Show auc value:
-    self.plot_auc_text(ax, ['train+val', 'test'], [auc_train, auc_test])
+    self.plot_auc_text(
+      ax,
+      ['TV ', 'TE ', 'TVO', 'TEO'],
+      [auc_train, auc_test, auc_train_original, auc_test_original]
+      )
     # Extra plot config
-    ax.legend(['train+val', 'test'], loc='lower right')
+    ax.legend(
+      ['TV (train+val)', 'TE (test)', 'TVO (train+val original)', 'TEO (test original)'],
+      loc='lower right'
+      )
     ax.grid()
 
-  def plot_test_scores(self, ax, bins=100, range=(-0.25, 1.25), density=True, log=False):
+  def plot_test_scores(
+    self, ax,
+    bins=100, range=(-0.25, 1.25), density=True, log=True
+    ):
     """Plots training score distribution for siganl and background."""
-    ax.hist(self.get_model().predict(self.xb_test_selected), bins=bins, 
-            range=range, weights=self.xb_test[:,-1], histtype='step',
-            label='bkg', density=True, log=log)
-    ax.hist(self.get_model().predict(self.xs_test_selected), bins=bins, 
-            range=range, weights=self.xs_test[:,-1], histtype='step',
-            label='sig', density=True, log=log)
-    ax.set_title('test scores')
-    ax.legend(loc='upper center')
-    ax.set_xlabel("Output score")
-    ax.set_ylabel("arb. unit")
-    ax.grid()
+    self.plot_scores(
+      ax,
+      self.xb_test_selected, self.xb_test[:, -1],
+      self.xs_test_selected, self.xs_test[:, -1],
+      title = "test scores", bins=bins, range=range,
+      density=density, log=log
+    )
 
-  def plot_train_scores(self, ax, bins=100, range=(-0.25, 1.25), density=True, log=False):
+  def plot_test_scores_original_mass(
+    self, ax,
+    title = "test scores (original mass)", bins=100, range=(-0.25, 1.25),
+    density=True, log=True
+    ):
     """Plots training score distribution for siganl and background."""
-    ax.hist(self.get_model().predict(self.xb_train_selected), bins=bins, 
-            range=range, weights=self.xb_train[:,-1], histtype='step',
-            label='bkg', density=True, log=log)
-    ax.hist(self.get_model().predict(self.xs_train_selected), bins=bins, 
-            range=range, weights=self.xs_train[:,-1], histtype='step',
-            label='sig', density=True, log=log)
+    self.plot_scores(
+      ax,
+      self.xb_test_selected_original_mass, self.xb_test_original_mass[:, -1],
+      self.xs_test_selected_original_mass, self.xs_test_original_mass[:, -1],
+      bins=bins, range=range, density=density, log=log
+    )
+
+  def plot_train_scores(
+    self, ax,
+    title = "train scores", bins=100, range=(-0.25, 1.25),
+    density=True, log=True
+    ):
+    """Plots training score distribution for siganl and background."""
+    self.plot_scores(
+      ax,
+      self.xb_train_selected, self.xb_train[:, -1],
+      self.xs_train_selected, self.xs_train[:, -1],
+      bins=bins, range=range, density=density, log=log
+    )
+
+  def plot_train_scores_original_mass(
+    self, ax,
+    title = "train scores (original mass)", bins=100, range=(-0.25, 1.25),
+    density=True, log=True
+    ):
+    """Plots training score distribution for siganl and background."""
+    self.plot_scores(
+      ax,
+      self.xb_train_selected_original_mass, self.xb_train_original_mass[:, -1],
+      self.xs_train_selected_original_mass, self.xs_train_original_mass[:, -1],
+     bins=bins, range=range, density=density, log=log
+    )
+
+  def plot_scores(
+    self, ax,
+    selected_bkg, bkg_weight,
+    selected_sig, sig_weight,
+    title = "scores", bins=100, range=(-0.25, 1.25),
+    density=True, log=False
+    ):
+    """Plots score distribution for siganl and background."""
+    ax.hist(
+      self.get_model().predict(selected_bkg),
+      weights=bkg_weight,
+      bins=bins, range=range, histtype='step', label='bkg',
+      density=True, log=log
+      )
+    ax.hist(
+      self.get_model().predict(selected_sig),
+      weights=sig_weight,
+      bins=bins, range=range, histtype='step', label='sig',
+      density=True, log=log
+      )
     ax.set_title('train scores')
-    ax.legend(loc='upper center')
+    ax.legend(loc='lower left')
     ax.set_xlabel("Output score")
     ax.set_ylabel("arb. unit")
     ax.grid()
@@ -422,6 +498,12 @@ class model_sequential(model_base):
     self.xs_train, self.xs_test, self.xb_train, self.xb_test =\
     split_and_combine(self.xs_norm, self.xb_norm_reset_mass,
     test_rate=test_rate, shuffle_seed=rdm_seed)
+    self.xs_train_original_mass, self.xs_test_original_mass,\
+      self.xb_train_original_mass, self.xb_test_original_mass,\
+      self.xs_train_original_mass, self.xs_test_original_mass,\
+      self.xb_train_original_mass, self.xb_test_original_mass =\
+      split_and_combine(self.xs_norm, self.xb_norm,
+        test_rate=test_rate, shuffle_seed=rdm_seed)
     # select features used for training
     self.selected_features = selected_features
     self.x_train_selected = get_part_feature(self.x_train, selected_features)
@@ -432,6 +514,15 @@ class model_sequential(model_base):
     self.xb_test_selected = get_part_feature(self.xb_test, selected_features)
     self.xs_selected = get_part_feature(self.xs, selected_features)
     self.xb_selected = get_part_feature(self.xb, selected_features)
+    self.x_train_selected_original_mass = get_part_feature(self.x_train, selected_features)
+    self.x_test_selected_original_mass = get_part_feature(self.x_test, selected_features)
+    self.xs_train_selected_original_mass = get_part_feature(self.xs_train, selected_features)
+    self.xb_train_selected_original_mass = get_part_feature(self.xb_train, selected_features)
+    self.xs_test_selected_original_mass = get_part_feature(self.xs_test, selected_features)
+    self.xb_test_selected_original_mass = get_part_feature(self.xb_test, selected_features)
+    self.xs_selected_original_mass = get_part_feature(self.xs, selected_features)
+    self.xb_selected_original_mass = get_part_feature(self.xb, selected_features)
+
     self.array_prepared = True
     if verbose == 1:
       print("Training array prepared.")
@@ -497,7 +588,7 @@ class model_sequential(model_base):
       json.dump(paras_dict, write_file, indent=2)
 
   def show_performance(
-    self, figsize=(16, 9), show_fig=True,
+    self, figsize=(16, 12), show_fig=True,
     save_fig=False, save_path=None
     ):
     """Shortly reports training result.
@@ -511,13 +602,16 @@ class model_sequential(model_base):
     assert isinstance(self, model_base)
     print("Model performance:")
     # Plots
-    fig, ax = plt.subplots(nrows=2, ncols=3, figsize=figsize)
-    self.plot_train_scores(ax[0, 0])
-    self.plot_test_scores(ax[0, 1])
-    self.plot_train_test_roc(ax[0, 2])
-    self.plot_train_accuracy(ax[1, 0])
-    self.plot_train_loss(ax[1, 1])
-    self.plot_final_roc(ax[1, 2])
+    fig, ax = plt.subplots(nrows=3, ncols=3, figsize=figsize)
+    self.plot_accuracy(ax[0, 0])
+    self.plot_loss(ax[0, 1])
+    self.plot_train_scores(ax[1, 0])
+    self.plot_test_scores(ax[1, 1])
+    self.plot_train_test_roc(ax[1, 2])
+    self.plot_train_scores_original_mass(ax[2,0])
+    self.plot_test_scores_original_mass(ax[2,1])
+    
+    #self.plot_final_roc(ax[1, 2])
     '''
     train_bkg_dict = {'bkg': self.xb_train}
     test_bkg_dict = {'bkg': self.xb_test}
@@ -672,7 +766,7 @@ class Model_1002(model_sequential):
       validation_split=val_split,
       class_weight=self.class_weight,
       sample_weight=self.x_train[:, weight_id],
-      callbacks=[tb_callback],
+      callbacks=train_callbacks,
       verbose=verbose
       )
     print("Training finished.")

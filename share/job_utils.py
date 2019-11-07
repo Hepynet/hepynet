@@ -75,6 +75,8 @@ class job_executor(object):
         os.makedirs(save_dir)
       # set path to current os style, otherwise tf will report error
       self.save_tb_logs_path_subdir = os.path.normpath(save_dir)
+    else:
+      self.save_tb_logs_path_subdir = None
     self.model = getattr(model, self.model_class)(
       self.model_name, self.input_dim,
       learn_rate=self.learn_rate,
@@ -295,19 +297,7 @@ class job_executor(object):
     ptext = 'processor:' + platform.processor()
     reports.append(Paragraph(ptext, styles["Justify"]))
     reports.append(Spacer(1, 12))
-    # plots
-    ptext = "PERFORMANCE PLOTS:"
-    reports.append(Paragraph(ptext, styles["Justify"]))
-    ptext = "-" * 80
-    reports.append(Paragraph(ptext, styles["Justify"]))
-    fig = self.fig_performance_path
-    im = Image(fig, 6.4*inch, 3.6*inch)
-    reports.append(im)
-    fig = self.fig_non_mass_reset_path
-    im = Image(fig, 6.4*inch, 1.6*inch)
-    reports.append(im)
     # parameters
-    reports.append(PageBreak())
     ptext = "KEY PARAMETERS:"
     reports.append(Paragraph(ptext, styles["Justify"]))
     ptext = "-" * 80
@@ -363,7 +353,24 @@ class job_executor(object):
     reports.append(Paragraph(ptext, styles["Justify"]))
     ptext = "model saved path        :    " + str(self.model.model_save_path)
     reports.append(Paragraph(ptext, styles["Justify"]))
-
+    reports.append(Spacer(1, 12))
+    ptext = "[TensorBoard logs]"
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = "logs directory          :    " + str(self.save_tb_logs_path_subdir)
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    # plots
+    reports.append(PageBreak())
+    ptext = "PERFORMANCE PLOTS:"
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = "-" * 80
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    fig = self.fig_performance_path
+    im = Image(fig, 6.4*inch, 4.8*inch)
+    reports.append(im)
+    fig = self.fig_non_mass_reset_path
+    im = Image(fig, 6.4*inch, 1.6*inch)
+    reports.append(im)
+    
     # build/save
     doc.build(reports)
 
