@@ -1,7 +1,7 @@
 import numpy as np
 
-from lfv_pdnn_code_v1.common.common_utils import *
-from lfv_pdnn_code_v1.train.train_utils import *
+from lfv_pdnn.common.common_utils import *
+from lfv_pdnn.train.train_utils import *
 
 NEW_BKG_NAMES = ['di_boson', 'top_quark', 'w_jets', 'z_ll']
 NEW_MASS_MAP = [500, 2000]
@@ -72,7 +72,7 @@ def get_new_sig(data_path):
 
 def get_old_bkg(data_path):
   # Load
-  print("Loading new background array.")
+  print("Loading old background array.")
   xb_di_boson_old = np.load(data_path + '/tree_bkg1.npy')
   xb_drell_yan_old = np.load(data_path + '/tree_bkg2.npy')
   xb_top_quark_old = np.load(data_path + '/tree_bkg3.npy')
@@ -80,7 +80,7 @@ def get_old_bkg(data_path):
   xb_z_ll_old = np.load(data_path + '/tree_bkg5.npy')
   xb_old = np.concatenate((xb_di_boson_old, xb_drell_yan_old, xb_top_quark_old, xb_w_jets_old, xb_z_ll_old))
   # Organize with dict
-  print("Organizing new background with dict: xb_dict_old.")
+  print("Organizing old background with dict: xb_dict_old.")
   xb_dict_old = {}
   xb_dict_old['di_boson'] = xb_di_boson_old
   xb_dict_old['drell_yan'] = xb_drell_yan_old
@@ -109,7 +109,7 @@ def get_old_sig(data_path):
     xs_temp = np.load(data_path + '/rpv_{}GeV.npy'.format(mass))
     xs_add = np.concatenate((xs_add, xs_temp))
     xs_add_norm = modify_array(xs_add, weight_id=-1, norm=True)
-    # add to dict xs_dict_new
+    # add to dict xs_dict_old
     xs_dict_old['{}GeV'.format(mass)] = xs_add
     # add to full signals
     if xs_old is None:

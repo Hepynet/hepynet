@@ -6,7 +6,7 @@ import warnings
 import json
 import numpy as np
 
-from lfv_pdnn_code_v1.common import print_helper
+from lfv_pdnn.common import print_helper
 
 def clean_array(data, weight_id, verbose = False, remove_negative = False):
   """Removes elements with 0 weight
@@ -64,6 +64,12 @@ def dict_key_strtoint(json_data):
       pass
     correctedDict[key] = value
   return correctedDict
+
+
+def display_dict(input_dict):
+  """Print dict in a readable way."""
+  for key in list(input_dict.keys()):
+    print('*', key, ':', input_dict[key])
 
 
 def get_file_list(directory, search_pattern, out_name_pattern = "None"):
@@ -223,3 +229,4 @@ def read_dict_from_txt(file_path, key_type='str', value_type='str'):
           continue  # skip invalid value if value of key already exists
       dict_output[key] = value
   return dict_output
+

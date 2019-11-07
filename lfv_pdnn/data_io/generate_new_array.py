@@ -2,12 +2,12 @@ import datetime
 import sys
 sys.path.append("..") # add self-defined module in the parent pathS
 
-from lfv_pdnn_code_v1.make_array import make_array
-from lfv_pdnn_code_v1.make_array.make_array_utils import save_array
-from lfv_pdnn_code_v1.common.common_utils import get_file_list
+from lfv_pdnn.make_array import make_array
+from lfv_pdnn.make_array.make_array_utils import save_array
+from lfv_pdnn.common.common_utils import get_file_list
 
 input_parent_directory = "/eos/atlas/atlascerngroupdisk/phys-exotics/lpx/LFVZprime2018/MC"
-output_parent_directory = "/afs/cern.ch/work/y/yangz/public/lfv/lfv_pdnn_code_v1/run/array_output"\
+output_parent_directory = "/afs/cern.ch/work/y/yangz/public/lfv/lfv_pdnn/run/array_output"\
                           + datetime.date.today().strftime("%m_%d_%Y")
 
 # Build signal arrays

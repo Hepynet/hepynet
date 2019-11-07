@@ -7,13 +7,16 @@ import os
 import time
 import warnings
 
+import eli5
+from eli5.sklearn import PermutationImportance
 import keras
 from keras import backend as K
+from keras.callbacks import TensorBoard
 from keras.models import Sequential, Model
 from keras.layers import Concatenate, Dense, Input, Layer
 from keras.layers.normalization import BatchNormalization
 from keras.optimizers import Adagrad, SGD, RMSprop, Adam
-from keras.wrappers.scikit_learn import KerasClassifier
+from keras.wrappers.scikit_learn import KerasClassifier, KerasRegressor
 import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.metrics import roc_curve, auc
@@ -118,8 +121,14 @@ class model_sequential(model_base):
   
   """
 
-  def __init__(self, name, input_dim, num_node = 300, learn_rate = 0.025, 
-               decay = 1e-6):
+  def __init__(
+    self, name,
+    input_dim, num_node=300,
+    learn_rate=0.025, 
+    decay=1e-6,
+    metrics=['plain_acc'],
+    weighted_metrics=['accuracy']
+    ):
     """Initialize model."""
     model_base.__init__(self, name)
     # Model parameters
@@ -128,6 +137,12 @@ class model_sequential(model_base):
     self.model_learn_rate = learn_rate
     self.model_decay = decay
     self.model = Sequential()
+    if 'plain_acc' in metrics:
+      metrics[metrics.index('plain_acc')] = plain_acc
+    if 'plain_acc' in weighted_metrics:
+      weighted_metrics[weighted_metrics.index('plain_acc')] = plain_acc
+    self.metrics = metrics
+    self.weighted_metrics = weighted_metrics
     # Arrays
     self.array_prepared = False
     self.x_train = np.array([])
@@ -535,14 +550,28 @@ class Model_1002(model_sequential):
     2. Use normalized data for training.
   
   """
-  def __init__(self, name, input_dim, num_node=400, learn_rate=0.02, 
-               decay=1e-6):
-    model_sequential.__init__(self, name, input_dim, num_node=num_node, 
-                              learn_rate=learn_rate, decay=decay)
+  def __init__(
+    self, name,
+    input_dim, num_node=400,
+    learn_rate=0.02, decay=1e-6,
+    metrics=['plain_acc'],
+    weighted_metrics=['accuracy'],
+    save_tb_logs=False,
+    tb_logs_path=None
+    ):
+    model_sequential.__init__(
+      self, name,
+      input_dim, num_node=num_node, 
+      learn_rate=learn_rate, decay=decay,
+      metrics=metrics,
+      weighted_metrics=weighted_metrics
+      )
     self.model_label = "mod1002"
     self.model_note = "Sequential model optimized with old ntuple"\
                       + " at Oct. 2rd 2019"\
                       + " to deal with training with full bkg mass."
+    self.save_tb_logs=save_tb_logs
+    self.tb_logs_path=tb_logs_path
 
   def compile(self):
     """ Compile model, function to be changed in the future."""
@@ -584,8 +613,12 @@ class Model_1002(model_sequential):
                          activation="sigmoid"))
     # Compile
     self.model.compile(loss="binary_crossentropy", 
-                       optimizer=SGD(lr=self.model_learn_rate, 
-                       decay=self.model_decay), metrics=[plain_acc], weighted_metrics=["accuracy"])
+      optimizer=SGD(
+        lr=self.model_learn_rate, 
+        decay=self.model_decay),
+        metrics=self.metrics,
+        weighted_metrics=self.weighted_metrics
+        )
     self.model_is_compiled = True
 
 
@@ -622,14 +655,26 @@ class Model_1002(model_sequential):
     # Train
     print("Training start. Using model:", self.model_name)
     print("Model info:", self.model_note)
-
     self.class_weight = {1:sig_class_weight, 0:bkg_class_weight}
-
-    self.train_history = self.get_model().fit(self.x_train_selected,
-                         self.y_train, batch_size=batch_size,
-                         epochs=epochs, validation_split=val_split,
-                         sample_weight=self.x_train[:, weight_id],
-                         verbose=verbose, class_weight=self.class_weight)
+    train_callbacks = []
+    if self.save_tb_logs:
+      if self.tb_logs_path is None:
+        self.tb_logs_path = "temp_logs/{}".format(self.model_label)
+        warnings.warn("TensorBoard logs path not specified, \
+          set path to: {}".format(self.tb_logs_path))
+      tb_callback = TensorBoard(log_dir=self.tb_logs_path, histogram_freq=1)
+      train_callbacks.append(tb_callback)
+    self.train_history = self.get_model().fit(
+      self.x_train_selected,
+      self.y_train,
+      batch_size=batch_size,
+      epochs=epochs,
+      validation_split=val_split,
+      class_weight=self.class_weight,
+      sample_weight=self.x_train[:, weight_id],
+      callbacks=[tb_callback],
+      verbose=verbose
+      )
     print("Training finished.")
     # Quick evaluation
     print("Quick evaluation:")
@@ -668,10 +713,23 @@ class Model_1016(Model_1002):
     1. Change structure to make quantity of nodes decrease with layer num.
   
   """
-  def __init__(self, name, input_dim, num_node=400, learn_rate=0.02, 
-               decay=1e-6):
-    model_sequential.__init__(self, name, input_dim, num_node=num_node, 
-                              learn_rate=learn_rate, decay=decay)
+  def __init__(
+    self, name,
+    input_dim, num_node=400,
+    learn_rate=0.02, decay=1e-6,
+    metrics=['plain_acc'],
+    weighted_metrics=['accuracy'],
+    save_tb_logs=False,
+    tb_logs_path=None
+    ):
+    Model_1002.__init__(
+      self, name,
+      input_dim, num_node=num_node,
+      learn_rate=learn_rate, decay=decay,
+      metrics=metrics,
+      weighted_metrics=weighted_metrics,
+      save_tb_logs=save_tb_logs,
+      tb_logs_path=tb_logs_path)
     self.model_label = "mod1016"
     self.model_note = "New model structure based on 1002's model"\
                       + " at Oct. 16th 2019"\
@@ -713,8 +771,14 @@ class Model_1016(Model_1002):
     self.model.add(Dense(1, kernel_initializer="glorot_uniform", 
                          activation="sigmoid"))
     # Compile
-    self.model.compile(loss="binary_crossentropy", 
-                       optimizer=SGD(lr=self.model_learn_rate, 
-                       decay=self.model_decay, momentum=0.5, nesterov=True),
-                       metrics=[plain_acc], weighted_metrics=["accuracy"])
+    self.model.compile(
+      loss="binary_crossentropy", 
+      optimizer=SGD(
+        lr=self.model_learn_rate, 
+        decay=self.model_decay,
+        momentum=0.5, nesterov=True
+        ),
+      metrics=self.metrics,
+      weighted_metrics=self.weighted_metrics
+      )
     self.model_is_compiled = True

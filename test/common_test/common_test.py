@@ -3,7 +3,7 @@ import sys
 sys.path.append("..") # add self-defined module in the parent path
 sys.path.append("../..") # add self-defined module in the parent path
 
-from lfv_pdnn_code_v1.common import common_utils
+from lfv_pdnn.common import common_utils
 
 print("*" * 80)
 print("tests read_dict_from_txt")

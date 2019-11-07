@@ -14,10 +14,11 @@ from reportlab.platypus import Image, PageBreak, Paragraph, Spacer, SimpleDocTem
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 
-from lfv_pdnn_code_v1.data_io.get_arrays import *
-from lfv_pdnn_code_v1.train import model
-from lfv_pdnn_code_v1.train.train_utils import get_input_array
+from lfv_pdnn.data_io.get_arrays import *
+from lfv_pdnn.train import model
+from lfv_pdnn.train.train_utils import get_input_array
 
+SCANNED_PARAS = ['scan_learn_rate', 'scan_learn_rate_decay']
 
 class job_executor(object):
   """Core class to execute a pdnn job based on given cfg file."""
@@ -26,49 +27,14 @@ class job_executor(object):
     """Initialize executor."""
     # general
     self.job_create_time = str(datetime.datetime.now())
+    self.datestr = datetime.date.today().strftime("%Y-%m-%d")
     self.cfg_path = input_path
     self.cfg_is_collected = False
     self.array_is_loaded = False
     self.scan_para_dict = {}
-    # [job] section
-    self.job_name = None
-    # [array] section
-    self.arr_version = None
-    self.bkg_dict_path = None
-    self.bkg_key = None
-    self.bkg_sumofweight = None
-    self.sig_dict_path = None
-    self.sig_key = None
-    self.sig_sumofweight = None
-    self.selected_features = None
-    self.input_dim = None
-    self.channel_id = None
-    # [model] section
-    self.model_name = None
-    self.model_class = None
-    self.learn_rate = None
-    self.learn_rate_decay = None
-    self.test_rate = None
-    self.batch_size = None
-    self.epochs = None
-    self.val_split = None
-    self.sig_class_weight = None
-    self.bkg_class_weight = None
-    self.save_model = None
-    self.save_model_path = None
-    # [para_scan] section
-    self.perform_para_scan = None
-    self.para_scan_cfg = None
-    self.scan_learn_rate = None
-    # [report] section
-    self.plot_bkg_list = None
-    self.show_report = None
-    self.save_pdf_report = None
-    self.save_pdf_path = None
-    self.verbose = None
-
     # [scanned_para] section
-    self.scan_learn_rate = []
+    for para_name in SCANNED_PARAS:
+      setattr(self, para_name, [])
 
   def execute_jobs(self):
     """Execute all planned jobs."""
@@ -80,9 +46,11 @@ class job_executor(object):
     print('*' * 80)
     print("Executing parameters scanning.")
     scan_list = self.get_scan_para_list()
+
     for scan_set in scan_list:
       print('*' * 80)
-      print("Scanning parameter set:", scan_set)
+      print("Scanning parameter set:")
+      display_dict(scan_set)
       keys = list(scan_set.keys())
       for key in keys:
         setattr(self, key, scan_set[key])
@@ -90,6 +58,7 @@ class job_executor(object):
 
   def execute_single_job(self):
     """Execute single DNN training with given configuration."""
+    # Prepare
     if not self.cfg_is_collected:
       self.get_config()
     if not self.array_is_loaded:
@@ -98,11 +67,24 @@ class job_executor(object):
       self.sig_dict, '500GeV',
       self.bkg_dict, 'all', -4
       ) # -4 for emu
+    if self.save_tb_logs:
+      path_pattern = self.save_tb_logs_path + '/' + self.datestr + '_'\
+        + self.job_name + '_run{}'
+      save_dir = get_newest_file_version(path_pattern)['path']
+      if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+      # set path to current os style, otherwise tf will report error
+      self.save_tb_logs_path_subdir = os.path.normpath(save_dir)
     self.model = getattr(model, self.model_class)(
       self.model_name, self.input_dim,
       learn_rate=self.learn_rate,
-      decay=self.learn_rate_decay
+      decay=self.learn_rate_decay,
+      metrics=self.train_metrics,
+      weighted_metrics=self.train_metrics_weighted,
+      save_tb_logs=self.save_tb_logs,
+      tb_logs_path=self.save_tb_logs_path_subdir
       )
+    # Set up training
     self.model.prepare_array(
       xs, xb, self.selected_features,
       self.channel_id,
@@ -120,6 +102,7 @@ class job_executor(object):
       bkg_class_weight=self.bkg_class_weight,
       verbose=self.verbose
       )
+    # Logs
     if self.show_report or self.save_pdf_report:
       # Performance plots
       self.fig_performance_path = None
@@ -127,32 +110,20 @@ class job_executor(object):
       self.report_path = None
       # setup save parameters if reports need to be saved
       fig_save_path = None
-      datestr = datetime.date.today().strftime("%Y-%m-%d")
-
-      """
-      save_dir = self.save_pdf_path + '/' + datestr + '_' + self.job_name
-      if self.save_pdf_report:
-        if not os.path.exists(save_dir):
-          os.makedirs(save_dir)
-        fig_save_path = save_dir + '/' + self.job_name \
-          + '_performance_' + datestr + '.png'
-      """
       path_pattern = None
       save_dir = None
       if self.perform_para_scan:
-        path_pattern = self.save_pdf_path + '/' + datestr + '_' + self.job_name\
-          + '_scan{}'
+        path_pattern = self.save_pdf_path + '/' + self.datestr + '_'\
+          + self.job_name + '_scan{}'
         save_dir = get_newest_file_version(path_pattern, n_digit=3)['path']
       else:
-        path_pattern = self.save_pdf_path + '/' + datestr + '_' + self.job_name\
-          + '_v{}'
+        path_pattern = self.save_pdf_path + '/' + self.datestr + '_'\
+          + self.job_name + '_v{}'
         save_dir = get_newest_file_version(path_pattern)['path']
-      
       if not os.path.exists(save_dir):
           os.makedirs(save_dir)
       fig_save_path = save_dir + '/' + self.job_name \
-        + '_performance_' + datestr + '.png'
-
+        + '_performance_' + self.datestr + '.png'
       self.fig_performance_path = fig_save_path
       # show and save according to setting
       self.model.show_performance(
@@ -164,26 +135,26 @@ class job_executor(object):
       fig, ax = plt.subplots(ncols=2, figsize=(16, 4))
       self.model.plot_scores_separate(
         ax[0], self.plot_bkg_dict, self.plot_bkg_list, self.selected_features,
-        plot_title='training scores (lin)', bins=40, range=(-0.25, 1.25),
+        plot_title='training scores', bins=40, range=(-0.25, 1.25),
         density=True, log=False
         )
       self.model.plot_scores_separate(
         ax[1], self.plot_bkg_dict, self.plot_bkg_list, self.selected_features,
-        plot_title='training scores (log)', bins=40, range=(-0.25, 1.25),
+        plot_title='training scores', bins=40, range=(-0.25, 1.25),
         density=True, log=True
         )
-      if self.save_model:
-        mod_save_path = self.save_model_path
-        self.model.save_model(save_dir=mod_save_path)
       if self.save_pdf_report:
         fig_save_path = save_dir + '/' + self.job_name \
-            + '_non-mass-reset_' + datestr + '.png'
+            + '_non-mass-reset_' + self.datestr + '.png'
         fig.savefig(fig_save_path)
         self.fig_non_mass_reset_path = fig_save_path
         pdf_save_path = save_dir + '/' + self.job_name \
-          + '_report_' + datestr + '.pdf'
+          + '_report_' + self.datestr + '.pdf'
         self.generate_report(pdf_save_path=pdf_save_path)
         self.report_path = pdf_save_path
+    if self.save_model:
+      mod_save_path = self.save_model_path
+      self.model.save_model(save_dir=mod_save_path)
 
   def get_config(self, path=None):
     """Retrieves configurations from ini file."""
@@ -231,6 +202,8 @@ class job_executor(object):
     self.try_parse_float('val_split', config, 'model', 'val_split')
     self.try_parse_float('sig_class_weight', config, 'model', 'sig_class_weight')
     self.try_parse_float('bkg_class_weight', config, 'model', 'bkg_class_weight')
+    self.try_parse_list('train_metrics', config, 'model', 'train_metrics')
+    self.try_parse_list('train_metrics_weighted', config, 'model', 'train_metrics_weighted')
     self.try_parse_bool('save_model', config, 'model', 'save_model')
     self.try_parse_str('save_model_path', config, 'model', 'save_model_path')
     # Load [para_scan]
@@ -241,6 +214,8 @@ class job_executor(object):
     self.try_parse_bool('show_report', config, 'report', 'show_report')
     self.try_parse_bool('save_pdf_report', config, 'report', 'save_pdf_report')
     self.try_parse_str('save_pdf_path', config, 'report', 'save_pdf_path')
+    self.try_parse_bool('save_tb_logs', config, 'report', 'save_tb_logs')
+    self.try_parse_str('save_tb_logs_path', config, 'report', 'save_tb_logs_path')
     self.try_parse_int('verbose', config, 'report', 'verbose')
 
     if self.perform_para_scan:
@@ -254,14 +229,14 @@ class job_executor(object):
     valid_cfg_path = get_valid_cfg_path(self.para_scan_cfg)
     config.read(valid_cfg_path)
     # get available scan variables:
-    self.try_parse_list('scan_learn_rate', config, 'scanned_para', 'scan_learn_rate')
+    for para in SCANNED_PARAS:
+      self.try_parse_list(para, config, 'scanned_para', para)
 
   def get_scan_para_list(self):
     """Gets a list of dictionary to reset parameters for new scan job."""
-    scan_para_names = ['scan_learn_rate']
     used_para_lists = []
     used_para_names = []
-    for para_name in scan_para_names:
+    for para_name in SCANNED_PARAS:
       scanned_values = getattr(self, para_name)
       if len(scanned_values) > 0:
         used_para_names.append(para_name)
@@ -272,20 +247,24 @@ class job_executor(object):
       scan_dict_single = {}
       for (key, value) in zip(used_para_names, comb):
         scan_dict_single[key] = value
-        scan_list.append(scan_dict_single)
-    print("[debug]: scan_list:", scan_list)
+      scan_list.append(scan_dict_single)
     if len(scan_list) < 1:
       raise ValueError("Empty scan parameter list, please check .ini file.")
+    # Summary
+    print("Scan parameters list loaded.")
+    print("Scaned parameters are:")
+    for (para_name, para_list) in zip(used_para_names, used_para_lists):
+      print('*', para_name, ':', para_list)
+    print("Total combinations/scans:", len(scan_list))
     return scan_list
 
   def generate_report(self, pdf_save_path=None):
     """Generate a brief report to show how is the model."""
     # Initalize
     if pdf_save_path is None:
-      datestr = datetime.date.today().strftime("%Y-%m-%d")
-      save_dir = self.save_pdf_path + '/' + datestr + '_' + self.job_name
+      save_dir = self.save_pdf_path + '/' + self.datestr + '_' + self.job_name
       pdf_save_path = save_dir + '/' + self.job_name \
-        + '_report_' + datestr + '.pdf'
+        + '_report_' + self.datestr + '.pdf'
     doc = SimpleDocTemplate(
       pdf_save_path, pagesize=letter,
       rightMargin=72, leftMargin=72, topMargin=72, bottomMargin=18
@@ -422,31 +401,39 @@ class job_executor(object):
     try:
       setattr(self, parsed_val, config_parse.getboolean(section, val_name))
     except:
-      pass
+      if not hasattr(self, parsed_val):
+        setattr(self, parsed_val, None)
 
   def try_parse_float(self, parsed_val, config_parser, section, val_name):
     try:
       setattr(self, parsed_val, config_parser.getfloat(section, val_name))
     except:
-      pass
+      if not hasattr(self, parsed_val):
+        setattr(self, parsed_val, None)
 
   def try_parse_int(self, parsed_val, config_parser, section, val_name):
     try:
       setattr(self, parsed_val, config_parser.getint(section, val_name))
     except:
-      pass
+      if not hasattr(self, parsed_val):
+        setattr(self, parsed_val, None)
 
   def try_parse_str(self, parsed_val, config_parser, section, val_name):
     try:
       setattr(self, parsed_val, config_parser.get(section, val_name))
     except:
-      pass
+      if not hasattr(self, parsed_val):
+        setattr(self, parsed_val, None)
 
   def try_parse_list(self, parsed_val, config_parser, section, val_name):
     try:
-      setattr(self, parsed_val, json.loads(config_parser.get(section, val_name)))
+      value = json.loads(config_parser.get(section, val_name))
+      if not isinstance(value, list):
+        value = [value]
+      setattr(self, parsed_val, value)
     except:
-      pass
+      if not hasattr(self, parsed_val):
+        setattr(self, parsed_val, None)
 
 
 def get_valid_cfg_path(path):
