@@ -4,7 +4,7 @@ import sys
 # Show tensorflow warnings and errors only
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
 
-from share.job_utils import *
+from lfv_pdnn.train.job_utils import *
 
 def main():
   argv_len = len(sys.argv)

@@ -5,7 +5,23 @@ from lfv_pdnn.train.train_utils import *
 
 NEW_BKG_NAMES = ['di_boson', 'top_quark', 'w_jets', 'z_ll']
 NEW_MASS_MAP = [500, 2000]
-OLD_MASS_MAP = [500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000, 2200, 2400, 2600, 2800, 3000, 3500, 4000, 4500, 5000]
+OLD_MASS_MAP = [
+  500, 600, 700, 800, 900,
+  1000, 1100, 1200, 1300, 1400,
+  1500, 1600, 1700, 1800, 1900,
+  2000, 2200, 2400, 2600, 2800,
+  3000, 3500, 4000, 4500, 5000
+  ]
+
+OLD_FEATURE_NAMES = np.array([
+  'll_m',
+  'e_pt', 'e_eta', 'e_phi', 'e_m',
+  'mu_pt', 'mu_eta', 'mu_phi', 'mu_m',
+  'tau_pt', 'tau_eta', 'tau_phi', 'tau_m',
+  'nu_e', 'nu_phi',
+  'll_pt', 'll_eta', 'll_phi', 'll_dphi', 'll_dr',
+  'is_emu', 'is_etau', 'is_mutau', 'weight'
+  ])
 
 def get_new_bkg(data_path):
   # Load

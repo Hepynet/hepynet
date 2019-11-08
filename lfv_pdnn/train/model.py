@@ -17,14 +17,14 @@ from keras.layers import Concatenate, Dense, Input, Layer
 from keras.layers.normalization import BatchNormalization
 from keras.optimizers import Adagrad, SGD, RMSprop, Adam
 from keras.wrappers.scikit_learn import KerasClassifier, KerasRegressor
-import matplotlib.pyplot as plot_test_scores
+import matplotlib.pyplot as plt
 from matplotlib.ticker import NullFormatter, FixedLocator
 import numpy as np
 from sklearn.metrics import roc_curve, auc
 
-from ..common.common_utils import *
-from . import train_utils 
-from .train_utils import *
+from lfv_pdnn.common.common_utils import *
+from lfv_pdnn.data_io import get_arrays
+from lfv_pdnn.train.train_utils import *
 
 # self-difined metrics functions
 def plain_acc(y_true, y_pred):
@@ -34,7 +34,7 @@ def plain_acc(y_true, y_pred):
 class model_base(object):
   """Base model of deep neural network for pdnn training.
   
-  Attributes:
+  Atfeature_listibutes:
     model_create_time: datetime.datetime
       Time stamp of model object created time.
     model_is_compiled: bool
@@ -168,6 +168,18 @@ class model_sequential(model_base):
     self.xb_train_original_mass = np.array([])
     self.xb_test_original_mass = np.array([])
   
+  def calculate_auc(self, xs, xb, class_weight=None, shuffle_col=None):
+    """Returns auc of given sig/bkg array."""
+    x_plot, y_plot, y_pred = self.process_array(
+      xs, xb, class_weight=class_weight,
+      shuffle_col=shuffle_col
+    )
+    fpr_dm, tpr_dm, threshold = roc_curve(y_plot, y_pred,
+      sample_weight=x_plot[:,-1])
+    # Calculate auc and return
+    auc_value = auc(fpr_dm, tpr_dm)
+    return auc_value
+
   def compile(self):
     pass
 
@@ -238,6 +250,7 @@ class model_sequential(model_base):
 
   def plot_accuracy(self, ax):
     """Plots accuracy vs training epoch."""
+    print("Plotting accuracy curve.")
     # Plot
     ax.plot(self.train_history_accuracy)
     ax.plot(self.train_history_val_accuracy)
@@ -259,11 +272,54 @@ class model_sequential(model_base):
     ax.text(0.5, 0.6, auc_text, transform=ax.transAxes, fontsize=10,
       verticalalignment='top', bbox=props)
 
+  def plot_feature_importance(self, ax):
+    """Calculates importance of features and sort the feature.
+    
+    Definition of feature importance used here can be found in:
+    https://christophm.github.io/interpretable-ml-book/feature-importance.html#feature-importance-data
+
+    """
+    print("Plotting feature importance.")
+    # Prepare
+    num_feature = len(self.selected_features)
+    selected_feature_names = get_arrays.OLD_FEATURE_NAMES[self.selected_features]
+    feature_importance = np.zeros(num_feature)
+    xs = self.xs_test_original_mass
+    xb = self.xb_test_original_mass
+    base_auc = self.calculate_auc(
+      xs, xb,
+      class_weight=self.class_weight
+      )
+    print("base auc:", base_auc)
+    # Calculate importance
+    for num, feature_name in enumerate(selected_feature_names):
+      current_auc = self.calculate_auc(
+          xs, xb, class_weight=self.class_weight,
+          shuffle_col= self.selected_features[num]
+        )
+      #current_auc = 1
+      feature_importance[num] = (1 - current_auc) / (1 - base_auc)
+      print(feature_name, ":", feature_importance[num])
+    # Sort
+    sort_list = np.flip(np.argsort(feature_importance))
+    sorted_importance = feature_importance[sort_list]
+    sorted_names = selected_feature_names[sort_list]
+    # Plot
+    ax.bar(
+      np.arange(num_feature), sorted_importance,
+      align='center', alpha=0.5
+      )
+    ax.axhline(1, ls='--', color='r')
+    ax.set_title("feature importance")
+    ax.set_xticks(np.arange(num_feature))
+    ax.set_xticklabels(sorted_names)
+
   def plot_final_roc(self, ax):
     """Plots roc curve for to check final training result on original samples.
     (backgound sample mass not reset according to signal)
 
     """
+    print("Plotting final roc curve.")
      # Check
     if not self.model_is_trained:
       warnings.warn("Model is not trained yet.")
@@ -281,6 +337,7 @@ class model_sequential(model_base):
 
   def plot_loss(self, ax):
     """Plots loss vs training epoch."""
+    print("Plotting loss curve.")
     #Plot
     ax.plot(self.train_history_loss)
     ax.plot(self.train_history_val_loss)
@@ -294,17 +351,9 @@ class model_sequential(model_base):
   def plot_roc(self, ax, xs, xb, class_weight=None):
     """Plots roc curve on given axes."""
     # Get data
-    xs_plot = xs.copy()
-    xb_plot = xb.copy()
-    if class_weight is not None:
-      xs_plot[:,-1] = xs_plot[:,-1] * class_weight[1]
-      xb_plot[:,-1] = xb_plot[:,-1] * class_weight[0]
-    xs_selected = get_part_feature(xs, self.selected_features)
-    xb_selected = get_part_feature(xb, self.selected_features)
-    x_plot = np.concatenate((xs_plot, xb_plot))
-    x_plot_selected = np.concatenate((xs_selected, xb_selected))
-    y_plot = np.concatenate((np.ones(xs_plot.shape[0]), np.zeros(xb_plot.shape[0])))
-    y_pred = self.get_model().predict(x_plot_selected)
+    x_plot, y_plot, y_pred = self.process_array(
+      xs, xb, class_weight=class_weight
+    )
     fpr_dm, tpr_dm, threshold = roc_curve(y_plot, y_pred,
       sample_weight=x_plot[:,-1])
     # Make plots
@@ -321,6 +370,7 @@ class model_sequential(model_base):
 
   def plot_train_test_roc(self, ax):
     """Plots roc curve."""
+    print("Plotting train/test roc curve.")
     # Check
     if not self.model_is_trained:
       warnings.warn("Model is not trained yet.")
@@ -351,15 +401,16 @@ class model_sequential(model_base):
 
   def plot_test_scores(
     self, ax,
-    bins=100, range=(-0.25, 1.25), density=True, log=True
+    title = "test scores", bins=100, range=(-0.25, 1.25),
+    density=True, log=True
     ):
     """Plots training score distribution for siganl and background."""
+    print("Plotting test scores.")
     self.plot_scores(
       ax,
       self.xb_test_selected, self.xb_test[:, -1],
       self.xs_test_selected, self.xs_test[:, -1],
-      title = "test scores", bins=bins, range=range,
-      density=density, log=log
+      title=title, bins=bins, range=range, density=density, log=log
     )
 
   def plot_test_scores_original_mass(
@@ -368,11 +419,12 @@ class model_sequential(model_base):
     density=True, log=True
     ):
     """Plots training score distribution for siganl and background."""
+    print("Plotting test scores with original mass.")
     self.plot_scores(
       ax,
       self.xb_test_selected_original_mass, self.xb_test_original_mass[:, -1],
       self.xs_test_selected_original_mass, self.xs_test_original_mass[:, -1],
-      bins=bins, range=range, density=density, log=log
+      title=title, bins=bins, range=range, density=density, log=log
     )
 
   def plot_train_scores(
@@ -381,11 +433,12 @@ class model_sequential(model_base):
     density=True, log=True
     ):
     """Plots training score distribution for siganl and background."""
+    print("Plotting train scores.")
     self.plot_scores(
       ax,
       self.xb_train_selected, self.xb_train[:, -1],
       self.xs_train_selected, self.xs_train[:, -1],
-      bins=bins, range=range, density=density, log=log
+      title=title, bins=bins, range=range, density=density, log=log
     )
 
   def plot_train_scores_original_mass(
@@ -394,11 +447,12 @@ class model_sequential(model_base):
     density=True, log=True
     ):
     """Plots training score distribution for siganl and background."""
+    print("Plotting train scores with original mass.")
     self.plot_scores(
       ax,
       self.xb_train_selected_original_mass, self.xb_train_original_mass[:, -1],
       self.xs_train_selected_original_mass, self.xs_train_original_mass[:, -1],
-     bins=bins, range=range, density=density, log=log
+      title=title, bins=bins, range=range, density=density, log=log
     )
 
   def plot_scores(
@@ -431,6 +485,7 @@ class model_sequential(model_base):
                            sig_arr=None, sig_weights=None, plot_title='all input scores',
                            bins=40, range=(-0.25, 1.25), density=True, log=False):
     """Plots training score distribution for different background."""
+    print("Plotting scores with bkg separated.")
     predict_arr_list = []
     predict_arr_weight_list = []
 
@@ -529,6 +584,24 @@ class model_sequential(model_base):
       print("> signal shape:", self.xs_selected.shape)
       print("> background shape:", self.xb_selected.shape)
 
+  def process_array(self, xs, xb, class_weight=None, shuffle_col=None):
+    """Process sig/bkg arrays in the same way for training arrays."""
+    # Get data
+    xs_proc = xs.copy()
+    xb_proc = xb.copy()
+    if class_weight is not None:
+      xs_proc[:,-1] = xs_proc[:,-1] * class_weight[1]
+      xb_proc[:,-1] = xb_proc[:,-1] * class_weight[0]
+    x_proc = np.concatenate((xs_proc, xb_proc))
+    if shuffle_col is not None:
+      x_proc = reset_col(x_proc, x_proc, shuffle_col, weight_id=-1)
+    x_proc_selected = get_part_feature(x_proc, self.selected_features)
+    y_proc = np.concatenate(
+      (np.ones(xs_proc.shape[0]), np.zeros(xb_proc.shape[0]))
+      )
+    y_pred = self.get_model().predict(x_proc_selected)
+    return x_proc, y_proc, y_pred
+
   def save_model(self, save_dir=None, file_name=None):
     """Saves trained model.
     
@@ -588,7 +661,7 @@ class model_sequential(model_base):
       json.dump(paras_dict, write_file, indent=2)
 
   def show_performance(
-    self, figsize=(16, 12), show_fig=True,
+    self, figsize=(16, 18), show_fig=True,
     save_fig=False, save_path=None
     ):
     """Shortly reports training result.
@@ -602,14 +675,15 @@ class model_sequential(model_base):
     assert isinstance(self, model_base)
     print("Model performance:")
     # Plots
-    fig, ax = plt.subplots(nrows=3, ncols=3, figsize=figsize)
+    fig, ax = plt.subplots(nrows=4, ncols=2, figsize=figsize)
     self.plot_accuracy(ax[0, 0])
     self.plot_loss(ax[0, 1])
-    self.plot_train_scores(ax[1, 0])
-    self.plot_test_scores(ax[1, 1])
-    self.plot_train_test_roc(ax[1, 2])
-    self.plot_train_scores_original_mass(ax[2,0])
-    self.plot_test_scores_original_mass(ax[2,1])
+    self.plot_train_test_roc(ax[1, 0])
+    self.plot_feature_importance(ax[1, 1])
+    self.plot_train_scores(ax[2, 0])
+    self.plot_test_scores(ax[2, 1])
+    self.plot_train_scores_original_mass(ax[3,0])
+    self.plot_test_scores_original_mass(ax[3,1])
     
     #self.plot_final_roc(ax[1, 2])
     '''

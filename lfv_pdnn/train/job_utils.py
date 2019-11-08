@@ -145,6 +145,7 @@ class job_executor(object):
         plot_title='training scores', bins=40, range=(-0.25, 1.25),
         density=True, log=True
         )
+      fig.tight_layout()
       if self.save_pdf_report:
         fig_save_path = save_dir + '/' + self.job_name \
             + '_non-mass-reset_' + self.datestr + '.png'
@@ -365,7 +366,7 @@ class job_executor(object):
     ptext = "-" * 80
     reports.append(Paragraph(ptext, styles["Justify"]))
     fig = self.fig_performance_path
-    im = Image(fig, 6.4*inch, 4.8*inch)
+    im = Image(fig, 6.4*inch, 7.2*inch)
     reports.append(im)
     fig = self.fig_non_mass_reset_path
     im = Image(fig, 6.4*inch, 1.6*inch)

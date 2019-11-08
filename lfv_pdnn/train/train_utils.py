@@ -35,9 +35,9 @@ def get_input_array(sig_dict, sig_key, bkg_dict, bkg_key, channel_id,
   return xs, xb
 
 
-def get_part_feature(xtrain, nf):
+def get_part_feature(xtrain, feature_id_list):
   """Gets sub numpy array using given column index"""
-  xtrain = xtrain[:,nf]
+  xtrain = xtrain[:,feature_id_list]
   return xtrain
 
 
@@ -291,15 +291,21 @@ def prep_mass_fast(xbtrain, xstrain, mass_id=0, shuffle_seed=None):
       new background array with mass distribution reset
 
   """
+  new =  reset_col(xbtrain, xstrain, col=mass_id, weight_id=-1, shuffle_seed=None)
+  return new
+
+
+def reset_col(reset_array, ref_array, col=0, weight_id=-1, shuffle_seed=None):
+  """Resets one column in an array based on the distribution of refference."""
   if has_none([shuffle_seed]):
     shuffle_seed = int(time.time())
   np.random.seed(shuffle_seed)
-  new = xbtrain.copy()
+  new = reset_array.copy()
   total_events = len(new)
-  sump = sum(xstrain[:, -1])
-  mass_list = np.random.choice(xstrain[:, mass_id], size=total_events, p=1/sump*xstrain[:, -1])
+  sump = sum(ref_array[:, weight_id])
+  reset_list = np.random.choice(ref_array[:, col], size=total_events, p=1/sump*ref_array[:, -1])
   for count, entry in enumerate(new):
-    entry[mass_id] = mass_list[count]
+    entry[col] = reset_list[count]
   return new
 
 
