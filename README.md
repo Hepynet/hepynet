@@ -64,13 +64,9 @@ To install newest version(recommended), use pip:
 ```shell
 > conda install -n pdnn scikit-learn
 ```
-* pandas (optional)
+* eli5
 ```shell
-> conda install -n pdnn pandas
-```
-* jupyter lab
-```shell
-> conda install -n pdnn jupyterlab
+> conda install -n pdnn -c conda-forge eli5
 ```
 * ConfigParser
 ```shell
@@ -84,7 +80,15 @@ To install newest version(recommended), use pip:
 ```shell
 > conda install -n pdnn conda-build
 ```
-    
+* pandas (optional)
+```shell
+> conda install -n pdnn pandas
+```
+* jupyter lab (optional)
+```shell
+> conda install -n pdnn jupyterlab
+```
+
 ### System:
 * Work on Linux, Windows and WSL ([Windows Subsystem for Linux](https://docs.microsoft.com/en-us/windows/wsl/install-win10))  
 If run on Win10 OS, the make_array module and train module can't work together due the conflct of x86/x64 instruction set.
