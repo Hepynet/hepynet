@@ -475,7 +475,7 @@ class model_sequential(model_base):
       bins=bins, range=range, histtype='step', label='sig',
       density=True, log=log
       )
-    ax.set_title('train scores')
+    ax.set_title(title)
     ax.legend(loc='lower left')
     ax.set_xlabel("Output score")
     ax.set_ylabel("arb. unit")
