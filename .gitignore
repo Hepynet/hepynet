@@ -1,0 +1,21 @@
+# Don't track content of these folders
+
+# Temparary folders
+backups/*
+test/*
+run/results/*
+lfv_pdnn.egg-info/*
+env_setup/*
+
+# Side files that are not needed to be saved #
+*.pyc
+*.bak
+*.ipynb_checkpoints*
+
+
+# Output data (local only)
+*.json
+*.h5
+
+
+# Packages #

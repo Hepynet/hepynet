@@ -4,8 +4,8 @@ import os
 import numpy as np
 import ROOT
 
-from lfv_pdnn_code_v1.common import print_helper
-from lfv_pdnn_code_v1.common.observable_cal import delta_phi
+from lfv_pdnn.common import print_helper
+from lfv_pdnn.common.observable_cal import delta_phi
 
 # root_vector_double = vector('double')()
 # _length_const = 24

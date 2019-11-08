@@ -3,19 +3,19 @@ import warnings
 import numpy as np
 import ROOT
 
-from lfv_pdnn_code_v1.common import common_utils, observable_cal, print_helper
-from lfv_pdnn_code_v1.common import array_utils
-from lfv_pdnn_code_v1.make_array import make_array_utils, particle
+from lfv_pdnn.common import common_utils, observable_cal, print_helper
+from lfv_pdnn.common import array_utils
+from lfv_pdnn.make_array import make_array_utils, particle
 from .make_array_utils import get_lumi, get_early_channel, get_final_channel
 
 
 # normalization file path
 norm_file_284500 = "/afs/cern.ch/work/y/yangz/public/lfv/" + \
-                   "lfv_pdnn_code_v1/data/make_array_info/norm_file_284500.txt"
+                   "lfv_pdnn/data/make_array_info/norm_file_284500.txt"
 norm_file_300000 = "/afs/cern.ch/work/y/yangz/public/lfv/" + \
-                   "lfv_pdnn_code_v1/data/make_array_info/norm_file_300000.txt"
+                   "lfv_pdnn/data/make_array_info/norm_file_300000.txt"
 norm_file_310000 = "/afs/cern.ch/work/y/yangz/public/lfv/" + \
-                   "lfv_pdnn_code_v1/data/make_array_info/norm_file_310000.txt"
+                   "lfv_pdnn/data/make_array_info/norm_file_310000.txt"
 
 # root_vector_double = vector('double')()
 # _length_const = 24

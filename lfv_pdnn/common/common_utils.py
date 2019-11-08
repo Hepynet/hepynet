@@ -1,10 +1,12 @@
 import glob
+import math
 import os
+import warnings
 
 import json
 import numpy as np
 
-from lfv_pdnn_code_v1.common import print_helper
+from lfv_pdnn.common import print_helper
 
 def clean_array(data, weight_id, verbose = False, remove_negative = False):
   """Removes elements with 0 weight
@@ -16,7 +18,7 @@ def clean_array(data, weight_id, verbose = False, remove_negative = False):
     remove_negative: bool, set True to remove negative weight event
   """
   if verbose:
-    print "cleaning array..."
+    print("cleaning array...")
   new = []
   if remove_negative == False:
     for d in data:
@@ -31,7 +33,7 @@ def clean_array(data, weight_id, verbose = False, remove_negative = False):
       new.append(d)
     out = np.array(new)
   if verbose:
-    print "shape before", data.shape, 'shape after', out.shape
+    print("shape before", data.shape, 'shape after', out.shape)
   return out
 
 
@@ -46,6 +48,28 @@ def create_folders(foldernames, parent_path="./"):
     today_dir = os.path.join(parent_path, foldername)
     if not os.path.isdir(today_dir):
       os.makedirs(today_dir)
+
+
+def dict_key_strtoint(json_data):
+  """Cast string keys to int keys"""
+  correctedDict = {}
+  for key, value in json_data.items():
+    if isinstance(value, list):
+      value = [dict_key_strtoint(item) if isinstance(item, dict) else item for item in value]
+    elif isinstance(value, dict):
+      value = dict_key_strtoint(value)
+    try:
+      key = int(key)
+    except Exception as ex:
+      pass
+    correctedDict[key] = value
+  return correctedDict
+
+
+def display_dict(input_dict):
+  """Print dict in a readable way."""
+  for key in list(input_dict.keys()):
+    print('*', key, ':', input_dict[key])
 
 
 def get_file_list(directory, search_pattern, out_name_pattern = "None"):
@@ -78,6 +102,37 @@ def get_file_list(directory, search_pattern, out_name_pattern = "None"):
       print_helper.print_warning("same file name detected",
                                  "(in get_file_list)")
   return absolute_file_list, file_name_list
+
+
+def get_newest_file_version(path_pattern, n_digit=2, ver_num=None):
+  """Check existed file and return last available file path with version.
+
+  Version range 00 -> 99 (or 999)
+  If reach limit, last available version will be used. 99/999
+
+  """
+  # return file path if ver_num is given
+  if ver_num is not None:
+    return {
+      'ver_num': ver_num,
+      'path': path_pattern.format(str(ver_num).zfill(n_digit))
+      }
+  # otherwise try to find ver_num
+  max_version = int(math.pow(10, n_digit) - 1)
+  ver_num = 0
+  path = path_pattern.format(str(ver_num).zfill(n_digit))
+  while os.path.exists(path):
+    ver_num += 1
+    path = path_pattern.format(str(ver_num).zfill(n_digit))
+  if ver_num > max_version:
+    warnings.warn("Too much model version detected at same date. \
+      Will only keep maximum {} different versions.".format(max_version))
+    warnings.warn("Version {} will be overwrite!".format(max_version))
+    ver_num = max_version
+  return {
+    'ver_num': ver_num,
+    'path': path_pattern.format(str(ver_num).zfill(n_digit))
+    }
 
 
 def has_none(list):
@@ -174,3 +229,4 @@ def read_dict_from_txt(file_path, key_type='str', value_type='str'):
           continue  # skip invalid value if value of key already exists
       dict_output[key] = value
   return dict_output
+

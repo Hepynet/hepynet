@@ -4,10 +4,10 @@ sys.path.append("../..") # add self-defined module in the parent path
 
 import matplotlib.pyplot as plt
 
-from lfv_pdnn_code_v1.make_array import make_array
-from lfv_pdnn_code_v1.make_array.make_array_utils import save_array
+from lfv_pdnn.make_array import make_array
+from lfv_pdnn.make_array.make_array_utils import save_array
 
-output_directory = "/afs/cern.ch/work/y/yangz/public/lfv/lfv_pdnn_code_v1/run/test_run"
+output_directory = "/afs/cern.ch/work/y/yangz/public/lfv/lfv_pdnn/run/test_run"
 
 print("*" * 80)
 print("tests make_array")

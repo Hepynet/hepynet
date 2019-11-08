@@ -14,14 +14,30 @@ import numpy as np
 import matplotlib.pyplot as plt
 from math import sqrt
 from sklearn.metrics import classification_report, accuracy_score, auc
-from sklearn.model_selection import train_test_split
+#from sklearn.model_selection import train_test_split
 
 from ..common.common_utils import *
 
 
-def get_part_feature(xtrain, nf):
+def get_input_array(sig_dict, sig_key, bkg_dict, bkg_key, channel_id,
+                    rm_neg=True):
+  """Get training array from dictionary and select channel.
+  
+  Args:
+      rm_neg: bool, optional (default = True)
+          whether to remove negtive weight events
+  
+  """
+  xs = modify_array(sig_dict[sig_key], weight_id=-1, select_channel=True,
+                    channel_id=channel_id, remove_negative_weight=rm_neg)
+  xb = modify_array(bkg_dict[bkg_key], weight_id=-1, select_channel=True,
+                    channel_id=channel_id, remove_negative_weight=rm_neg)
+  return xs, xb
+
+
+def get_part_feature(xtrain, feature_id_list):
   """Gets sub numpy array using given column index"""
-  xtrain = xtrain[:,nf]
+  xtrain = xtrain[:,feature_id_list]
   return xtrain
 
 
@@ -100,7 +116,7 @@ def modify_array(input_array, weight_id=None, remove_negative_weight=False,
         if ele[channel_id] != 1.0:
           ele[weight_id] = 0
     else:
-      print "missing parameters, skipping channel selection..."
+      print("missing parameters, skipping channel selection...")
   # select mass range
   if select_mass == True:
     if not has_none([mass_id, mass_min, mass_max]):
@@ -108,7 +124,7 @@ def modify_array(input_array, weight_id=None, remove_negative_weight=False,
         if ele[mass_id] < mass_min or ele[mass_id] > mass_max:
           ele[weight_id] = 0
     else:
-      print "missing parameters, skipping mass selection..."
+      print("missing parameters, skipping mass selection...")
   # clean array
   new = clean_array(new, -1, remove_negative=remove_negative_weight, 
                     verbose=False)
@@ -117,20 +133,27 @@ def modify_array(input_array, weight_id=None, remove_negative_weight=False,
     if not has_none([reset_mass_array, reset_mass_id]):
       new = prep_mass_fast(new, reset_mass_array, mass_id=reset_mass_id)
     else:
-      print "missing parameters, skipping mass reset..."
+      print("missing parameters, skipping mass reset...")
   # normalize weight
   if norm == True:
     if not has_none([weight_id]):
       new[:, weight_id] = norweight(new[:, weight_id], norm=sumofweight)
     else:
-      print "missing parameters, skipping normalization..."
+      print("missing parameters, skipping normalization...")
   # shuffle array
   if shuffle == True:
     # use time as random seed if not specified
+    """
     if has_none([shuffle_seed]):
       shuffle_seed = int(time.time())
-    new, x2, y1, y2 = train_test_split(new, np.zeros(len(new)), test_size=0,
+    new, x2, y1, y2 = train_test_split(new, np.zeros(len(new)), test_size=0.01, ########################
                                        random_state=shuffle_seed, shuffle=True)
+    """
+    new, _, _, _ = shuffle_and_split(
+      new, np.zeros(len(new)), split_ratio=0.,
+      shuffle_seed=shuffle_seed
+      )
+
   # clean array
   new = clean_array(new, -1, remove_negative=remove_negative_weight, 
                     verbose=False)
@@ -138,10 +161,36 @@ def modify_array(input_array, weight_id=None, remove_negative_weight=False,
   return new
 
 
-def norarray(array, axis=None, weights=None):
-  """Normalizes input array for each feature."""
+def generate_shuffle_index(array_len, shuffle_seed=None):
+  """Generates array shuffle index.
+  
+  To use a consist shuffle index to have different arrays shuffle in same way.
+
+  """
+  shuffle_index = np.array(range(array_len))
+  if shuffle_seed is not None:
+    np.random.seed(shuffle_seed)
+  np.random.shuffle(shuffle_index)
+  return shuffle_index
+
+def get_mean_var(array, axis=None, weights=None):
+  """Calculate average and variance of an array."""
   average = np.average(array, axis=axis, weights=weights)
   variance = np.average((array-average)**2, axis=axis, weights=weights)
+  return average, variance + 0.000001
+
+
+def norarray(array, average=None, variance=None, axis=None, weights=None):
+  """Normalizes input array for each feature.
+  
+  Note:
+    Do not normalize bkg and sig separately, bkg and sig should be normalized
+    in the same way. (i.e. use same average and variance for normalization.)
+
+  """
+  if (average is None) or (variance is None):
+    print("Warning! unspecified average or variance.")
+    average, variance = get_mean_var(array, axis=axis, weights=weights)
   output_array = (array.copy() - average) / np.sqrt(variance)
   return output_array
 
@@ -151,7 +200,7 @@ def norarray_min_max(array, min, max, axis=None):
   middle = (min + max) / 2.0
   output_array = array.copy() - middle
   if max < min:
-    print "ERROR: max shouldn't be smaller than min."
+    print("ERROR: max shouldn't be smaller than min.")
     return None
   ratio = (max - min) / 2.0
   output_array = output_array / ratio
@@ -242,19 +291,49 @@ def prep_mass_fast(xbtrain, xstrain, mass_id=0, shuffle_seed=None):
       new background array with mass distribution reset
 
   """
-  if has_none([shuffle_seed]):
-    shuffle_seed = int(time.time())
-  np.random.seed(shuffle_seed)
-  new = xbtrain.copy()
-  total_events = len(new)
-  sump = sum(xstrain[:, -1])
-  mass_list = np.random.choice(xstrain[:, mass_id], size=total_events, p=1/sump*xstrain[:, -1])
-  for count, entry in enumerate(new):
-    entry[mass_id] = mass_list[count]
+  new =  reset_col(xbtrain, xstrain, col=mass_id, weight_id=-1, shuffle_seed=None)
   return new
 
 
-def split_and_combine(xs, xb, test_rate=0.2, shuffle_before_return=True, shuffle_seed=None):
+def reset_col(reset_array, ref_array, col=0, weight_id=-1, shuffle_seed=None):
+  """Resets one column in an array based on the distribution of refference."""
+  if has_none([shuffle_seed]):
+    shuffle_seed = int(time.time())
+  np.random.seed(shuffle_seed)
+  new = reset_array.copy()
+  total_events = len(new)
+  sump = sum(ref_array[:, weight_id])
+  reset_list = np.random.choice(ref_array[:, col], size=total_events, p=1/sump*ref_array[:, -1])
+  for count, entry in enumerate(new):
+    entry[col] = reset_list[count]
+  return new
+
+
+def shuffle_and_split(x, y, split_ratio=0., shuffle_seed=None):
+  """Self defined function to replace train_test_split in sklearn to allow
+  more flexibility.
+  """
+  # Check consistance of length of x, y
+  if len(x) != len(y):
+    raise ValueError("Length of x and y is not same.")
+  array_len = len(y)
+  np.random.seed(shuffle_seed)
+  # get index for the first part of the splited array
+  first_part_index = np.random.choice(
+    range(array_len),
+    int(array_len * 1. * split_ratio),
+    replace=False
+  )
+  # get index for last part of the splited array
+  last_part_index = np.setdiff1d(np.array(range(array_len)), first_part_index)
+  first_part_x = x[first_part_index]
+  first_part_y = y[first_part_index]
+  last_part_x = x[last_part_index]
+  last_part_y = y[last_part_index]
+  return first_part_x, last_part_x, first_part_y, last_part_y
+
+
+def split_and_combine(xs, xb, test_rate=0.2, shuffle_combined_array=True, shuffle_seed=None):
   """Prepares array for training & validation
 
   Args:
@@ -264,7 +343,7 @@ def split_and_combine(xs, xb, test_rate=0.2, shuffle_before_return=True, shuffle
       Background array for training.
     test_rate: float, optional (default = 0.2)
       Portion of samples (array rows) to be used as independant test samples.
-    shuffle_before_return: bool, optional (default=True)
+    shuffle_combined_array: bool, optional (default=True)
       Whether to shuffle outputs arrays before return.
     shuffle_seed: int or None, optional (default=None)
       Seed for randomization process.
@@ -282,23 +361,38 @@ def split_and_combine(xs, xb, test_rate=0.2, shuffle_before_return=True, shuffle
   """
   ys = np.ones(len(xs))
   yb = np.zeros(len(xb))
-  if has_none([shuffle_seed]):
-    shuffle_seed = int(time.time())
-  xs_train, xs_test, ys_train, ys_test = train_test_split(xs, ys, 
-    test_size=test_rate, random_state=shuffle_seed, shuffle=True)
-  xb_train, xb_test, yb_train, yb_test = train_test_split(xb, yb, 
-    test_size=test_rate, random_state=shuffle_seed, shuffle=True)
+
+  xs_train, xs_test, ys_train, ys_test = shuffle_and_split(
+    xs, ys, split_ratio=test_rate,
+    shuffle_seed=shuffle_seed
+    )
+  xb_train, xb_test, yb_train, yb_test = shuffle_and_split(
+    xb, yb, split_ratio=test_rate,
+    shuffle_seed=shuffle_seed
+    )
+
   x_train = np.concatenate((xs_train, xb_train))
   y_train = np.concatenate((ys_train, yb_train))
   x_test = np.concatenate((xs_test, xb_test))
   y_test = np.concatenate((ys_test, yb_test))
-  # shuffle the array
-  if shuffle_before_return:
-    x_train, x2, y_train, y2 = train_test_split(x_train, y_train, 
-      test_size= 0, random_state=shuffle_seed, shuffle=True)
-    x_test, x2, y_test, y2 = train_test_split(x_test, y_test, 
-      test_size= 0, random_state=shuffle_seed, shuffle=True)
-  return x_train, x_test, y_train, y_test, xs_test, xb_test
+
+  if shuffle_combined_array:
+    # shuffle train dataset
+    shuffle_index = generate_shuffle_index(
+      len(y_train),
+      shuffle_seed=shuffle_seed
+      )
+    x_train = x_train[shuffle_index]
+    y_train = y_train[shuffle_index]
+    # shuffle test dataset
+    shuffle_index = generate_shuffle_index(
+      len(y_test),
+      shuffle_seed=shuffle_seed
+      )
+    x_test = x_test[shuffle_index]
+    y_test = y_test[shuffle_index]
+  
+  return x_train, x_test, y_train, y_test, xs_train, xs_test, xb_train, xb_test
 
 
 def unison_shuffled_copies(*arr):
@@ -337,6 +431,6 @@ def calculate_significance(xs, xb, mass_point, mass_min, mass_max, model=None,
       if entry[0] > mass_min and entry[0] < mass_max:
         background_quantity += entry[-1]
           
-  print "for mass =", mass_point, "range = (", mass_min, mass_max, "):"
-  print "  signal quantity =", signal_quantity, "background quantity =", background_quantity
-  print "  significance =", signal_quantity / sqrt(background_quantity)
+  print("for mass =", mass_point, "range = (", mass_min, mass_max, "):")
+  print("  signal quantity =", signal_quantity, "background quantity =", background_quantity)
+  print("  significance =", signal_quantity / sqrt(background_quantity))
