@@ -33,58 +33,58 @@ Open a **Anaconda powershell Prompt** (powshell in VSCode is **NOT RECOMMENDED**
 > conda activate pdnn
 ```
 Then install python packages (you can run following commands in Git Bash):  
-* numpy (use -n pdnn to only install package for specified environment):
+* **numpy** (use -n pdnn to only install package for specified environment):
 ```shell
 > conda install -n pdnn numpy
 ```
-* matplotlib (for plots)
+* **matplotlib** (for plots)
 ```shell
 > conda install -n pdnn matplotlib
 ```
-* keras with tensorflow backend (for DNN training)  
+* **keras** with **tensorflow** backend (for DNN training)  
 First install tensorflow in conda. If you have a GPU supporting [CUDA](https://developer.nvidia.com/cuda-zone), following instructions to install [tensorflow-gpu](https://www.tensorflow.org/install/gpu). Otherwise, to install the tensorflow 2.0 (currently not available in conda), use pip for installation:
 ```shell
 > pip install --upgrade pip
 > pip install tensorflow
 ```
-&nbsp; &nbsp; Or use conda (not recommended)
+&nbsp; &nbsp; &nbsp; &nbsp; Or use conda (not recommended)
 ```shell
 > conda install -n pdnn tensorflow
 ```
-* keras  
-To install newest version(recommended), use pip:
+&nbsp; &nbsp; &nbsp; &nbsp; To install newest version(recommended) of keras, use pip:
 ```shell
 > pip install keras
 ```
-&nbsp; &nbsp; Or with conda (newest version not available, not recommended).
+&nbsp; &nbsp; &nbsp; &nbsp; Or with conda (newest version not available, not recommended).
 ```shell
 > conda install -n pdnn keras
 ```
-* sklearn
+* **sklearn**
 ```shell
 > conda install -n pdnn scikit-learn
 ```
-* eli5
+* **eli5**
 ```shell
 > conda install -n pdnn -c conda-forge eli5
 ```
-* ConfigParser
+* **ConfigParser**
 ```shell
 > conda install -n pdnn ConfigParser
 ```
-* Reportlab
+* **Reportlab**
 ```shell
 > conda install -n pdnn reportlab
 ```
-* conda-build (for this package development & manage)
+* **root** (optional unless need to produce array from ntuple)  
+(not available on Windows currently)
 ```shell
-> conda install -n pdnn conda-build
+> conda install -n pdnn -c conda-forge root
 ```
-* pandas (optional)
+* **pandas** (optional)
 ```shell
 > conda install -n pdnn pandas
 ```
-* jupyter lab (optional)
+* **jupyter lab** (optional)
 ```shell
 > conda install -n pdnn jupyterlab
 ```

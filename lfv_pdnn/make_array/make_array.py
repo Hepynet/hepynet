@@ -234,3 +234,19 @@ def build_array_withcut(rootfile_path, should_clean_array=True):
   # remove empty and zero-weight event
   data = array_utils.clean_array(data, -1, remove_negative=False)
   return data
+
+def dump_flat_ntuple(rootfile_path, tree_name, feature_list, should_clean_array=True):
+  """Dumps flat ntuples to numpy array and save."""
+  # The conversion of the TTree to a numpy array is implemented with multi-
+  # thread support.
+  ROOT.ROOT.EnableImplicitMT()
+  # load tree
+  print("building array for: ", rootfile_path)
+  try:
+    f = ROOT.TFile.Open(rootfile_path)
+    tree = getattr(f, tree_name)
+  except:
+    raise OSError("Can not get tree.")
+    return None
+  array = tree.AsMatrix(columns=feature_list)
+  print(array.shape)
