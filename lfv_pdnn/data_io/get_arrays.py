@@ -4,7 +4,7 @@ from lfv_pdnn.common.common_utils import *
 from lfv_pdnn.train.train_utils import *
 
 NEW_BKG_NAMES = ['di_boson', 'top_quark', 'w_jets', 'z_ll']
-NEW_MASS_MAP = [500, 2000]
+NEW_MASS_MAP = [500, 1000, 2000]
 OLD_MASS_MAP = [
   500, 600, 700, 800, 900,
   1000, 1100, 1200, 1300, 1400,
@@ -29,7 +29,7 @@ def get_new_bkg(data_path):
   print("Loading new background array.")
   for bkg in NEW_BKG_NAMES:
     directory = data_path + "/{}".format(bkg)
-    search_pattern = "*.npy"
+    search_pattern = "**/*.npy"
     absolute_file_list, file_name_list = get_file_list(directory, search_pattern)
     xb_single = np.array([])
     for path in absolute_file_list:
@@ -46,6 +46,7 @@ def get_new_bkg(data_path):
   # Add all background together
   print ("Adding all background together.")
   xb = np.concatenate(list(xb_dict_new.values()))
+  xb_dict_new['all'] = xb
   print ("xb shape:", xb.shape)
   return xb_dict_new
 
@@ -62,23 +63,37 @@ def get_new_sig(data_path):
   xs_norm = np.array([])
   for i, mass in enumerate(NEW_MASS_MAP):
       # load signal
+      directory = data_path + "/signal/{}GeV".format(mass)
+      search_pattern = "**/*.npy"
+      absolute_file_list, file_name_list = get_file_list(directory, search_pattern)
+      xs_single = np.array([])
+      for path in absolute_file_list:
+          temp_array = np.load(path)
+          if len(temp_array) == 0:
+              continue
+          elif len(xs_single) == 0:
+              xs_single = temp_array.copy()
+          else:
+              xs_single = np.concatenate((xs_single, temp_array))
+      """
       xs_add = np.load(data_path + "/signal/rpv_emu_{}GeV.npy".format(mass))
       xs_temp = np.load(data_path + "/signal/rpv_etau_{}GeV.npy".format(mass))
       xs_add = np.concatenate((xs_add, xs_temp))
       xs_temp = np.load(data_path + "/signal/rpv_mutau_{}GeV.npy".format(mass))
       xs_add = np.concatenate((xs_add, xs_temp))
+      """
       # add to dict xs_dict_new
-      print("adding {}GeV signal to xs_dict_new".format(mass), xs_add.shape)
-      xs_dict_new['{}GeV'.format(mass)] = xs_add
+      print("adding {}GeV signal to xs_dict_new".format(mass), xs_single.shape)
+      xs_dict_new['{}GeV'.format(mass)] = xs_single
       # add to full signals
       if len(xs) == 0:
-          xs = xs_add.copy()
-          xs_add_norm = modify_array(xs_add, weight_id = -1, norm = True)
-          xs_norm = xs_add_norm.copy()
+          xs = xs_single.copy()
+          xs_single_norm = modify_array(xs_single, weight_id = -1, norm = True)
+          xs_norm = xs_single_norm.copy()
       else:
-          xs = np.concatenate((xs, xs_add))
-          xs_add_norm = modify_array(xs_add, weight_id = -1, norm = True)
-          xs_norm = np.concatenate((xs_norm, xs_add_norm))
+          xs = np.concatenate((xs, xs_single))
+          xs_single_norm = modify_array(xs_single, weight_id = -1, norm = True)
+          xs_norm = np.concatenate((xs_norm, xs_single_norm))
   print("adding all signal to xs_dict_new")
   xs_dict_new['all'] = xs
   print("adding all_norm signal to xs_dict_new")

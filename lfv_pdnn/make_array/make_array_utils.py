@@ -1,4 +1,5 @@
 import io
+import logging
 import os
 
 import numpy as np
@@ -119,7 +120,7 @@ def get_lumi(run_number):
     return 0
 
 
-def save_array(array, directory_path, file_name):
+def save_array(array, directory_path, file_name, dump_empty=False):
   """Saves numpy data as .npy file
 
   Args:
@@ -127,7 +128,16 @@ def save_array(array, directory_path, file_name):
     directory_path: str, directory path to save the file
     file_name: str, file name used by .npy file
   """
+  save_path = directory_path + '/' + file_name + '.npy'
+  if array.size == 0:
+    if dump_empty:
+      logging.warning("Empty array detected! Will save empty array as specified.")
+    else:
+      logging.warning(
+        "Empty array detected! Skipping saving current array to: " + save_path
+        )
+      return
   if not os.path.exists(directory_path):
     os.makedirs(directory_path)
-  with io.open(directory_path + '/' + file_name + '.npy', 'wb') as f:
+  with io.open(save_path, 'wb') as f:
     np.save(f, array)

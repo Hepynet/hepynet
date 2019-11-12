@@ -393,6 +393,9 @@ class job_executor(object):
     if self.arr_version == 'old':
       self.bkg_dict = get_old_bkg(self.bkg_dict_path)
       self.sig_dict = get_old_sig(self.sig_dict_path)
+    elif self.arr_version == 'new':
+      self.bkg_dict = get_new_bkg(self.bkg_dict_path)
+      self.sig_dict = get_new_sig(self.sig_dict_path)
     self.array_is_loaded = True
     if self.show_report or self.save_pdf_report:
       self.plot_bkg_dict = {key:self.bkg_dict[key] for key in self.plot_bkg_list}

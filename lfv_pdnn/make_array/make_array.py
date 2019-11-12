@@ -1,4 +1,4 @@
-import warnings
+import logging
 
 import numpy as np
 import ROOT
@@ -235,7 +235,12 @@ def build_array_withcut(rootfile_path, should_clean_array=True):
   data = array_utils.clean_array(data, -1, remove_negative=False)
   return data
 
-def dump_flat_ntuple(rootfile_path, tree_name, feature_list, should_clean_array=True):
+def dump_flat_ntuple(
+  rootfile_path, tree_name, feature_list,
+  save_ntuple = False,
+  save_path = None,
+  should_clean_array=True
+  ):
   """Dumps flat ntuples to numpy array and save."""
   # The conversion of the TTree to a numpy array is implemented with multi-
   # thread support.
@@ -248,5 +253,33 @@ def dump_flat_ntuple(rootfile_path, tree_name, feature_list, should_clean_array=
   except:
     raise OSError("Can not get tree.")
     return None
+  total_entries = tree.GetEntries()
+  if total_entries == 0:
+    logging.warning("Empty tree detected! Returning empty array.")
+    return np.array([])
   array = tree.AsMatrix(columns=feature_list)
+  ll_m_list = []
+  lep_a = ROOT.TLorentzVector(0, 0, 0, 0)
+  lep_b = ROOT.TLorentzVector(0, 0, 0, 0)
+  propagator = ROOT.TLorentzVector(0, 0, 0, 0)
+  for i, entry in enumerate(array):
+    # if emu
+    if entry[-4] == 1.0:
+      lep_a.SetPtEtaPhiM(entry[0], entry[1], entry[2], entry[3])  # electron
+      lep_b.SetPtEtaPhiM(entry[4], entry[5], entry[6], entry[7])  # muon
+    # if etau
+    elif entry[-3] == 1.0:
+      lep_a.SetPtEtaPhiM(entry[0], entry[1], entry[2], entry[3])  # electron
+      lep_b.SetPtEtaPhiM(entry[8], entry[9], entry[10], entry[11])  # tau
+    # if mutau
+    elif entry[-2] == 1.0:
+      lep_a.SetPtEtaPhiM(entry[4], entry[5], entry[6], entry[7])  # muon
+      lep_b.SetPtEtaPhiM(entry[8], entry[9], entry[10], entry[11])  # tau
+    # calculate dilepton mass
+    propagator = lep_a + lep_b
+    ll_m_list.append(propagator.M())
+  # add ll_m to list
+  ll_m_list = np.array(ll_m_list).reshape((array.shape[0], 1))
+  array = np.concatenate((ll_m_list, array), axis=1)
   print(array.shape)
+  return array

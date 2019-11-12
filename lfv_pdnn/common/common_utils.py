@@ -72,26 +72,37 @@ def display_dict(input_dict):
     print('*', key, ':', input_dict[key])
 
 
-def get_file_list(directory, search_pattern, out_name_pattern = "None"):
+def get_file_list(directory, search_pattern, out_name_identifier = "None"):
   """Gets a full list of file under given directory with given name pattern
 
   To use:
-  >>> get_file_list("path/to/directory", "*.root")
+  >>> get_file_list("path/to/directory", "*.root", "signal_emu_500_GeV{}")
 
   Args:
     directory: str, path to search files
     search_pattern: str, pattern of files to search
+    out_name_identifier: patter to rename file_name_list with increased number
 
   Returns:
     A list of file absolute path & file name 
   """
   # Get absolute path
-  absolute_file_list = glob.glob(directory + "/" + search_pattern)
+  absolute_file_list = glob.glob(
+    directory + "/" + search_pattern, recursive=True
+    )
+  absolute_file_list.sort()
   if len(absolute_file_list) == 0:
     print_helper.print_warning("empty file list, please check input",
                                "(in get_file_list)")
   # Get file name match the pattern
   file_name_list = [os.path.basename(path) for path in absolute_file_list]
+  # Rename file_name_list if out_name_identifier is specified
+  if out_name_identifier is not None:
+    if len(file_name_list) == 1:
+      file_name_list[0] = out_name_identifier
+    else:  # add number for multiple files that match the pattern
+      for id, ele in enumerate(file_name_list):
+        file_name_list[id] = (out_name_identifier + '.{}').format(id)
   # check duplicated name in file_name_list
   for name in file_name_list:
     num_same_name = 0
