@@ -64,9 +64,9 @@ class job_executor(object):
     if not self.array_is_loaded:
       self.load_arrays()
     xs, xb = get_input_array(
-      self.sig_dict, '500GeV',
-      self.bkg_dict, 'all', -4
-      ) # -4 for emu
+      self.sig_dict, self.sig_key,
+      self.bkg_dict, self.bkg_key, self.channel_id
+      ) # -4/-3/-3 for emu/etau/mutau
     if self.save_tb_logs:
       path_pattern = self.save_tb_logs_path + '/' + self.datestr + '_'\
         + self.job_name + '_run{}'
@@ -352,7 +352,7 @@ class job_executor(object):
     reports.append(Paragraph(ptext, styles["Justify"]))
     ptext = "model saved             :    " + str(self.save_model)
     reports.append(Paragraph(ptext, styles["Justify"]))
-    ptext = "model saved path        :    " + str(self.model.model_save_path)
+    ptext = "model saved path        :    " + str(self.save_model_path)
     reports.append(Paragraph(ptext, styles["Justify"]))
     reports.append(Spacer(1, 12))
     ptext = "[TensorBoard logs]"
