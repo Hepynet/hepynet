@@ -17,16 +17,28 @@ About pDNN for LFV:
 * The method has already being used/under development for several analyses, for example: low-mass Z', high mass H4l, di-Higgs->llbb&nu;&nu; and etc.
 * A related paper can be found [here](https://arxiv.org/pdf/1601.07913.pdf)
 
-## Requirements
-Test on Windows 10 & Linux OS
+## Environment
 
-### Install Used Softwares
+### Method 1 - Use Docker (recommended)
+Install [Docker](https://www.docker.com/) if not installed.  
+Set up docker image:
+```shell
+cd docker
+source build_docker.sh
+```
+On every startup:  
+first cd to git repository's base directory, then
+```bash
+source docker/start_docker.sh
+```
+
+### Method 2 manually set environment with conda
+#### Install Used Softwares
 1. Install [python 3.7+](https://www.python.org/downloads/windows/)
 2. Install [conda](https://docs.conda.io/projects/conda/en/latest/user-guide/install/windows.html)
 3. Install [Git](https://git-scm.com/downloads)
-4. Install [VsCode](https://code.visualstudio.com/docs/setup/windows)
 
-### Install Python Packages
+#### Install Python Packages
 Open a **Anaconda powershell Prompt** (powshell in VSCode is **NOT RECOMMENDED**) to create conda environment and activate.
 ```shell
 > conda create -n pdnn python=3.7
@@ -88,17 +100,8 @@ First install tensorflow in conda. If you have a GPU supporting [CUDA](https://d
 ```shell
 > conda install -n pdnn jupyterlab
 ```
-
-### System:
-* Work on Linux, Windows and WSL ([Windows Subsystem for Linux](https://docs.microsoft.com/en-us/windows/wsl/install-win10))  
-If run on Win10 OS, the make_array module and train module can't work together due the conflct of x86/x64 instruction set.
-* Hardware need to support tensorflow.  
-Better training speed obtained with an tensorflow supported dedicated graphics/calcution cards.
-
-## Usage
-1. First time run (on main folder, where setup.py exists.):
+#### Fist time run
+On main folder, where setup.py exists:
 ```shell
 > pip install -e .
 ```
-2. 
-To be added.
