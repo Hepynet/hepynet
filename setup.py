@@ -1,18 +1,24 @@
-from setuptools import setup, find_packages
+import setuptools
 
-setup(
-  name='lfv_pdnn',
-  version='0.0.1',
-  packages=find_packages(),
-  install_requires=[
-          'numpy>1.16',
-          'matplotlib>3.0',
-          'tensorflow>1.14',
-          'keras>2.3',
-          'scikit-learn>0.20',
-          'ConfigParser>3.6',
-          'reportlab>3.5'
-      ],
+with open("README.md", "r") as fh:
+  long_description = fh.read()
+
+setuptools.setup(
+  name="lfv_pdnn",
+  version="1.0.1",
+  auther="Zhe Yang",
+  auther_email="starprecursor@gmail.com",
+  description="A packge for pDNN study in LFV",
+  long_description=long_description,
+  long_description_content_type="text/markdown",
+  url="https://github.com/StarPrecursor/pdnn-lfv",
+  packages=setuptools.find_packages(),
+  classifiers=[
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+  ],
+  python_requires=">=3.6",
   entry_points={
       'console_scripts': [
         'execute_pdnn_job=share.execute:main'
