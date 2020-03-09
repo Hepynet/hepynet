@@ -18,7 +18,8 @@ RUN apt-get update \
 && pip install numpy \
 && pip install matplotlib \
 && pip install keras \
-&& pip install scikit-learn
+&& pip install scikit-learn \
+&& pip install uproot
 
 # Set up Jupyter
 RUN pip install jupyterlab \
@@ -32,5 +33,7 @@ RUN pip install eli5 \
 
 # Start up
 RUN echo "pip install -e /work" >> /root/.bashrc \
+&& echo "alias ghome='cd /work'" >> /root/.bashrc \
+&& echo "alias lhome='cd /data'" >> /root/.bashrc \
 && echo "cd /work" >> /root/.bashrc
 
