@@ -2,11 +2,12 @@ import logging
 
 import numpy as np
 import ROOT
+import uproot
 
 from lfv_pdnn.common import common_utils, observable_cal, print_helper
 from lfv_pdnn.common import array_utils
 from lfv_pdnn.make_array import make_array_utils, particle
-from .make_array_utils import get_lumi, get_early_channel, get_final_channel
+from lfv_pdnn.make_array.make_array_utils import *
 
 
 # normalization file path
@@ -283,3 +284,26 @@ def dump_flat_ntuple(
   array = np.concatenate((ll_m_list, array), axis=1)
   print(array.shape)
   return array
+
+def dump_flat_ntuple_individual(
+  root_path:str,
+  ntuple_name:str,
+  variable_list:list, 
+  save_dir:str,
+  save_pre_fix:str) -> None:
+  """Reads numpy array from ROOT ntuple and convert to numpy array.
+   
+  Note:
+    Each branch will be saved as an individual file.
+
+  """
+  try:
+    events = uproot.open(root_path)[ntuple_name]
+  except:
+    raise IOError("Can not get ntuple")
+  print("Read arrays from:", root_path)
+  for var in variable_list:
+    file_name = save_pre_fix + '_' + var
+    print("Generating:", file_name)
+    temp_arr = events.array(var)
+    save_array(temp_arr, save_dir, file_name)
