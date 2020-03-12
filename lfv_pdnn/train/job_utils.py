@@ -182,6 +182,7 @@ class job_executor(object):
     self.try_parse_str('job_name', config, 'job', 'job_name')
     # Load [array] section
     self.try_parse_str('arr_version', config, 'array', 'arr_version')
+    self.try_parse_str('campaign', config, 'array', 'campaign')
     self.try_parse_str('bkg_dict_path', config, 'array', 'bkg_dict_path')
     self.try_parse_str('bkg_key', config, 'array', 'bkg_key')
     self.try_parse_float('bkg_sumofweight', config, 'array', 'bkg_sumofweight')
@@ -310,6 +311,8 @@ class job_executor(object):
     reports.append(Paragraph(ptext, styles["Justify"]))
     ptext = "array version           :    " + self.arr_version
     reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = "array campaign          :    " + self.campaign
+    reports.append(Paragraph(ptext, styles["Justify"]))
     ptext = "channel id              :    " + self.interpret_channel_id(self.channel_id)
     reports.append(Paragraph(ptext, styles["Justify"]))
     ptext = "selected features id    :    " + str(self.selected_features)
@@ -396,6 +399,9 @@ class job_executor(object):
     elif self.arr_version == 'new':
       self.bkg_dict = get_new_bkg(self.bkg_dict_path)
       self.sig_dict = get_new_sig(self.sig_dict_path)
+    elif self.arr_version == 'rel_103':
+      self.bkg_dict = get_rel_103_bkg(self.bkg_dict_path, self.campaign)
+      self.sig_dict = get_rel_103_sig(self.sig_dict_path, self.campaign)
     self.array_is_loaded = True
     if self.show_report or self.save_pdf_report:
       self.plot_bkg_dict = {key:self.bkg_dict[key] for key in self.plot_bkg_list}

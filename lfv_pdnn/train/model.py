@@ -282,7 +282,7 @@ class model_sequential(model_base):
     print("Plotting feature importance.")
     # Prepare
     num_feature = len(self.selected_features)
-    selected_feature_names = get_arrays.OLD_FEATURE_NAMES[self.selected_features]
+    selected_feature_names = np.array(get_arrays.rel_103_feature_list)[self.selected_features]
     feature_importance = np.zeros(num_feature)
     xs = self.xs_test_original_mass
     xb = self.xb_test_original_mass

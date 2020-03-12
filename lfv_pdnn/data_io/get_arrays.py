@@ -12,7 +12,6 @@ OLD_MASS_MAP = [
   2000, 2200, 2400, 2600, 2800,
   3000, 3500, 4000, 4500, 5000
   ]
-
 OLD_FEATURE_NAMES = np.array([
   'll_m',
   'e_pt', 'e_eta', 'e_phi', 'e_m',
@@ -22,6 +21,17 @@ OLD_FEATURE_NAMES = np.array([
   'll_pt', 'll_eta', 'll_phi', 'll_dphi', 'll_dr',
   'is_emu', 'is_etau', 'is_mutau', 'weight'
   ])
+rel_103_bkg_list = ['diboson', 'top', 'wjets', 'zll']
+rel_103_sig_list = ['rpv_500', 'rpv_700', 'rpv_1000', 'rpv_1500', 'rpv_2000',
+                    'zpr_500', 'zpr_700', 'zpr_1000', 'zpr_1500', 'zpr_2000']
+rel_103_feature_list = [
+  'ele_pt', 'ele_eta', 'ele_phi', 'ele_d0sig', 'ele_dz0', 'ele_isTight', 'ele_C',
+  'mu_pt', 'mu_eta', 'mu_phi', 'mu_d0sig', 'mu_dz0', 'mu_isTight', 'mu_C',
+  'tau_pt', 'tau_eta', 'tau_phi', 'tau_isTight', 'tau_C', 
+  'Pt_ll', 'Eta_ll', 'Phi_ll', 'DPhi_ll', 'DR_ll',
+  'met', 'met_eta', 'met_phi',
+  'njets', 'nbjets', 'NTauLoose', 'NTauTight',
+  'emu', 'etau', 'mutau', 'weight']
 
 def get_new_bkg(data_path):
   # Load
@@ -185,3 +195,45 @@ def get_old_sig(data_path):
   xs_dict_old['4point'] = xs_4point
   print("Done.")
   return xs_dict_old
+
+def get_rel_103_bkg(data_path, campaign):
+  xb_dict_new = {}
+  print("Loading rel_103 background array.")
+  # Load individual bkg
+  for bkg in rel_103_bkg_list:
+    directory = data_path + "/" + campaign
+    bkg_array = None
+    for feature in rel_103_feature_list:
+      temp_array = np.load(directory+"/bkg_"+bkg+"_"+feature+".npy")
+      temp_array = np.reshape(temp_array, (-1, 1))
+      if bkg_array is None:
+        bkg_array = temp_array
+      else:
+        bkg_array = np.concatenate((bkg_array, temp_array), axis=1)
+    print(bkg, "shape:", bkg_array.shape)
+    xb_dict_new[bkg] = bkg_array
+  # Add all bkg together
+  bkg_all_array = np.concatenate(list(xb_dict_new.values()))
+  xb_dict_new['all'] = bkg_all_array
+  return xb_dict_new
+
+def get_rel_103_sig(data_path, campaign):
+  xs_dict_new = {}
+  print("Loading rel_103 signal array.")
+  # Load individual mass point sig
+  for sig in rel_103_sig_list:
+    directory = data_path + "/" + campaign
+    sig_array = None
+    for feature in rel_103_feature_list:
+      temp_array = np.load(directory+"/sig_"+sig+"_"+feature+".npy")
+      temp_array = np.reshape(temp_array, (-1, 1))
+      if sig_array is None:
+        sig_array = temp_array
+      else:
+        sig_array = np.concatenate((sig_array, temp_array), axis=1)
+    print(sig, "shape:", sig_array.shape)
+    xs_dict_new[sig] = sig_array
+  # Add all sig together
+  sig_all_array = np.concatenate(list(xs_dict_new.values()))
+  xs_dict_new['all'] = sig_all_array
+  return xs_dict_new
