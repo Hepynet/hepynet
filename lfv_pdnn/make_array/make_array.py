@@ -288,9 +288,10 @@ def dump_flat_ntuple(
 def dump_flat_ntuple_individual(
   root_path:str,
   ntuple_name:str,
-  variable_list:list, 
+  variable_list:list,
   save_dir:str,
-  save_pre_fix:str) -> None:
+  save_pre_fix:str,
+  use_lower_var_name:bool=False) -> None:
   """Reads numpy array from ROOT ntuple and convert to numpy array.
    
   Note:
@@ -303,7 +304,10 @@ def dump_flat_ntuple_individual(
     raise IOError("Can not get ntuple")
   print("Read arrays from:", root_path)
   for var in variable_list:
-    file_name = save_pre_fix + '_' + var
+    if use_lower_var_name:
+      file_name = save_pre_fix + '_' + var.lower()
+    else:
+      file_name = save_pre_fix + '_' + var
     print("Generating:", file_name)
     temp_arr = events.array(var)
     save_array(temp_arr, save_dir, file_name)

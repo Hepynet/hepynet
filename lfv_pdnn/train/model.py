@@ -11,7 +11,7 @@ import eli5
 from eli5.sklearn import PermutationImportance
 import keras
 from keras import backend as K
-from keras.callbacks import TensorBoard
+from keras.callbacks import callbacks, TensorBoard
 from keras.models import Sequential, Model
 from keras.layers import Concatenate, Dense, Input, Layer
 from keras.layers.normalization import BatchNormalization
@@ -22,9 +22,10 @@ from matplotlib.ticker import NullFormatter, FixedLocator
 import numpy as np
 from sklearn.metrics import roc_curve, auc
 
+from lfv_pdnn.common import array_utils
 from lfv_pdnn.common.common_utils import *
 from lfv_pdnn.data_io import get_arrays
-from lfv_pdnn.train.train_utils import *
+from lfv_pdnn.train import train_utils
 
 # self-difined metrics functions
 def plain_acc(y_true, y_pred):
@@ -90,7 +91,7 @@ class model_sequential(model_base):
     xb_test: numpy array
       Background component of x array for testing.
     selected_features: list
-      Column id of input array of features that will be used for training.
+      Names of input array of features that will be used for training.
     x_train_selected: numpy array
       x array for training with feature selection.
     x_test_selected: numpy array
@@ -107,14 +108,14 @@ class model_sequential(model_base):
     Example:
     To use to model class, first to create the class:
     >>> model_name = "test model"
-    >>> selected_features = [1, 3, 5, 7, 9]
+    >>> selected_features = ["pt", "eta", "phi"]
     >>> model_deep = model.model_0913(model_name, len(selected_features))
     Then compile model:
     >>> model_deep.compile()
     Prepare array for training:
     >>> xs_emu = np.load('path/to/numpy/signal/array.npy')
     >>> xb_emu = np.load('path/to/numpy/background/array.npy')
-    >>> model_deep.prepare_array(xs_emu, xb_emu, selected_features)
+    >>> model_deep.prepare_array(xs_emu, xb_emu)
     Perform training:
     >>> model_deep.train(epochs = epochs, val_split = 0.1, verbose = 0)
     Make plots to shoe training performance:
@@ -128,7 +129,8 @@ class model_sequential(model_base):
     learn_rate=0.025, 
     decay=1e-6,
     metrics=['plain_acc'],
-    weighted_metrics=['accuracy']
+    weighted_metrics=['accuracy'],
+    selected_features=[]
     ):
     """Initialize model."""
     model_base.__init__(self, name)
@@ -152,7 +154,7 @@ class model_sequential(model_base):
     self.y_test = np.array([])
     self.xs_test = np.array([])
     self.xb_test = np.array([])
-    self.selected_features = []
+    self.selected_features = selected_features
     self.x_train_selected = np.array([])
     self.x_test_selected = np.array([])
     self.xs_test_selected = np.array([])
@@ -257,7 +259,7 @@ class model_sequential(model_base):
     # Config
     ax.set_title('model accuracy')
     ax.set_ylabel('accuracy')
-    ax.set_ylim((0, 1))
+    #ax.set_ylim((0, 1))
     ax.set_xlabel('epoch')
     ax.legend(['train', 'val'], loc='lower left')
     ax.grid()
@@ -282,21 +284,16 @@ class model_sequential(model_base):
     print("Plotting feature importance.")
     # Prepare
     num_feature = len(self.selected_features)
-    selected_feature_names = np.array(get_arrays.rel_103_feature_list)[self.selected_features]
+    selected_feature_names = np.array(self.selected_features)
     feature_importance = np.zeros(num_feature)
     xs = self.xs_test_original_mass
     xb = self.xb_test_original_mass
-    base_auc = self.calculate_auc(
-      xs, xb,
-      class_weight=self.class_weight
-      )
+    base_auc = self.calculate_auc(xs, xb, class_weight=self.class_weight)
     print("base auc:", base_auc)
     # Calculate importance
     for num, feature_name in enumerate(selected_feature_names):
       current_auc = self.calculate_auc(
-          xs, xb, class_weight=self.class_weight,
-          shuffle_col= self.selected_features[num]
-        )
+          xs, xb, class_weight=self.class_weight, shuffle_col= num)
       #current_auc = 1
       feature_importance[num] = (1 - current_auc) / (1 - base_auc)
       print(feature_name, ":", feature_importance[num])
@@ -304,15 +301,20 @@ class model_sequential(model_base):
     sort_list = np.flip(np.argsort(feature_importance))
     sorted_importance = feature_importance[sort_list]
     sorted_names = selected_feature_names[sort_list]
+    print("Feature importance rank:", sorted_names)
     # Plot
+    if num_feature > 8:
+      num_show =8
+    else:
+      num_show = num_feature
     ax.bar(
-      np.arange(num_feature), sorted_importance,
+      np.arange(num_show), sorted_importance[:num_show],
       align='center', alpha=0.5
       )
     ax.axhline(1, ls='--', color='r')
     ax.set_title("feature importance")
-    ax.set_xticks(np.arange(num_feature))
-    ax.set_xticklabels(sorted_names)
+    ax.set_xticks(np.arange(num_show))
+    ax.set_xticklabels(sorted_names[:num_show])
 
   def plot_final_roc(self, ax):
     """Plots roc curve for to check final training result on original samples.
@@ -497,9 +499,9 @@ class model_sequential(model_base):
       average=self.norm_average
       variance=self.norm_variance
       #average, variance = get_mean_var(bkg_arr_temp[:, 0:-2], axis=0, weights=bkg_arr_temp[:, -1])
-      bkg_arr_temp[:, 0:-2] = norarray(bkg_arr_temp[:, 0:-2], average=average, variance=variance)
+      bkg_arr_temp[:, 0:-2] = train_utils.norarray(bkg_arr_temp[:, 0:-2], average=average, variance=variance)
 
-      selected_arr = get_part_feature(bkg_arr_temp, selected_features)
+      selected_arr = train_utils.get_valid_feature(bkg_arr_temp)
       #print("debug", self.get_model().predict(selected_arr))
       predict_arr_list.append(np.array(self.get_model().predict(selected_arr)))
       predict_arr_weight_list.append(bkg_arr_temp[:, -1])
@@ -531,52 +533,52 @@ class model_sequential(model_base):
     else:
       ax.set_title(plot_title+"(lin)")
 
-  def prepare_array(self, xs, xb, selected_features, norm_array=True,
-                    sig_weight=1000, bkg_weight=1000, test_rate=0.2,
-                    verbose=1):
+  def prepare_array(self, xs, xb, norm_array=True, reset_mass=False,
+    reset_mass_name=None, sig_weight=1000, bkg_weight=1000, test_rate=0.2,
+    verbose=1):
     """Prepares array for training."""
     self.xs = xs
     self.xb = xb
     rdm_seed = int(time.time())
     # get bkg array with mass reset
-    xb_reset_mass = modify_array(xb, weight_id=-1, reset_mass=True,
-                      reset_mass_array=xs, reset_mass_id=0)
+    reset_mass_id = self.selected_features.index(reset_mass_name)
+    xb_reset_mass = array_utils.modify_array(xb, reset_mass=reset_mass,
+                      reset_mass_array=xs, reset_mass_id=reset_mass_id)
     # normalize total weight
-    self.xs_norm = modify_array(xs, weight_id=-1, norm=True,
+    self.xs_norm = array_utils.modify_array(xs, norm=True,
                                 sumofweight=sig_weight)
-    self.xb_norm = modify_array(xb, weight_id=-1, norm=True,
+    self.xb_norm = array_utils.modify_array(xb, norm=True,
                                 sumofweight=bkg_weight)
-    self.xb_norm_reset_mass = modify_array(xb_reset_mass, weight_id=-1,
-                                norm=True, sumofweight=bkg_weight)
+    self.xb_norm_reset_mass = array_utils.modify_array(
+      xb_reset_mass, norm=True, sumofweight=bkg_weight)
     # get train/test data set, split with ratio=test_rate
     self.x_train, self.x_test, self.y_train, self.y_test,\
     self.xs_train, self.xs_test, self.xb_train, self.xb_test =\
-    split_and_combine(self.xs_norm, self.xb_norm_reset_mass,
+    train_utils.split_and_combine(self.xs_norm, self.xb_norm_reset_mass,
     test_rate=test_rate, shuffle_seed=rdm_seed)
     self.xs_train_original_mass, self.xs_test_original_mass,\
       self.xb_train_original_mass, self.xb_test_original_mass,\
       self.xs_train_original_mass, self.xs_test_original_mass,\
       self.xb_train_original_mass, self.xb_test_original_mass =\
-      split_and_combine(self.xs_norm, self.xb_norm,
+      train_utils.split_and_combine(self.xs_norm, self.xb_norm,
         test_rate=test_rate, shuffle_seed=rdm_seed)
     # select features used for training
-    self.selected_features = selected_features
-    self.x_train_selected = get_part_feature(self.x_train, selected_features)
-    self.x_test_selected = get_part_feature(self.x_test, selected_features)
-    self.xs_train_selected = get_part_feature(self.xs_train, selected_features)
-    self.xb_train_selected = get_part_feature(self.xb_train, selected_features)
-    self.xs_test_selected = get_part_feature(self.xs_test, selected_features)
-    self.xb_test_selected = get_part_feature(self.xb_test, selected_features)
-    self.xs_selected = get_part_feature(self.xs, selected_features)
-    self.xb_selected = get_part_feature(self.xb, selected_features)
-    self.x_train_selected_original_mass = get_part_feature(self.x_train, selected_features)
-    self.x_test_selected_original_mass = get_part_feature(self.x_test, selected_features)
-    self.xs_train_selected_original_mass = get_part_feature(self.xs_train, selected_features)
-    self.xb_train_selected_original_mass = get_part_feature(self.xb_train, selected_features)
-    self.xs_test_selected_original_mass = get_part_feature(self.xs_test, selected_features)
-    self.xb_test_selected_original_mass = get_part_feature(self.xb_test, selected_features)
-    self.xs_selected_original_mass = get_part_feature(self.xs, selected_features)
-    self.xb_selected_original_mass = get_part_feature(self.xb, selected_features)
+    self.x_train_selected = train_utils.get_valid_feature(self.x_train)
+    self.x_test_selected = train_utils.get_valid_feature(self.x_test)
+    self.xs_train_selected = train_utils.get_valid_feature(self.xs_train)
+    self.xb_train_selected = train_utils.get_valid_feature(self.xb_train)
+    self.xs_test_selected = train_utils.get_valid_feature(self.xs_test)
+    self.xb_test_selected = train_utils.get_valid_feature(self.xb_test)
+    self.xs_selected = train_utils.get_valid_feature(self.xs)
+    self.xb_selected = train_utils.get_valid_feature(self.xb)
+    self.x_train_selected_original_mass = train_utils.get_valid_feature(self.x_train)
+    self.x_test_selected_original_mass = train_utils.get_valid_feature(self.x_test)
+    self.xs_train_selected_original_mass = train_utils.get_valid_feature(self.xs_train)
+    self.xb_train_selected_original_mass = train_utils.get_valid_feature(self.xb_train)
+    self.xs_test_selected_original_mass = train_utils.get_valid_feature(self.xs_test)
+    self.xb_test_selected_original_mass = train_utils.get_valid_feature(self.xb_test)
+    self.xs_selected_original_mass = train_utils.get_valid_feature(self.xs)
+    self.xb_selected_original_mass = train_utils.get_valid_feature(self.xb)
 
     self.array_prepared = True
     if verbose == 1:
@@ -594,8 +596,8 @@ class model_sequential(model_base):
       xb_proc[:,-1] = xb_proc[:,-1] * class_weight[0]
     x_proc = np.concatenate((xs_proc, xb_proc))
     if shuffle_col is not None:
-      x_proc = reset_col(x_proc, x_proc, shuffle_col, weight_id=-1)
-    x_proc_selected = get_part_feature(x_proc, self.selected_features)
+      x_proc = array_utils.reset_col(x_proc, x_proc, shuffle_col)
+    x_proc_selected = train_utils.get_valid_feature(x_proc)
     y_proc = np.concatenate(
       (np.ones(xs_proc.shape[0]), np.zeros(xb_proc.shape[0]))
       )
@@ -724,15 +726,19 @@ class Model_1002(model_sequential):
     learn_rate=0.02, decay=1e-6,
     metrics=['plain_acc'],
     weighted_metrics=['accuracy'],
+    selected_features = [],
     save_tb_logs=False,
-    tb_logs_path=None
+    tb_logs_path=None,
+    use_early_stop=False,
+    early_stop_paras={}
     ):
     model_sequential.__init__(
       self, name,
       input_dim, num_node=num_node, 
       learn_rate=learn_rate, decay=decay,
       metrics=metrics,
-      weighted_metrics=weighted_metrics
+      weighted_metrics=weighted_metrics,
+      selected_features=selected_features
       )
     self.model_label = "mod1002"
     self.model_note = "Sequential model optimized with old ntuple"\
@@ -740,6 +746,8 @@ class Model_1002(model_sequential):
                       + " to deal with training with full bkg mass."
     self.save_tb_logs=save_tb_logs
     self.tb_logs_path=tb_logs_path
+    self.use_early_stop = use_early_stop
+    self.early_stop_paras = early_stop_paras
 
   def compile(self):
     """ Compile model, function to be changed in the future."""
@@ -790,9 +798,9 @@ class Model_1002(model_sequential):
     self.model_is_compiled = True
 
 
-  def prepare_array(self, xs, xb, selected_features, channel_id,
-                    sig_weight=1000, bkg_weight=1000, test_rate=0.2,
-                    verbose=1):
+  def prepare_array(self, xs, xb, reset_mass=False,
+    reset_mass_name=None, sig_weight=1000, 
+    bkg_weight=1000, test_rate=0.2, verbose=1):
     """Prepares array for training.
     
     Note:
@@ -800,19 +808,20 @@ class Model_1002(model_sequential):
 
     """
     # Stadard input normalization for training.
-    means, vars = get_mean_var(xb[:, 0:-2], axis=0, weights=xb[:, -1])
+    means, vars = train_utils.get_mean_var(xb[:, 0:-2], axis=0, weights=xb[:, -1])
     self.norm_average = means
     self.norm_variance = vars
     xs_norm = xs.copy()
     xb_norm = xb.copy()
-    xs_norm[:, 0:-2] = norarray(xs[:, 0:-2], average=means, variance=vars)
-    xb_norm[:, 0:-2] = norarray(xb[:, 0:-2], average=means, variance=vars)
-    model_sequential.prepare_array(self, xs_norm, xb_norm, selected_features,
-                                   sig_weight=sig_weight, bkg_weight=bkg_weight, 
-                                   test_rate=test_rate, verbose=verbose)
+    xs_norm[:, 0:-2] = train_utils.norarray(xs[:, 0:-2], average=means, variance=vars)
+    xb_norm[:, 0:-2] = train_utils.norarray(xb[:, 0:-2], average=means, variance=vars)
+    model_sequential.prepare_array(self, xs_norm, xb_norm,
+      reset_mass=reset_mass, reset_mass_name=reset_mass_name,
+      sig_weight=sig_weight, bkg_weight=bkg_weight,
+      test_rate=test_rate, verbose=verbose)
 
 
-  def train(self, weight_id=-1, batch_size=128, epochs=20, val_split=0.25,
+  def train(self, batch_size=128, epochs=20, val_split=0.25,
             sig_class_weight=1., bkg_class_weight=1., verbose=1, ):
     """Performs training."""
     # Check
@@ -821,6 +830,7 @@ class Model_1002(model_sequential):
     if self.array_prepared == False:
       raise ValueError("Training data is not ready.")
     # Train
+    print("-"*40)
     print("Training start. Using model:", self.model_name)
     print("Model info:", self.model_note)
     self.class_weight = {1:sig_class_weight, 0:bkg_class_weight}
@@ -832,6 +842,14 @@ class Model_1002(model_sequential):
           set path to: {}".format(self.tb_logs_path))
       tb_callback = TensorBoard(log_dir=self.tb_logs_path, histogram_freq=1)
       train_callbacks.append(tb_callback)
+    if self.use_early_stop:
+      early_stop_callback = callbacks.EarlyStopping(
+        monitor=self.early_stop_paras["monitor"],
+        min_delta=self.early_stop_paras["min_delta"],
+        patience=self.early_stop_paras["patience"],
+        mode=self.early_stop_paras["mode"],
+        restore_best_weights=self.early_stop_paras["restore_best_weights"])
+      train_callbacks.append(early_stop_callback)
     self.train_history = self.get_model().fit(
       self.x_train_selected,
       self.y_train,
@@ -839,7 +857,7 @@ class Model_1002(model_sequential):
       epochs=epochs,
       validation_split=val_split,
       class_weight=self.class_weight,
-      sample_weight=self.x_train[:, weight_id],
+      sample_weight=self.x_train[:, -1],
       callbacks=train_callbacks,
       verbose=verbose
       )
@@ -887,8 +905,11 @@ class Model_1016(Model_1002):
     learn_rate=0.02, decay=1e-6,
     metrics=['plain_acc'],
     weighted_metrics=['accuracy'],
+    selected_features=[],
     save_tb_logs=False,
-    tb_logs_path=None
+    tb_logs_path=None,
+    use_early_stop=False,
+    early_stop_paras={}
     ):
     Model_1002.__init__(
       self, name,
@@ -896,8 +917,11 @@ class Model_1016(Model_1002):
       learn_rate=learn_rate, decay=decay,
       metrics=metrics,
       weighted_metrics=weighted_metrics,
+      selected_features=selected_features,
       save_tb_logs=save_tb_logs,
-      tb_logs_path=tb_logs_path)
+      tb_logs_path=tb_logs_path,
+      use_early_stop=use_early_stop,
+      early_stop_paras=early_stop_paras)
     self.model_label = "mod1016"
     self.model_note = "New model structure based on 1002's model"\
                       + " at Oct. 16th 2019"\

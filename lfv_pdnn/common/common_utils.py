@@ -6,36 +6,6 @@ import warnings
 import json
 import numpy as np
 
-from lfv_pdnn.common import print_helper
-
-def clean_array(data, weight_id, verbose = False, remove_negative = False):
-  """Removes elements with 0 weight
-
-  Args:
-    data: numpy array, array to be cleaned
-    weight_id: int, index of weight in each row
-    verbose: bool, set True to give detailed infomation
-    remove_negative: bool, set True to remove negative weight event
-  """
-  if verbose:
-    print("cleaning array...")
-  new = []
-  if remove_negative == False:
-    for d in data:
-      if d[weight_id] == 0.:
-        continue
-      new.append(d)
-    out = np.array(new)
-  elif remove_negative == True:
-    for d in data:
-      if d[weight_id] <= 0.:
-        continue
-      new.append(d)
-    out = np.array(new)
-  if verbose:
-    print("shape before", data.shape, 'shape after', out.shape)
-  return out
-
 
 def create_folders(foldernames, parent_path="./"):
   """Checks existence of given folder names, creats if not exsits.
@@ -92,8 +62,7 @@ def get_file_list(directory, search_pattern, out_name_identifier = "None"):
     )
   absolute_file_list.sort()
   if len(absolute_file_list) == 0:
-    print_helper.print_warning("empty file list, please check input",
-                               "(in get_file_list)")
+    warnings.warn("Empty file list, please check input.")
   # Get file name match the pattern
   file_name_list = [os.path.basename(path) for path in absolute_file_list]
   # Rename file_name_list if out_name_identifier is specified
@@ -110,8 +79,7 @@ def get_file_list(directory, search_pattern, out_name_identifier = "None"):
       if name == name_check:
         num_same_name += 1
     if num_same_name > 1:    
-      print_helper.print_warning("same file name detected",
-                                 "(in get_file_list)")
+      warnings.warn("Same file name detected.")
   return absolute_file_list, file_name_list
 
 
@@ -203,17 +171,14 @@ def read_dict_from_txt(file_path, key_type='str', value_type='str'):
           key = eval(content1)
         except ZeroDivisionError:
           key_error = True
-          print_helper.print_warning("float division by zero",
-                                     "in common_utils.read_dict_from_txt")
+          warnings.warn("Float division by zero.")
           continue  # skip invalid key
         except:
           key_error = True
-          print_helper.print_error("unknown evaluation error",
-                                   "in common_utils.read_dict_from_txt")
+          warnings.warn("Unknown evaluation error.")
           continue  # skip invalid key
       else:
-        print_helper.print_error("unrecognized key type",
-                                 "in common_utils.read_dict_from_txt")
+        warnings.warn("Unrecognized key type.")
       # get value
       if value_type == 'str':
         value = content2.strip()
@@ -223,19 +188,16 @@ def read_dict_from_txt(file_path, key_type='str', value_type='str'):
         except ZeroDivisionError:
           value_error = True
           value = 0  # set default value
-          print_helper.print_warning("float division by zero",
-                                     "in common_utils.read_dict_from_txt")
+          warnings.warn("Float division by zero.")
         except:
           value_error = True
           value = 0  # set default value
-          print_helper.print_error("unknown evaluation error",
-                                   "in common_utils.read_dict_from_txt")
+          warnings.warn("Unknown evaluation error.")
       else:
-        print_helper.print_error("unrecognized value type",
-                                 "in common_utils.read_dict_from_txt")
+        warnings.warn("Unrecognized value type.")
       # save dict item
       if key in dict_output:
-        print_helper.print_warning("key already exists, overwriting value...")
+        warnings.warn("Key already exists, overwriting value...")
         if value_error == True:
           continue  # skip invalid value if value of key already exists
       dict_output[key] = value

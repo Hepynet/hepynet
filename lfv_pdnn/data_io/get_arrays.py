@@ -1,239 +1,93 @@
+"""Loads arrays for training.
+
+Note:
+  1. Arrays organized by dictionary, each key is corresponding to on type of
+  signal or background. For example: "top", "rpv_1000"
+  2. Special key names that can be used for training:
+    * all: all sig/bkg concatenated directly
+    * all_norm: (sig only) with each mass point array's weight normed and then
+    concatenated.
+
+"""
+
 import numpy as np
 
-from lfv_pdnn.common.common_utils import *
-from lfv_pdnn.train.train_utils import *
+from lfv_pdnn.common import array_utils
 
-NEW_BKG_NAMES = ['di_boson', 'top_quark', 'w_jets', 'z_ll']
-NEW_MASS_MAP = [500, 1000, 2000]
-OLD_MASS_MAP = [
-  500, 600, 700, 800, 900,
-  1000, 1100, 1200, 1300, 1400,
-  1500, 1600, 1700, 1800, 1900,
-  2000, 2200, 2400, 2600, 2800,
-  3000, 3500, 4000, 4500, 5000
-  ]
-OLD_FEATURE_NAMES = np.array([
-  'll_m',
-  'e_pt', 'e_eta', 'e_phi', 'e_m',
-  'mu_pt', 'mu_eta', 'mu_phi', 'mu_m',
-  'tau_pt', 'tau_eta', 'tau_phi', 'tau_m',
-  'nu_e', 'nu_phi',
-  'll_pt', 'll_eta', 'll_phi', 'll_dphi', 'll_dr',
-  'is_emu', 'is_etau', 'is_mutau', 'weight'
-  ])
-rel_103_bkg_list = ['diboson', 'top', 'wjets', 'zll']
-rel_103_sig_list = ['rpv_500', 'rpv_700', 'rpv_1000', 'rpv_1500', 'rpv_2000',
-                    'zpr_500', 'zpr_700', 'zpr_1000', 'zpr_1500', 'zpr_2000']
-rel_103_feature_list = [
-  'ele_pt', 'ele_eta', 'ele_phi', 'ele_d0sig', 'ele_dz0', 'ele_isTight', 'ele_C',
-  'mu_pt', 'mu_eta', 'mu_phi', 'mu_d0sig', 'mu_dz0', 'mu_isTight', 'mu_C',
-  'tau_pt', 'tau_eta', 'tau_phi', 'tau_isTight', 'tau_C', 
-  'Pt_ll', 'Eta_ll', 'Phi_ll', 'DPhi_ll', 'DR_ll',
-  'met', 'met_eta', 'met_phi',
-  'njets', 'nbjets', 'NTauLoose', 'NTauTight',
-  'emu', 'etau', 'mutau', 'weight']
-
-def get_new_bkg(data_path):
-  # Load
-  xb_dict_new = {}
-  print("Loading new background array.")
-  for bkg in NEW_BKG_NAMES:
-    directory = data_path + "/{}".format(bkg)
-    search_pattern = "**/*.npy"
-    absolute_file_list, file_name_list = get_file_list(directory, search_pattern)
-    xb_single = np.array([])
-    for path in absolute_file_list:
-        temp_array = np.load(path)
-        if len(temp_array) == 0:
-            continue
-        elif len(xb_single) == 0:
-            xb_single = temp_array.copy()
-        else:
-            xb_single = np.concatenate((xb_single, temp_array))
-    xb_dict_new[bkg] = xb_single
-    print("xb_{} shape:".format(bkg), xb_single.shape)
-  print("New background organized with dict: xb_dict_new")
-  # Add all background together
-  print ("Adding all background together.")
-  xb = np.concatenate(list(xb_dict_new.values()))
-  xb_dict_new['all'] = xb
-  print ("xb shape:", xb.shape)
-  return xb_dict_new
-
-def get_new_sig(data_path):
-  # Initialize
-  mass_min = 5000
-  mass_max = 0
-  xs_studied = np.array([])
-  xs_dict_new = {}
-  # Load
-  print("Loading new signal array.")
-  print("Organizing new signal with dict: xs_dict_new.")
-  xs = np.array([])
-  xs_norm = np.array([])
-  for i, mass in enumerate(NEW_MASS_MAP):
-      # load signal
-      directory = data_path + "/signal/{}GeV".format(mass)
-      search_pattern = "**/*.npy"
-      absolute_file_list, file_name_list = get_file_list(directory, search_pattern)
-      xs_single = np.array([])
-      for path in absolute_file_list:
-          temp_array = np.load(path)
-          if len(temp_array) == 0:
-              continue
-          elif len(xs_single) == 0:
-              xs_single = temp_array.copy()
-          else:
-              xs_single = np.concatenate((xs_single, temp_array))
-      """
-      xs_add = np.load(data_path + "/signal/rpv_emu_{}GeV.npy".format(mass))
-      xs_temp = np.load(data_path + "/signal/rpv_etau_{}GeV.npy".format(mass))
-      xs_add = np.concatenate((xs_add, xs_temp))
-      xs_temp = np.load(data_path + "/signal/rpv_mutau_{}GeV.npy".format(mass))
-      xs_add = np.concatenate((xs_add, xs_temp))
-      """
-      # add to dict xs_dict_new
-      print("adding {}GeV signal to xs_dict_new".format(mass), xs_single.shape)
-      xs_dict_new['{}GeV'.format(mass)] = xs_single
-      # add to full signals
-      if len(xs) == 0:
-          xs = xs_single.copy()
-          xs_single_norm = modify_array(xs_single, weight_id = -1, norm = True)
-          xs_norm = xs_single_norm.copy()
-      else:
-          xs = np.concatenate((xs, xs_single))
-          xs_single_norm = modify_array(xs_single, weight_id = -1, norm = True)
-          xs_norm = np.concatenate((xs_norm, xs_single_norm))
-  print("adding all signal to xs_dict_new")
-  xs_dict_new['all'] = xs
-  print("adding all_norm signal to xs_dict_new")
-  xs_dict_new['all_norm'] = xs_norm
-  print("Done.")
-  return xs_dict_new
-
-def get_old_bkg(data_path):
-  # Load
-  print("Loading old background array.")
-  xb_di_boson_old = np.load(data_path + '/tree_bkg1.npy')
-  xb_drell_yan_old = np.load(data_path + '/tree_bkg2.npy')
-  xb_top_quark_old = np.load(data_path + '/tree_bkg3.npy')
-  xb_w_jets_old = np.load(data_path + '/tree_bkg4.npy')
-  xb_z_ll_old = np.load(data_path + '/tree_bkg5.npy')
-  xb_old = np.concatenate((xb_di_boson_old, xb_drell_yan_old, xb_top_quark_old, xb_w_jets_old, xb_z_ll_old))
-  # Organize with dict
-  print("Organizing old background with dict: xb_dict_old.")
-  xb_dict_old = {}
-  xb_dict_old['di_boson'] = xb_di_boson_old
-  xb_dict_old['drell_yan'] = xb_drell_yan_old
-  xb_dict_old['top_quark'] = xb_top_quark_old
-  xb_dict_old['w_jets'] = xb_w_jets_old
-  xb_dict_old['z_ll'] = xb_z_ll_old
-  xb_dict_old['all'] = xb_old
-  print("Done.")
-  return xb_dict_old
-
-def get_old_sig(data_path):
-  # Initialize
-  mass_min = 5000
-  mass_max = 0
-  xs_old = None
-  xs_old_norm = None
-  xs_dict_old = {}
-  # Load
-  print("Loading old signal array.")
-  print("Organizing old signal with dict: xs_dict_old.")
-  for i, mass in enumerate(OLD_MASS_MAP):
-    # load signal
-    xs_add = np.load(data_path + '/rpv_{}GeV.npy'.format(mass))
-    xs_temp = np.load(data_path + '/rpv_{}GeV.npy'.format(mass))
-    xs_add = np.concatenate((xs_add, xs_temp))
-    xs_temp = np.load(data_path + '/rpv_{}GeV.npy'.format(mass))
-    xs_add = np.concatenate((xs_add, xs_temp))
-    xs_add_norm = modify_array(xs_add, weight_id=-1, norm=True)
-    # add to dict xs_dict_old
-    xs_dict_old['{}GeV'.format(mass)] = xs_add
-    # add to full signals
-    if xs_old is None:
-      xs_old = xs_add.copy()
-      xs_old_norm = xs_add_norm.copy()
-    else:
-      xs_old = np.concatenate((xs_old, xs_add))
-      xs_old_norm = np.concatenate((xs_old_norm, xs_add_norm))
-  xs_dict_old['all'] = xs_old
-  xs_dict_old['all_norm'] = xs_old_norm
-  # Add extra mass combination
-  # min_1500: 1500 - 5000 GeV
-  xs_min_1500 = None
-  for mass in OLD_MASS_MAP:
-    if mass >= 1500:
-      xs_temp = xs_dict_old['{}GeV'.format(mass)]
-      xs_temp_norm = modify_array(xs_temp, weight_id=-1, norm=True)
-      if xs_min_1500 is None:
-        xs_min_1500 = xs_temp_norm.copy()
-      else:
-        xs_min_1500 = np.concatenate((xs_min_1500, xs_temp_norm))
-  xs_dict_old['min_1500'] = xs_min_1500
-  # 3-point: 500, 1000, 2000 GeV
-  xs_3point = None
-  for mass in [500, 1000, 2000]:
-    xs_temp = xs_dict_old['{}GeV'.format(mass)]
-    xs_temp_norm = modify_array(xs_temp, weight_id=-1, norm=True)
-    if xs_3point is None:
-      xs_3point = xs_temp_norm.copy()
-    else:
-      xs_3point = np.concatenate((xs_3point, xs_temp_norm))
-  xs_dict_old['3point'] = xs_3point
-  # 4-point: 500, 700, 1000, 2000 GeV
-  xs_4point = None
-  for mass in [500, 1000, 2000]:
-    xs_temp = xs_dict_old['{}GeV'.format(mass)]
-    xs_temp_norm = modify_array(xs_temp, weight_id=-1, norm=True)
-    if xs_4point is None:
-      xs_4point = xs_temp_norm.copy()
-    else:
-      xs_4point = np.concatenate((xs_4point, xs_temp_norm))
-  xs_dict_old['4point'] = xs_4point
-  print("Done.")
-  return xs_dict_old
-
-def get_rel_103_bkg(data_path, campaign):
-  xb_dict_new = {}
-  print("Loading rel_103 background array.")
+def get_bkg(npy_path, campaign, channel, bkg_list, selected_features):
+  print("Loading raw background array.")
   # Load individual bkg
-  for bkg in rel_103_bkg_list:
-    directory = data_path + "/" + campaign
-    bkg_array = None
-    for feature in rel_103_feature_list:
-      temp_array = np.load(directory+"/bkg_"+bkg+"_"+feature+".npy")
-      temp_array = np.reshape(temp_array, (-1, 1))
-      if bkg_array is None:
-        bkg_array = temp_array
-      else:
-        bkg_array = np.concatenate((bkg_array, temp_array), axis=1)
-    print(bkg, "shape:", bkg_array.shape)
-    xb_dict_new[bkg] = bkg_array
+  bkg_dict = get_npy_individuals(
+    npy_path, campaign, channel, bkg_list, selected_features, "bkg")
   # Add all bkg together
-  bkg_all_array = np.concatenate(list(xb_dict_new.values()))
-  xb_dict_new['all'] = bkg_all_array
-  return xb_dict_new
+  bkg_all_array = np.concatenate(list(bkg_dict.values()))
+  bkg_dict['all'] = bkg_all_array
+  return bkg_dict
 
-def get_rel_103_sig(data_path, campaign):
-  xs_dict_new = {}
-  print("Loading rel_103 signal array.")
-  # Load individual mass point sig
-  for sig in rel_103_sig_list:
-    directory = data_path + "/" + campaign
-    sig_array = None
-    for feature in rel_103_feature_list:
-      temp_array = np.load(directory+"/sig_"+sig+"_"+feature+".npy")
-      temp_array = np.reshape(temp_array, (-1, 1))
-      if sig_array is None:
-        sig_array = temp_array
-      else:
-        sig_array = np.concatenate((sig_array, temp_array), axis=1)
-    print(sig, "shape:", sig_array.shape)
-    xs_dict_new[sig] = sig_array
+def get_sig(npy_path, campaign, channel, sig_list, selected_features):
+  print("Loading raw signal array.")
+  # Load individual sig
+  sig_dict = get_npy_individuals(
+    npy_path, campaign, channel, sig_list, selected_features, "sig")
   # Add all sig together
-  sig_all_array = np.concatenate(list(xs_dict_new.values()))
-  xs_dict_new['all'] = sig_all_array
-  return xs_dict_new
+  sig_all_array = np.concatenate(list(sig_dict.values()))
+  sig_dict['all'] = sig_all_array
+  # Add all sig together with each mass point normalized
+  sig_all_array_norm = None
+  for sig in sig_list:
+    temp_array = sig_dict[sig]
+    temp_array = array_utils.modify_array(temp_array, norm=True)
+    if sig_all_array_norm is None:
+      sig_all_array_norm = temp_array
+    else:
+      sig_all_array_norm = np.concatenate((sig_all_array_norm, temp_array))
+  sig_dict['all_norm'] = sig_all_array_norm
+  return sig_dict
+
+def get_npy_individuals(npy_path, campaign, channel, npy_list,
+  selected_features, npy_prefix):
+  """Gets individual npy arrays with given info.
+  
+  Return:
+    A dict of individual npy arrays.
+    Example: signal dict of rpv_500 rpv_1000 rpv_2000
+
+  """
+  return_dict = {}
+  # Load individual npy array
+  for npy in npy_list:
+    if campaign in ["run2", "all"]:
+      directory = npy_path
+      npy_array = None
+      for feature in (selected_features + [channel, "weight"]):
+        temp_array1 = np.load(
+          directory+"/mc16a" + "/" + npy_prefix + "_"+npy+"_"+feature+".npy")
+        temp_array1 = np.reshape(temp_array1, (-1, 1))
+        temp_array2 = np.load(
+          directory+"/mc16d" + "/" + npy_prefix + "_"+npy+"_"+feature+".npy")
+        temp_array2 = np.reshape(temp_array2, (-1, 1))
+        temp_array3 = np.load(
+          directory+"/mc16e" + "/" + npy_prefix + "_"+npy+"_"+feature+".npy")
+        temp_array3 = np.reshape(temp_array3, (-1, 1))
+        temp_array = np.concatenate(
+          (temp_array1, temp_array2, temp_array3), axis=0)
+        if npy_array is None:
+          npy_array = temp_array
+        else:
+          npy_array = np.concatenate((npy_array, temp_array), axis=1)
+      print(npy, "shape:", npy_array.shape)
+      return_dict[npy] = npy_array
+    else:
+      directory = npy_path + "/" + campaign
+      npy_array = None
+      for feature in (selected_features + [channel, "weight"]):
+        temp_array = np.load(
+          directory+"/" + npy_prefix + "_"+npy+"_"+feature+".npy")
+        temp_array = np.reshape(temp_array, (-1, 1))
+        if npy_array is None:
+          npy_array = temp_array
+        else:
+          npy_array = np.concatenate((npy_array, temp_array), axis=1)
+      print(npy, "shape:", npy_array.shape)
+      return_dict[npy] = npy_array
+  return return_dict
