@@ -14,11 +14,11 @@ from reportlab.platypus import Image, PageBreak, Paragraph, Spacer, SimpleDocTem
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 
-from lfv_pdnn.data_io.get_arrays import *
-from lfv_pdnn.train import model
-from lfv_pdnn.train.train_utils import get_input_array
+from lfv_pdnn.data_io import get_arrays
+from lfv_pdnn.common import array_utils, common_utils
+from lfv_pdnn.train import model, train_utils
 
-SCANNED_PARAS = ['scan_learn_rate', 'scan_learn_rate_decay']
+SCANNED_PARAS = ['scan_learn_rate', 'scan_learn_rate_decay', 'scan_batch_size']
 
 class job_executor(object):
   """Core class to execute a pdnn job based on given cfg file."""
@@ -36,65 +36,88 @@ class job_executor(object):
     for para_name in SCANNED_PARAS:
       setattr(self, para_name, [])
 
+
   def execute_jobs(self):
     """Execute all planned jobs."""
-    # Execute single job if parameter scan is not needed
-    if self.perform_para_scan is not True:
+    # Get config
+    if not self.cfg_is_collected:
+      self.get_config()
+    # Set save sub-directory for this task
+    dir_pattern = self.save_dir + '/' + self.datestr + '_' + self.job_name \
+                  + "_v{}"
+    self.save_sub_dir = common_utils.get_newest_file_version(
+      dir_pattern)['path']
+    # Execute job(s)
+    if self.perform_para_scan is not True:  # Execute single job if parameter scan is not needed
       self.execute_single_job()
-      return  # single job executed
-    # Perform scan as specified
-    print('*' * 80)
-    print("Executing parameters scanning.")
-    scan_list = self.get_scan_para_list()
+    else:  # Otherwise perform scan as specified
+      print('#'*80)
+      print("Executing parameters scanning.")
+      scan_list, scan_list_id = self.get_scan_para_list()
+      for scan_set, scan_set_id in zip(scan_list, scan_list_id):
+        print('*' * 80)
+        print("Scanning parameter set:")
+        common_utils.display_dict(scan_set)
+        keys = list(scan_set.keys())
+        scan_id = "scan"
+        for num, key in enumerate(keys):
+          scanned_var_name = key.split("scan_")[1]
+          setattr(self, scanned_var_name, scan_set[key])
+          scan_id = scan_id + "--" + scanned_var_name + "_" \
+            + str(scan_set_id[num])
+        print("scan id:", scan_id)
+        setattr(self, "scan_id", scan_id)
+        self.execute_single_job()
 
-    for scan_set in scan_list:
-      print('*' * 80)
-      print("Scanning parameter set:")
-      display_dict(scan_set)
-      keys = list(scan_set.keys())
-      for key in keys:
-        setattr(self, key, scan_set[key])
-      self.execute_single_job()
 
   def execute_single_job(self):
     """Execute single DNN training with given configuration."""
+    
     # Prepare
-    if not self.cfg_is_collected:
-      self.get_config()
     if not self.array_is_loaded:
       self.load_arrays()
-    xs, xb = get_input_array(
-      self.sig_dict, self.sig_key,
-      self.bkg_dict, self.bkg_key, self.channel_id
-      ) # -4/-3/-3 for emu/etau/mutau
+    xs = array_utils.modify_array(self.sig_dict[self.sig_key],
+      select_channel=True, remove_negative_weight=True)
+    xb = array_utils.modify_array(self.bkg_dict[self.bkg_key],
+      select_channel=True, remove_negative_weight=True)
     if self.save_tb_logs:
-      path_pattern = self.save_tb_logs_path + '/' + self.datestr + '_'\
-        + self.job_name + '_run{}'
-      save_dir = get_newest_file_version(path_pattern)['path']
+      save_dir = self.save_sub_dir + '/tb_logs'
       if not os.path.exists(save_dir):
         os.makedirs(save_dir)
       # set path to current os style, otherwise tf will report error
       self.save_tb_logs_path_subdir = os.path.normpath(save_dir)
     else:
       self.save_tb_logs_path_subdir = None
+    if self.use_early_stop:
+      self.early_stop_paras={}
+      self.early_stop_paras["monitor"] = self.early_stop_monitor
+      self.early_stop_paras["min_delta"] = self.early_stop_min_delta
+      self.early_stop_paras["patience"] = self.early_stop_patience
+      self.early_stop_paras["mode"] = self.early_stop_mode
+      self.early_stop_paras["restore_best_weights"] = self.early_stop_restore_best_weights
+    else:
+      self.early_stop_paras={}
     self.model = getattr(model, self.model_class)(
       self.model_name, self.input_dim,
       learn_rate=self.learn_rate,
       decay=self.learn_rate_decay,
       metrics=self.train_metrics,
       weighted_metrics=self.train_metrics_weighted,
+      selected_features=self.selected_features,
       save_tb_logs=self.save_tb_logs,
-      tb_logs_path=self.save_tb_logs_path_subdir
+      tb_logs_path=self.save_tb_logs_path_subdir,
+      use_early_stop=self.use_early_stop,
+      early_stop_paras=self.early_stop_paras
       )
     # Set up training
     self.model.prepare_array(
-      xs, xb, self.selected_features,
-      self.channel_id,
+      xs, xb,
+      reset_mass=self.reset_feature,
+      reset_mass_name=self.reset_feature_name,
       sig_weight=self.sig_sumofweight,
       bkg_weight=self.bkg_sumofweight,
       test_rate=self.test_rate,
-      verbose=self.verbose
-      )
+      verbose=self.verbose)
     self.model.compile()
     self.model.train(
       batch_size=self.batch_size,
@@ -115,17 +138,12 @@ class job_executor(object):
       path_pattern = None
       save_dir = None
       if self.perform_para_scan:
-        path_pattern = self.save_pdf_path + '/' + self.datestr + '_'\
-          + self.job_name + '_scan{}'
-        save_dir = get_newest_file_version(path_pattern, n_digit=3)['path']
+        save_dir = self.save_sub_dir + "/reports/scan_" + self.scan_id
       else:
-        path_pattern = self.save_pdf_path + '/' + self.datestr + '_'\
-          + self.job_name + '_v{}'
-        save_dir = get_newest_file_version(path_pattern)['path']
+        save_dir = self.save_sub_dir + "/reports/"
       if not os.path.exists(save_dir):
           os.makedirs(save_dir)
-      fig_save_path = save_dir + '/' + self.job_name \
-        + '_performance_' + self.datestr + '.png'
+      fig_save_path = save_dir + '/performance.png'
       self.fig_performance_path = fig_save_path
       # show and save according to setting
       self.model.show_performance(
@@ -147,17 +165,19 @@ class job_executor(object):
         )
       fig.tight_layout()
       if self.save_pdf_report:
-        fig_save_path = save_dir + '/' + self.job_name \
-            + '_non-mass-reset_' + self.datestr + '.png'
+        fig_save_path = save_dir + '/non-mass-reset_plots.png'
         fig.savefig(fig_save_path)
         self.fig_non_mass_reset_path = fig_save_path
-        pdf_save_path = save_dir + '/' + self.job_name \
-          + '_report_' + self.datestr + '.pdf'
+        pdf_save_path = save_dir + '/summary_report.pdf'
         self.generate_report(pdf_save_path=pdf_save_path)
         self.report_path = pdf_save_path
     if self.save_model:
-      mod_save_path = self.save_model_path
-      self.model.save_model(save_dir=mod_save_path)
+      mod_save_path = self.save_sub_dir + "/models"
+      model_save_name = self.model_name
+      if self.perform_para_scan:
+        model_save_name = self.model_name + "_" + self.scan_id
+      self.model.save_model(save_dir=mod_save_path, file_name=model_save_name)
+
 
   def get_config(self, path=None):
     """Retrieves configurations from ini file."""
@@ -177,9 +197,11 @@ class job_executor(object):
     except:
       pass
     if default_ini_path is not None:
+      print("Including:", default_ini_path)
       self.get_config(default_ini_path)
     # Load [job] section
     self.try_parse_str('job_name', config, 'job', 'job_name')
+    self.try_parse_str('save_dir', config, 'job', 'save_dir')
     # Load [array] section
     self.try_parse_str('arr_version', config, 'array', 'arr_version')
     self.try_parse_str('campaign', config, 'array', 'campaign')
@@ -189,12 +211,16 @@ class job_executor(object):
     self.try_parse_str('sig_dict_path', config, 'array', 'sig_dict_path')
     self.try_parse_str('sig_key', config, 'array', 'sig_key')
     self.try_parse_float('sig_sumofweight', config, 'array', 'sig_sumofweight')
+    self.try_parse_list('bkg_list', config, 'array', 'bkg_list')
+    self.try_parse_list('sig_list', config, 'array', 'sig_list')
     self.try_parse_list('selected_features', config, 'array', 'selected_features')
     if self.selected_features is not None:
       self.input_dim = len(self.selected_features)
     else:
       self.input_dim = None
-    self.try_parse_int('channel_id', config, 'array', 'channel_id')
+    self.try_parse_str('channel', config, 'array', 'channel')
+    self.try_parse_bool('reset_feature', config, 'array', 'reset_feature')
+    self.try_parse_str('reset_feature_name', config, 'array', 'reset_feature_name')
     # Load [model] section
     self.try_parse_str('model_name', config, 'model', 'model_name')
     self.try_parse_str('model_class', config, 'model', 'model_class')
@@ -208,8 +234,13 @@ class job_executor(object):
     self.try_parse_float('bkg_class_weight', config, 'model', 'bkg_class_weight')
     self.try_parse_list('train_metrics', config, 'model', 'train_metrics')
     self.try_parse_list('train_metrics_weighted', config, 'model', 'train_metrics_weighted')
+    self.try_parse_bool('use_early_stop', config, 'model', 'use_early_stop')
+    self.try_parse_str('early_stop_monitor', config, 'model', 'early_stop_monitor')
+    self.try_parse_float('early_stop_min_delta', config, 'model', 'early_stop_min_delta')
+    self.try_parse_int('early_stop_patience', config, 'model', 'early_stop_patience')
+    self.try_parse_str('early_stop_mode', config, 'model', 'early_stop_mode')
+    self.try_parse_bool('early_stop_restore_best_weights', config, 'model', 'early_stop_restore_best_weights')
     self.try_parse_bool('save_model', config, 'model', 'save_model')
-    self.try_parse_str('save_model_path', config, 'model', 'save_model_path')
     # Load [para_scan]
     self.try_parse_bool('perform_para_scan', config, 'para_scan', 'perform_para_scan')
     self.try_parse_str('para_scan_cfg', config, 'para_scan', 'para_scan_cfg')
@@ -217,15 +248,14 @@ class job_executor(object):
     self.try_parse_list('plot_bkg_list', config, 'report', 'plot_bkg_list')
     self.try_parse_bool('show_report', config, 'report', 'show_report')
     self.try_parse_bool('save_pdf_report', config, 'report', 'save_pdf_report')
-    self.try_parse_str('save_pdf_path', config, 'report', 'save_pdf_path')
     self.try_parse_bool('save_tb_logs', config, 'report', 'save_tb_logs')
-    self.try_parse_str('save_tb_logs_path', config, 'report', 'save_tb_logs_path')
     self.try_parse_int('verbose', config, 'report', 'verbose')
 
     if self.perform_para_scan:
       self.get_config_scan()
 
     self.cfg_is_collected = True
+
 
   def get_config_scan(self):
     """Load parameters scan configuration file."""
@@ -235,6 +265,7 @@ class job_executor(object):
     # get available scan variables:
     for para in SCANNED_PARAS:
       self.try_parse_list(para, config, 'scanned_para', para)
+
 
   def get_scan_para_list(self):
     """Gets a list of dictionary to reset parameters for new scan job."""
@@ -246,6 +277,7 @@ class job_executor(object):
         used_para_names.append(para_name)
         used_para_lists.append(scanned_values)
     combs = list(itertools.product(*used_para_lists))
+    # Get scan_list
     scan_list = []
     for comb in combs:
       scan_dict_single = {}
@@ -254,20 +286,23 @@ class job_executor(object):
       scan_list.append(scan_dict_single)
     if len(scan_list) < 1:
       raise ValueError("Empty scan parameter list, please check .ini file.")
+    # Get corresponding scan_list identifiers
+    used_para_ids = [list(range(len(para))) for para in used_para_lists]
+    scan_list_id = list(itertools.product(*used_para_ids))
     # Summary
     print("Scan parameters list loaded.")
     print("Scaned parameters are:")
     for (para_name, para_list) in zip(used_para_names, used_para_lists):
       print('*', para_name, ':', para_list)
     print("Total combinations/scans:", len(scan_list))
-    return scan_list
+    return scan_list, scan_list_id
+
 
   def generate_report(self, pdf_save_path=None):
     """Generate a brief report to show how is the model."""
     # Initalize
     if pdf_save_path is None:
-      save_dir = self.save_pdf_path + '/' + self.datestr + '_' + self.job_name
-      pdf_save_path = save_dir + '/' + self.job_name \
+      pdf_save_path = self.save_sub_dir + '/' + self.job_name \
         + '_report_' + self.datestr + '.pdf'
     doc = SimpleDocTemplate(
       pdf_save_path, pagesize=letter,
@@ -313,9 +348,17 @@ class job_executor(object):
     reports.append(Paragraph(ptext, styles["Justify"]))
     ptext = "array campaign          :    " + self.campaign
     reports.append(Paragraph(ptext, styles["Justify"]))
-    ptext = "channel id              :    " + self.interpret_channel_id(self.channel_id)
+    ptext = "channel                 :    " + self.channel
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = "selected features id    :    " + str(self.bkg_list)
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = "selected features id    :    " + str(self.sig_list)
     reports.append(Paragraph(ptext, styles["Justify"]))
     ptext = "selected features id    :    " + str(self.selected_features)
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = "selected features id    :    " + str(self.reset_feature)
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = "selected features id    :    " + str(self.reset_feature_name)
     reports.append(Paragraph(ptext, styles["Justify"]))
     reports.append(Spacer(1, 12))
     ptext = "bkg arrays path         :    " + self.bkg_dict_path
@@ -353,14 +396,22 @@ class job_executor(object):
     reports.append(Paragraph(ptext, styles["Justify"]))
     ptext = "background class weight :    " + str(self.bkg_class_weight)
     reports.append(Paragraph(ptext, styles["Justify"]))
-    ptext = "model saved             :    " + str(self.save_model)
+    ptext = "use early stop :             " + str(self.use_early_stop)
     reports.append(Paragraph(ptext, styles["Justify"]))
-    ptext = "model saved path        :    " + str(self.save_model_path)
+    ptext = "early stop monitor :         " + str(self.early_stop_monitor)
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = "early stop min_delta:        " + str(self.early_stop_min_delta)
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = "early stop patience :        " + str(self.early_stop_patience)
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = "early stop mode :            " + str(self.early_stop_mode)
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = "early stop restore_best_weights :" + str(self.early_stop_restore_best_weights)
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = "model saved :                " + str(self.save_model)
     reports.append(Paragraph(ptext, styles["Justify"]))
     reports.append(Spacer(1, 12))
     ptext = "[TensorBoard logs]"
-    reports.append(Paragraph(ptext, styles["Justify"]))
-    ptext = "logs directory          :    " + str(self.save_tb_logs_path_subdir)
     reports.append(Paragraph(ptext, styles["Justify"]))
     # plots
     reports.append(PageBreak())
@@ -378,30 +429,13 @@ class job_executor(object):
     # build/save
     doc.build(reports)
 
-  def interpret_channel_id(self, channel_id, interpret_dict=None):
-    """Gives channel id real meaning."""
-    if interpret_dict is None:
-      interpret_dict = {
-        -4: 'emu',
-        -3: 'etau',
-        -2: 'mutau'
-      }
-    try:
-      return interpret_dict[channel_id]
-    except:
-      raise ValueError("Invalid channel key detected.")
 
   def load_arrays(self):
     """Get training arrays."""
-    if self.arr_version == 'old':
-      self.bkg_dict = get_old_bkg(self.bkg_dict_path)
-      self.sig_dict = get_old_sig(self.sig_dict_path)
-    elif self.arr_version == 'new':
-      self.bkg_dict = get_new_bkg(self.bkg_dict_path)
-      self.sig_dict = get_new_sig(self.sig_dict_path)
-    elif self.arr_version == 'rel_103':
-      self.bkg_dict = get_rel_103_bkg(self.bkg_dict_path, self.campaign)
-      self.sig_dict = get_rel_103_sig(self.sig_dict_path, self.campaign)
+    self.bkg_dict = get_arrays.get_bkg(self.bkg_dict_path, self.campaign,
+      self.channel, self.bkg_list, self.selected_features)
+    self.sig_dict = get_arrays.get_sig(self.sig_dict_path, self.campaign,
+      self.channel, self.sig_list, self.selected_features)
     self.array_is_loaded = True
     if self.show_report or self.save_pdf_report:
       self.plot_bkg_dict = {key:self.bkg_dict[key] for key in self.plot_bkg_list}

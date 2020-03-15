@@ -14,31 +14,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 from math import sqrt
 from sklearn.metrics import classification_report, accuracy_score, auc
-#from sklearn.model_selection import train_test_split
 
-from ..common.common_utils import *
-
-
-def get_input_array(sig_dict, sig_key, bkg_dict, bkg_key, channel_id,
-                    rm_neg=True):
-  """Get training array from dictionary and select channel.
-  
-  Args:
-      rm_neg: bool, optional (default = True)
-          whether to remove negtive weight events
-  
-  """
-  xs = modify_array(sig_dict[sig_key], weight_id=-1, select_channel=True,
-                    channel_id=channel_id, remove_negative_weight=rm_neg)
-  xb = modify_array(bkg_dict[bkg_key], weight_id=-1, select_channel=True,
-                    channel_id=channel_id, remove_negative_weight=rm_neg)
-  return xs, xb
-
-
-def get_part_feature(xtrain, feature_id_list):
-  """Gets sub numpy array using given column index"""
-  xtrain = xtrain[:,feature_id_list]
-  return xtrain
+from lfv_pdnn.common import array_utils
+from lfv_pdnn.common.common_utils import *
 
 
 def get_mass_range(mass_array, weights, nsig=1):
@@ -55,110 +33,16 @@ def get_mass_range(mass_array, weights, nsig=1):
   return lower_limit, upper_limit
 
 
-def modify_array(input_array, weight_id=None, remove_negative_weight=False,
-                 select_channel=False, channel_id=None, 
-                 select_mass=False, mass_id=None, mass_min=None, mass_max=None,
-                 reset_mass=False, reset_mass_array=None, reset_mass_id=None,
-                 norm=False, sumofweight=1000,
-                 shuffle=False, shuffle_seed=None):
-  """Modifies numpy array with given setup.
+def get_valid_feature(xtrain):
+  """Gets valid inputs.
   
-  Args:
-    input_array: numpy array
-      Array to be modified.
-    weight_id: int or None, optional (default=None)
-      Column index of weight value.
-    remove_negative_weight: bool, optional (default=False) 
-      Whether to remove events with negative weight.
-    select_channel: bool, optional (default=False) 
-      Whether to select specific channel. 
-      If True, channel_id should not be None.
-    channel_id: int or None, optional (default=None) 
-      Column index of channel name.
-    select_mass: bool, optional (default=False)
-      Whether to select elements within cerntain mass range.
-      If True, mass_id/mass_min/mass_max shouldn't be None.
-    mass_id: int or None, optional (default=None)
-      Column index of mass id.
-    mass_min: float or None, optional (default=None)
-      Mass lower limit.
-    mass_max: float or None, optional (default=None)
-      Mass higher limit.
-    reset_mass: bool, optional (default=None)
-      Whether to reset mass with given array's value distribution.
-      If set True, reset_mass_array/reset_mass_id shouldn't be None.
-    reset_mass_array: numpy array or none, optional (default=None):
-      Array used to reset input_array's mass distribution.
-    reset_mass_id: int or None, optional (default=None)
-      Column index of mass id to reset input_array.
-    norm: bool, optional (default=False)
-      Whether normalize array's weight to sumofweight.
-    sumofweight: float or None, optional (default=None)
-      Total normalized weight.
-    shuffle: bool, optional (default=None)
-      Whether to randomlize the output array.
-    shuffle_seed: int or None, optional (default=None)
-      Seed for randomization process.
-      Set to None to use current time as seed.
-      Set to a specific value to get an unchanged shuffle result.
-
-    Returns:
-      new: numpy array
-        Modified numpy array.
-
+  Note:
+    indice -2 is for channel
+    indice -1 is for weight
+  
   """
-  # Modify
-  new = input_array.copy() # copy data to avoid original data operation
-  # select channel
-  if select_channel == True:
-    if not has_none([channel_id, weight_id]):
-      for ele in new:
-        if ele[channel_id] != 1.0:
-          ele[weight_id] = 0
-    else:
-      print("missing parameters, skipping channel selection...")
-  # select mass range
-  if select_mass == True:
-    if not has_none([mass_id, mass_min, mass_max]):
-      for ele in new:
-        if ele[mass_id] < mass_min or ele[mass_id] > mass_max:
-          ele[weight_id] = 0
-    else:
-      print("missing parameters, skipping mass selection...")
-  # clean array
-  new = clean_array(new, -1, remove_negative=remove_negative_weight, 
-                    verbose=False)
-  # reset mass
-  if reset_mass == True:
-    if not has_none([reset_mass_array, reset_mass_id]):
-      new = prep_mass_fast(new, reset_mass_array, mass_id=reset_mass_id)
-    else:
-      print("missing parameters, skipping mass reset...")
-  # normalize weight
-  if norm == True:
-    if not has_none([weight_id]):
-      new[:, weight_id] = norweight(new[:, weight_id], norm=sumofweight)
-    else:
-      print("missing parameters, skipping normalization...")
-  # shuffle array
-  if shuffle == True:
-    # use time as random seed if not specified
-    """
-    if has_none([shuffle_seed]):
-      shuffle_seed = int(time.time())
-    new, x2, y1, y2 = train_test_split(new, np.zeros(len(new)), test_size=0.01, ########################
-                                       random_state=shuffle_seed, shuffle=True)
-    """
-    new, _, _, _ = shuffle_and_split(
-      new, np.zeros(len(new)), split_ratio=0.,
-      shuffle_seed=shuffle_seed
-      )
-
-  # clean array
-  new = clean_array(new, -1, remove_negative=remove_negative_weight, 
-                    verbose=False)
-  # return result
-  return new
+  xtrain = xtrain[:,:-2]
+  return xtrain
 
 
 def generate_shuffle_index(array_len, shuffle_seed=None):
@@ -206,32 +90,6 @@ def norarray_min_max(array, min, max, axis=None):
   output_array = output_array / ratio
 
 
-def norweight(weight_array, norm=1000):
-  """Normalize given weight array to certain value
-
-  Args:
-    weight_array: numpy array
-      Array to be normalized.
-    norm: float (default=1000)
-      Value to be normalized to.
-
-  Returns:
-    new: numpyt array
-      normalized array.
-  
-  Example:
-    arr has weight value saved in column -1.
-    To normalize it's total weight to 1:
-      arr[:, -1] = norweight(arr[:, -1], norm=1)
-
-  """
-  new = weight_array.copy() # copy data to avoid original data operation
-  total_weight = sum(new)
-  frac = norm/total_weight
-  new = frac * new
-  return new
-
-
 def plot_different_mass(mass_scan_map, input_path, para_index, model = "zprime", bins = 50, range = (-10000, 10000), 
                         density = True, xlabel="x axis", ylabel="y axis"):
   """
@@ -258,9 +116,8 @@ def plot_different_mass(mass_scan_map, input_path, para_index, model = "zprime",
       """
     xs_emu = xs_add.copy()
     # select emu channel and shuffle
-    xs_emu = modify_array(xs_emu, weight_id = -1, 
-                          select_channel = True, channel_id = -4,
-                          norm = True, shuffle = True, shuffle_seed = 485)
+    xs_emu = array_utils.modify_array(xs_emu, select_channel = True, norm = True,
+      shuffle = True, shuffle_seed = 486)
 
     # make plots
     plt.hist(xs_emu[:, para_index], bins = bins, weights = xs_emu[:,-1], 
@@ -269,68 +126,6 @@ def plot_different_mass(mass_scan_map, input_path, para_index, model = "zprime",
   plt.xlabel(xlabel)
   plt.ylabel(ylabel)
   plt.show()
-
-
-def prep_mass_fast(xbtrain, xstrain, mass_id=0, shuffle_seed=None):
-  """Resets background mass distribution according to signal distribution
-
-  Args:
-    xbtrain: numpy array
-      Background array
-    xstrain: numpy array
-      Siganl array
-    mass_id: int (default=0)
-      Column index of mass.
-    shuffle_seed: int or None, optional (default=None)
-      Seed for randomization process.
-      Set to None to use current time as seed.
-      Set to a specific value to get an unchanged shuffle result.
-
-  Returns:
-    new: numpy array
-      new background array with mass distribution reset
-
-  """
-  new =  reset_col(xbtrain, xstrain, col=mass_id, weight_id=-1, shuffle_seed=None)
-  return new
-
-
-def reset_col(reset_array, ref_array, col=0, weight_id=-1, shuffle_seed=None):
-  """Resets one column in an array based on the distribution of refference."""
-  if has_none([shuffle_seed]):
-    shuffle_seed = int(time.time())
-  np.random.seed(shuffle_seed)
-  new = reset_array.copy()
-  total_events = len(new)
-  sump = sum(ref_array[:, weight_id])
-  reset_list = np.random.choice(ref_array[:, col], size=total_events, p=1/sump*ref_array[:, -1])
-  for count, entry in enumerate(new):
-    entry[col] = reset_list[count]
-  return new
-
-
-def shuffle_and_split(x, y, split_ratio=0., shuffle_seed=None):
-  """Self defined function to replace train_test_split in sklearn to allow
-  more flexibility.
-  """
-  # Check consistance of length of x, y
-  if len(x) != len(y):
-    raise ValueError("Length of x and y is not same.")
-  array_len = len(y)
-  np.random.seed(shuffle_seed)
-  # get index for the first part of the splited array
-  first_part_index = np.random.choice(
-    range(array_len),
-    int(array_len * 1. * split_ratio),
-    replace=False
-  )
-  # get index for last part of the splited array
-  last_part_index = np.setdiff1d(np.array(range(array_len)), first_part_index)
-  first_part_x = x[first_part_index]
-  first_part_y = y[first_part_index]
-  last_part_x = x[last_part_index]
-  last_part_y = y[last_part_index]
-  return first_part_x, last_part_x, first_part_y, last_part_y
 
 
 def split_and_combine(xs, xb, test_rate=0.2, shuffle_combined_array=True, shuffle_seed=None):
@@ -362,14 +157,10 @@ def split_and_combine(xs, xb, test_rate=0.2, shuffle_combined_array=True, shuffl
   ys = np.ones(len(xs))
   yb = np.zeros(len(xb))
 
-  xs_train, xs_test, ys_train, ys_test = shuffle_and_split(
-    xs, ys, split_ratio=test_rate,
-    shuffle_seed=shuffle_seed
-    )
-  xb_train, xb_test, yb_train, yb_test = shuffle_and_split(
-    xb, yb, split_ratio=test_rate,
-    shuffle_seed=shuffle_seed
-    )
+  xs_train, xs_test, ys_train, ys_test = array_utils.shuffle_and_split(
+    xs, ys, split_ratio=test_rate, shuffle_seed=shuffle_seed)
+  xb_train, xb_test, yb_train, yb_test = array_utils.shuffle_and_split(
+    xb, yb, split_ratio=test_rate, shuffle_seed=shuffle_seed)
 
   x_train = np.concatenate((xs_train, xb_train))
   y_train = np.concatenate((ys_train, yb_train))
