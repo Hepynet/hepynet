@@ -35,5 +35,7 @@ RUN pip install eli5 \
 RUN echo "pip install -e /work" >> /root/.bashrc \
 && echo "alias ghome='cd /work'" >> /root/.bashrc \
 && echo "alias lhome='cd /data'" >> /root/.bashrc \
+&& echo "alias docker-jupyter='jupyter lab --notebook-dir=/work/run --ip 0.0.0.0 --no-browse'" >> /root/.bashrc \
 && echo "cd /work" >> /root/.bashrc
 
+EXPOSE 8888
