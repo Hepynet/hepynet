@@ -19,6 +19,8 @@ from lfv_pdnn.common import array_utils, common_utils
 from lfv_pdnn.train import model, train_utils
 
 SCANNED_PARAS = ['scan_learn_rate', 'scan_learn_rate_decay', 'scan_batch_size']
+# possible main directory names, in docker it's "work", otherwise it's "pdnn-lfv"
+MAIN_DIR_NAMES = ["pdnn-lfv", "work"]
 
 class job_executor(object):
   """Core class to execute a pdnn job based on given cfg file."""
@@ -109,7 +111,7 @@ class job_executor(object):
       use_early_stop=self.use_early_stop,
       early_stop_paras=self.early_stop_paras
       )
-    # Set up training
+    # Set up training or loading model
     self.model.prepare_array(
       xs, xb,
       reset_mass=self.reset_feature,
@@ -118,15 +120,19 @@ class job_executor(object):
       bkg_weight=self.bkg_sumofweight,
       test_rate=self.test_rate,
       verbose=self.verbose)
-    self.model.compile()
-    self.model.train(
-      batch_size=self.batch_size,
-      epochs=self.epochs,
-      val_split=self.val_split,
-      sig_class_weight=self.sig_class_weight,
-      bkg_class_weight=self.bkg_class_weight,
-      verbose=self.verbose
-      )
+    if self.job_type == "apply":
+      self.model.load_model(self.load_dir, self.model_name,
+        job_name=self.load_job_name, model_class=self.model_class)
+    else:
+      self.model.compile()
+      self.model.train(
+        batch_size=self.batch_size,
+        epochs=self.epochs,
+        val_split=self.val_split,
+        sig_class_weight=self.sig_class_weight,
+        bkg_class_weight=self.bkg_class_weight,
+        verbose=self.verbose
+        )
     # Logs
     if self.show_report or self.save_pdf_report:
       # Performance plots
@@ -149,7 +155,8 @@ class job_executor(object):
       self.model.show_performance(
         show_fig=self.show_report,
         save_fig=self.save_pdf_report,
-        save_path=fig_save_path
+        save_path=fig_save_path,
+        job_type=self.job_type
         )
       # Extra plots (use model on non-mass-reset arrays)
       fig, ax = plt.subplots(ncols=2, figsize=(16, 4))
@@ -171,7 +178,7 @@ class job_executor(object):
         pdf_save_path = save_dir + '/summary_report.pdf'
         self.generate_report(pdf_save_path=pdf_save_path)
         self.report_path = pdf_save_path
-    if self.save_model:
+    if self.save_model and (self.job_type == "train"):
       mod_save_path = self.save_sub_dir + "/models"
       model_save_name = self.model_name
       if self.perform_para_scan:
@@ -186,6 +193,7 @@ class job_executor(object):
       ini_path = self.cfg_path
     else:
       ini_path = path
+    ini_path = get_valid_cfg_path(ini_path)
     if not os.path.isfile(ini_path):
       raise ValueError("No vallid configuration file path provided.")
     config = ConfigParser()
@@ -201,7 +209,10 @@ class job_executor(object):
       self.get_config(default_ini_path)
     # Load [job] section
     self.try_parse_str('job_name', config, 'job', 'job_name')
+    self.try_parse_str('job_type', config, 'job', 'job_type')
     self.try_parse_str('save_dir', config, 'job', 'save_dir')
+    self.try_parse_str('load_dir', config, 'job', 'load_dir')
+    self.try_parse_str('load_job_name', config, 'job', 'load_job_name')
     # Load [array] section
     self.try_parse_str('arr_version', config, 'array', 'arr_version')
     self.try_parse_str('campaign', config, 'array', 'campaign')
@@ -314,6 +325,8 @@ class job_executor(object):
     # Reports
     # head
     ptext = "JOB NAME: " + self.job_name
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = "JOB TYPE: " + self.job_type
     reports.append(Paragraph(ptext, styles["Justify"]))
     ptext = "DATE TIME: " + self.job_create_time
     reports.append(Paragraph(ptext, styles["Justify"]))
@@ -501,8 +514,14 @@ def get_valid_cfg_path(path):
   if os.path.isfile(path):
     return path
   # Check try add share folder prefix
-  curren_dir = os.getcwd()
-  main_dirs = re.findall(r".*pDNN-Code-for-LFV-v1\.0", curren_dir)
+  current_dir = os.getcwd()
+  main_dirs = []
+  for main_dir_name in MAIN_DIR_NAMES:
+    try:
+      found_dirs = re.findall(".*"+main_dir_name, current_dir)
+      main_dirs += found_dirs
+    except:
+      pass
   share_dir = None
   for temp in main_dirs:
     share_dir_temp = temp + '/share'
@@ -511,9 +530,9 @@ def get_valid_cfg_path(path):
       break
   if share_dir is None:
     raise ValueError('No valid path found, please check .ini file.')
-  if os.path.isfile(share_dir + '/' + path):
-    return share_dir + '/' + path
-  elif os.path.isfile(share_dir + path):
+  if os.path.isfile(share_dir + '/train/' + path):
+    return share_dir + '/train/' + path
+  elif os.path.isfile(share_dir + '/' + path):
     return share_dir + '/' + path
   else:
     raise ValueError('No valid path found, please check .ini file.')

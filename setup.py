@@ -21,7 +21,7 @@ setuptools.setup(
   python_requires=">=3.6",
   entry_points={
       'console_scripts': [
-        'execute_pdnn_job=share.execute:main'
+        'execute_pdnn_jobs=share.execute:execute',
       ],
     },
 )

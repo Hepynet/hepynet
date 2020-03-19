@@ -27,7 +27,7 @@ from lfv_pdnn.common.common_utils import *
 from lfv_pdnn.data_io import get_arrays
 from lfv_pdnn.train import train_utils
 
-# self-difined metrics functions
+# self-defined metrics functions
 def plain_acc(y_true, y_pred):
   return K.mean(K.less(K.abs(y_pred*1. - y_true*1.), 0.5))
   #return 1-K.mean(K.abs(y_pred-y_true))
@@ -35,7 +35,7 @@ def plain_acc(y_true, y_pred):
 class model_base(object):
   """Base model of deep neural network for pdnn training.
   
-  Atfeature_listibutes:
+  In feature_list:
     model_create_time: datetime.datetime
       Time stamp of model object created time.
     model_is_compiled: bool
@@ -199,13 +199,15 @@ class model_sequential(model_base):
       warnings.warn("Empty training history found")
     return self.train_history
 
-  def load_model(self, model_name, dir='models', model_class='*', date='*',
-                 version='*'):
+  def load_model(self, dir, model_name, job_name='*', model_class='*', date='*',
+      version='*'):
     """Loads saved model."""
     # Search possible files
-    search_pattern = dir + '/' + model_name + '_' + model_class + '_' + date\
-                     + '*' + version + '.h5'
+    search_pattern = dir + '/' + model_name + '*.h5'
     model_path_list = glob.glob(search_pattern)
+    search_pattern = dir + '/' + date + '_' + job_name + '_' + version \
+      + '/models/' + model_name + '_' + version + '*.h5'
+    model_path_list += glob.glob(search_pattern)
     # Choose the newest one
     if len(model_path_list) < 1:
       raise FileNotFoundError("Model file that matched the pattern not found.")
@@ -541,9 +543,12 @@ class model_sequential(model_base):
     self.xb = xb
     rdm_seed = int(time.time())
     # get bkg array with mass reset
-    reset_mass_id = self.selected_features.index(reset_mass_name)
-    xb_reset_mass = array_utils.modify_array(xb, reset_mass=reset_mass,
-                      reset_mass_array=xs, reset_mass_id=reset_mass_id)
+    if reset_mass:
+      reset_mass_id = self.selected_features.index(reset_mass_name)
+      xb_reset_mass = array_utils.modify_array(xb, reset_mass=reset_mass,
+        reset_mass_array=xs, reset_mass_id=reset_mass_id)
+    else:
+      xb_reset_mass = xb
     # normalize total weight
     self.xs_norm = array_utils.modify_array(xs, norm=True,
                                 sumofweight=sig_weight)
@@ -663,8 +668,8 @@ class model_sequential(model_base):
       json.dump(paras_dict, write_file, indent=2)
 
   def show_performance(
-    self, figsize=(16, 18), show_fig=True,
-    save_fig=False, save_path=None
+    self, figsize=(16, 24), show_fig=True,
+    save_fig=False, save_path=None, job_type="train"
     ):
     """Shortly reports training result.
 
@@ -677,28 +682,25 @@ class model_sequential(model_base):
     assert isinstance(self, model_base)
     print("Model performance:")
     # Plots
-    fig, ax = plt.subplots(nrows=4, ncols=2, figsize=figsize)
-    self.plot_accuracy(ax[0, 0])
-    self.plot_loss(ax[0, 1])
-    self.plot_train_test_roc(ax[1, 0])
-    self.plot_feature_importance(ax[1, 1])
-    self.plot_train_scores(ax[2, 0])
-    self.plot_test_scores(ax[2, 1])
-    self.plot_train_scores_original_mass(ax[3,0])
-    self.plot_test_scores_original_mass(ax[3,1])
+    if job_type == "train":
+      fig, ax = plt.subplots(nrows=4, ncols=2, figsize=figsize)
+      self.plot_accuracy(ax[0, 0])
+      self.plot_loss(ax[0, 1])
+      self.plot_train_test_roc(ax[1, 0])
+      self.plot_feature_importance(ax[1, 1])
+      self.plot_train_scores(ax[2, 0])
+      self.plot_test_scores(ax[2, 1])
+      self.plot_train_scores_original_mass(ax[3,0])
+      self.plot_test_scores_original_mass(ax[3,1])
+    elif job_type == "apply":
+      fig, ax = plt.subplots(nrows=3, ncols=2, figsize=figsize)
+      self.plot_accuracy(ax[0, 0])
+      self.plot_loss(ax[0, 1])
+      self.plot_train_test_roc(ax[1, 0])
+      self.plot_feature_importance(ax[1, 1])
+      self.plot_train_scores_original_mass(ax[2,0])
+      self.plot_test_scores_original_mass(ax[2,1])
     
-    #self.plot_final_roc(ax[1, 2])
-    '''
-    train_bkg_dict = {'bkg': self.xb_train}
-    test_bkg_dict = {'bkg': self.xb_test}
-    bkg_list = ['bkg']
-    self.plot_scores_separate(ax[2, 0], train_bkg_dict, bkg_list, 
-      self.selected_features, sig_arr=self.xs_train_selected, 
-      sig_weights=self.xs_train[:,-1], plot_title='train scores', bins=80, range=(-0.1, 1.1))
-    self.plot_scores_separate(ax[2, 1], test_bkg_dict,  bkg_list,
-      self.selected_features, sig_arr=self.xs_test_selected,
-      sig_weights=self.xs_test[:,-1],  plot_title='test scores',  bins=80, range=(-0.1, 1.1))
-    '''
     fig.tight_layout()
     if show_fig:
       plt.show()
