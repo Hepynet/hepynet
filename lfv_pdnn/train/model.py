@@ -13,7 +13,7 @@ import keras
 from keras import backend as K
 from keras.callbacks import callbacks, TensorBoard
 from keras.models import Sequential, Model
-from keras.layers import Concatenate, Dense, Input, Layer
+from keras.layers import Concatenate, Dense, Input, Layer, Dropout
 from keras.layers.normalization import BatchNormalization
 from keras.optimizers import Adagrad, SGD, RMSprop, Adam
 from keras.wrappers.scikit_learn import KerasClassifier, KerasRegressor
@@ -22,8 +22,7 @@ from matplotlib.ticker import NullFormatter, FixedLocator
 import numpy as np
 from sklearn.metrics import roc_curve, auc
 
-from lfv_pdnn.common import array_utils
-from lfv_pdnn.common.common_utils import *
+from lfv_pdnn.common import array_utils, common_utils
 from lfv_pdnn.data_io import get_arrays
 from lfv_pdnn.train import train_utils
 
@@ -55,6 +54,8 @@ class model_base(object):
         Name of the model.
 
     """
+    self.has_data = False
+    self.is_mass_reset = False
     self.model_create_time = str(datetime.datetime.now())
     self.model_is_compiled = False
     self.model_is_loaded = False
@@ -148,27 +149,10 @@ class model_sequential(model_base):
     self.weighted_metrics = weighted_metrics
     # Arrays
     self.array_prepared = False
-    self.x_train = np.array([])
-    self.x_test = np.array([])
-    self.y_train = np.array([])
-    self.y_test = np.array([])
-    self.xs_test = np.array([])
-    self.xb_test = np.array([])
     self.selected_features = selected_features
-    self.x_train_selected = np.array([])
-    self.x_test_selected = np.array([])
-    self.xs_test_selected = np.array([])
-    self.xb_test_selected = np.array([])
-    self.xs_selected = np.array([])
-    self.xb_selected = np.array([])
-    self.xs_train_original_mass = np.array([])
-    self.xs_test_original_mass = np.array([])
-    self.xb_train_original_mass = np.array([])
-    self.xb_test_original_mass = np.array([])
-    self.xs_train_original_mass = np.array([])
-    self.xs_test_original_mass = np.array([])
-    self.xb_train_original_mass = np.array([])
-    self.xb_test_original_mass = np.array([])
+    # Others
+    self.norm_average = None
+    self.norm_variance = None
   
   def calculate_auc(self, xs, xb, class_weight=None, shuffle_col=None):
     """Returns auc of given sig/bkg array."""
@@ -176,7 +160,7 @@ class model_sequential(model_base):
       xs, xb, class_weight=class_weight,
       shuffle_col=shuffle_col
     )
-    fpr_dm, tpr_dm, threshold = roc_curve(y_plot, y_pred,
+    fpr_dm, tpr_dm, _ = roc_curve(y_plot, y_pred,
       sample_weight=x_plot[:,-1])
     # Calculate auc and return
     auc_value = auc(fpr_dm, tpr_dm)
@@ -235,7 +219,7 @@ class model_sequential(model_base):
     with open(paras_path, 'r') as paras_file:
       paras_dict = json.load(paras_file)
     # sorted by aphabet
-    self.class_weight = dict_key_strtoint(paras_dict['class_weight'])
+    self.class_weight = common_utils.dict_key_strtoint(paras_dict['class_weight'])
     self.model_create_time = paras_dict['model_create_time']
     self.model_decay = paras_dict['model_decay']
     self.model_input_dim = paras_dict['model_input_dim']
@@ -251,6 +235,94 @@ class model_sequential(model_base):
     self.train_history_val_accuracy = paras_dict['train_history_val_accuracy']
     self.train_history_loss = paras_dict['train_history_loss']
     self.train_history_val_loss = paras_dict['train_history_val_loss']
+
+  def make_bar_plot(self, ax, datas, labels, weights, bins, range, title=None, 
+    x_lable=None, y_lable=None, x_unit=None, x_scale=None, density=False,
+    use_error=False):
+    """Plot with verticle bar, can be used for data display.
+    
+    Note:
+      According to ROOT: 
+      "The error per bin will be computed as sqrt(sum of squares of weight) for each bin."
+
+    """
+    plt.ioff()
+    # Check input
+    data_1dim = np.array([])
+    weight_1dim = np.array([])
+    if type(datas) is list:
+      for data, weight in zip(datas, weights):
+        assert isinstance(data, np.ndarray), \
+          "datas element should be numpy array."
+        assert isinstance(weight, np.ndarray), \
+          "weights element should be numpy array."
+        assert data.shape == weight.shape, \
+          "Input weights should be None or have same type as arrays."
+        data_1dim = np.concatenate((data_1dim, data))
+        weight_1dim = np.concatenate((weight_1dim, weight))
+    elif isinstance(datas, np.ndarray):
+      assert isinstance(datas, np.ndarray), \
+        "datas element should be numpy array."
+      assert isinstance(weights, np.ndarray), \
+        "weights element should be numpy array."
+      print("####datas shape:", datas.shape) #########
+      print("####weights shape:", weights.shape) #########
+      assert datas.shape == weights.shape, \
+        "Input weights should be None or have same type as arrays."
+      data_1dim = datas
+      weight_1dim = weights
+    else:
+      raise TypeError("Invalid arrays type.")
+    
+    # Scale x axis
+    if x_scale is not None:
+      data_1dim = data_1dim * x_scale
+
+    # Make bar plot
+    # get bin error and edges
+    plot_ys, _ = np.histogram(data_1dim, bins=bins, range=range, 
+                            weights=weight_1dim, density=density)
+    sum_weight_squares, bin_edges = np.histogram(data_1dim, bins=bins, 
+      range=range, weights=np.power(weight_1dim, 2))
+    errors = np.sqrt(sum_weight_squares)
+    # Only plot ratio when bin is not 0.
+    bin_centers = np.array([])
+    bin_ys = np.array([])
+    bin_yerrs = np.array([])
+    for i, y1 in enumerate(plot_ys):
+      if y1 != 0:
+        ele_center = np.array([0.5 * (bin_edges[i] + bin_edges[i + 1])])
+        bin_centers = np.concatenate((bin_centers, ele_center))
+        ele_y = np.array([y1])
+        bin_ys = np.concatenate((bin_ys, ele_y))
+        ele_yerr = np.array([errors[i]])
+        bin_yerrs = np.concatenate((bin_yerrs, ele_yerr))
+    # plot bar
+    bin_size = bin_edges[1] - bin_edges[0]
+    print(bin_ys) #################
+    if use_error:
+      ax.errorbar(bin_centers, bin_ys, xerr=bin_size/2., yerr=bin_yerrs, 
+        fmt='.k', label=labels)
+    else:
+      ax.errorbar(bin_centers, bin_ys, xerr=bin_size/2., yerr=None, 
+        fmt='.k', label=labels)
+    # Config
+    if title is not None:
+      ax.set_title(title)
+    if x_lable is not None:
+      if x_unit is not None:
+        ax.set_xlabel(x_lable + '/' + x_unit)
+      else:
+        ax.set_xlabel(x_lable)
+    else:
+      if x_unit is not None:
+        ax.set_xlabel(x_unit)
+    if y_lable is not None:
+      ax.set_ylabel(y_lable)
+    if range is not None:
+      ax.axis(xmin=range[0],xmax=range[1])
+    ax.legend(loc="upper right")
+
 
   def plot_accuracy(self, ax):
     """Plots accuracy vs training epoch."""
@@ -405,7 +477,7 @@ class model_sequential(model_base):
 
   def plot_test_scores(
     self, ax,
-    title = "test scores", bins=100, range=(-0.25, 1.25),
+    title = "test scores", bins=50, range=(-0.25, 1.25), apply_data=False,
     density=True, log=True
     ):
     """Plots training score distribution for siganl and background."""
@@ -414,12 +486,12 @@ class model_sequential(model_base):
       ax,
       self.xb_test_selected, self.xb_test[:, -1],
       self.xs_test_selected, self.xs_test[:, -1],
-      title=title, bins=bins, range=range, density=density, log=log
-    )
+      selected_data=self.xd_selected, data_weight=self.xd_norm[:, -1], apply_data=apply_data,
+      title=title, bins=bins, range=range, density=density, log=log)
 
   def plot_test_scores_original_mass(
     self, ax,
-    title = "test scores (original mass)", bins=100, range=(-0.25, 1.25),
+    title = "test scores (original mass)", bins=50, range=(-0.25, 1.25), apply_data=False,
     density=True, log=True
     ):
     """Plots training score distribution for siganl and background."""
@@ -428,12 +500,13 @@ class model_sequential(model_base):
       ax,
       self.xb_test_selected_original_mass, self.xb_test_original_mass[:, -1],
       self.xs_test_selected_original_mass, self.xs_test_original_mass[:, -1],
-      title=title, bins=bins, range=range, density=density, log=log
-    )
+      selected_data=self.xd_selected_original_mass,
+      data_weight=self.xd_norm [:, -1], apply_data=apply_data,
+      title=title, bins=bins, range=range, density=density, log=log)
 
   def plot_train_scores(
     self, ax,
-    title = "train scores", bins=100, range=(-0.25, 1.25),
+    title = "train scores", bins=50, range=(-0.25, 1.25), apply_data=False,
     density=True, log=True
     ):
     """Plots training score distribution for siganl and background."""
@@ -442,12 +515,12 @@ class model_sequential(model_base):
       ax,
       self.xb_train_selected, self.xb_train[:, -1],
       self.xs_train_selected, self.xs_train[:, -1],
-      title=title, bins=bins, range=range, density=density, log=log
-    )
+      selected_data=self.xd_selected, data_weight=self.xd_norm[:, -1], apply_data=apply_data,
+      title=title, bins=bins, range=range, density=density, log=log)
 
   def plot_train_scores_original_mass(
     self, ax,
-    title = "train scores (original mass)", bins=100, range=(-0.25, 1.25),
+    title = "train scores (original mass)", bins=50, range=(-0.25, 1.25), apply_data=False,
     density=True, log=True
     ):
     """Plots training score distribution for siganl and background."""
@@ -456,14 +529,16 @@ class model_sequential(model_base):
       ax,
       self.xb_train_selected_original_mass, self.xb_train_original_mass[:, -1],
       self.xs_train_selected_original_mass, self.xs_train_original_mass[:, -1],
-      title=title, bins=bins, range=range, density=density, log=log
-    )
+      selected_data=self.xd_selected_original_mass,
+      data_weight=self.xd_norm [:, -1], apply_data=apply_data,
+      title=title, bins=bins, range=range, density=density, log=log)
 
   def plot_scores(
     self, ax,
     selected_bkg, bkg_weight,
     selected_sig, sig_weight,
-    title = "scores", bins=100, range=(-0.25, 1.25),
+    selected_data=None, data_weight=None, apply_data=False,
+    title="scores", bins=50, range=(-0.25, 1.25),
     density=True, log=False
     ):
     """Plots score distribution for siganl and background."""
@@ -471,23 +546,34 @@ class model_sequential(model_base):
       self.get_model().predict(selected_bkg),
       weights=bkg_weight,
       bins=bins, range=range, histtype='step', label='bkg',
-      density=True, log=log
-      )
+      density=True, log=log)
     ax.hist(
       self.get_model().predict(selected_sig),
       weights=sig_weight,
       bins=bins, range=range, histtype='step', label='sig',
-      density=True, log=log
-      )
+      density=True, log=log)
+    if apply_data:
+      """
+      ax.hist(
+      self.get_model().predict(selected_data),
+      weights=data_weight,
+      bins=bins, range=range, histtype='step', label='data', color="black",
+      density=density, log=log)
+      """
+      self.make_bar_plot(
+        ax, self.get_model().predict(selected_data), "data",
+        weights=np.reshape(data_weight, (-1, 1)), bins=bins, range=range,
+        density=density, use_error=False)
     ax.set_title(title)
     ax.legend(loc='lower left')
     ax.set_xlabel("Output score")
     ax.set_ylabel("arb. unit")
     ax.grid()
 
-  def plot_scores_separate(self, ax, arr_dict, key_list, selected_features,
-                           sig_arr=None, sig_weights=None, plot_title='all input scores',
-                           bins=40, range=(-0.25, 1.25), density=True, log=False):
+  def plot_scores_separate(self, ax, arr_dict, key_list, selected_features, 
+    sig_arr=None, sig_weights=None, apply_data=False, data_arr=None, 
+    data_weight=None, plot_title='all input scores', bins=40,
+    range=(-0.25, 1.25), density=True, log=False):
     """Plots training score distribution for different background."""
     print("Plotting scores with bkg separated.")
     predict_arr_list = []
@@ -496,34 +582,57 @@ class model_sequential(model_base):
     average=self.norm_average
     variance=self.norm_variance
 
+    # plot background
     for arr_key in key_list:
       bkg_arr_temp = arr_dict[arr_key].copy()
       average=self.norm_average
       variance=self.norm_variance
-      #average, variance = get_mean_var(bkg_arr_temp[:, 0:-2], axis=0, weights=bkg_arr_temp[:, -1])
-      bkg_arr_temp[:, 0:-2] = train_utils.norarray(bkg_arr_temp[:, 0:-2], average=average, variance=variance)
-
+      bkg_arr_temp[:, 0:-2] = train_utils.norarray(
+        bkg_arr_temp[:, 0:-2], average=average, variance=variance)
       selected_arr = train_utils.get_valid_feature(bkg_arr_temp)
-      #print("debug", self.get_model().predict(selected_arr))
+      #print("debug", self.get_model().predict(selected_arr))   ################
       predict_arr_list.append(np.array(self.get_model().predict(selected_arr)))
       predict_arr_weight_list.append(bkg_arr_temp[:, -1])
-
     try:
-      ax.hist(np.transpose(predict_arr_list), bins=bins, 
-              range=range, weights=np.transpose(predict_arr_weight_list), histtype='bar', label=key_list, density=True, 
-              stacked=True)
+      ax.hist(
+        np.transpose(predict_arr_list),
+        bins=bins, 
+        range=range,
+        weights=np.transpose(predict_arr_weight_list),
+        histtype='bar',
+        label=key_list,
+        density=True, 
+        stacked=True)
     except:
-      ax.hist(predict_arr_list[0], bins=bins, 
-              range=range, weights=predict_arr_weight_list[0], histtype='bar', label=key_list, density=True, 
-              stacked=True)
-
+      ax.hist(
+        predict_arr_list[0],
+        bins=bins, 
+        range=range,
+        weights=predict_arr_weight_list[0],
+        histtype='bar',
+        label=key_list,
+        density=True, 
+        stacked=True)
+    # plot signal
     if sig_arr is None:
       sig_arr=self.xs_selected.copy()
       sig_weights=self.xs[:,-1]
-
     ax.hist(self.get_model().predict(sig_arr), bins=bins, range=range,
             weights=sig_weights, histtype='step', label='sig', density=True)
-    
+    # plot data
+    if apply_data:
+      if data_arr is None:
+        data_arr=self.xd_selected_original_mass.copy()
+        data_weight=self.xd[:,-1]
+      """
+      ax.hist(self.get_model().predict(data_arr), bins=bins, range=range,
+        weights=data_weight, histtype='step', label='data', color="black", density=True)
+      """
+      self.make_bar_plot(
+        ax, self.get_model().predict(data_arr), "data",
+        weights=np.reshape(data_weight, (-1, 1)), bins=bins, range=range,
+        density=density, use_error=False)
+
     ax.set_title(plot_title)
     ax.legend(loc='upper center')
     ax.set_xlabel("Output score")
@@ -535,34 +644,50 @@ class model_sequential(model_base):
     else:
       ax.set_title(plot_title+"(lin)")
 
-  def prepare_array(self, xs, xb, norm_array=True, reset_mass=False,
-    reset_mass_name=None, sig_weight=1000, bkg_weight=1000, test_rate=0.2,
-    verbose=1):
+  def prepare_array(self, xs, xb, xd=None, apply_data=False, norm_array=True,
+    reset_mass=False, reset_mass_name=None, sig_weight=1000, bkg_weight=1000,
+    data_weight=1000, test_rate=0.2, verbose=1):
     """Prepares array for training."""
-    self.xs = xs
-    self.xb = xb
+    # normalize input variables if norm_array is True
+    if norm_array:
+      means, variances = train_utils.get_mean_var(xb[:, 0:-2], axis=0, weights=xb[:, -1])
+      self.norm_average = means
+      self.norm_variance = variances
+      xs_norm_vars = xs.copy()
+      xb_norm_vars = xb.copy()
+      xs_norm_vars[:, 0:-2] = train_utils.norarray(
+        xs_norm_vars[:, 0:-2], average=means, variance=variances)
+      xb_norm_vars[:, 0:-2] = train_utils.norarray(
+        xb_norm_vars[:, 0:-2], average=means, variance=variances)
+      self.xs = xs_norm_vars
+      self.xb = xb_norm_vars
+    else:
+      self.xs = xs.copy()
+      self.xb = xb.copy()
     rdm_seed = int(time.time())
     # get bkg array with mass reset
     if reset_mass:
       reset_mass_id = self.selected_features.index(reset_mass_name)
-      xb_reset_mass = array_utils.modify_array(xb, reset_mass=reset_mass,
-        reset_mass_array=xs, reset_mass_id=reset_mass_id)
+      self.xb_reset_mass = array_utils.modify_array(self.xb, reset_mass=reset_mass,
+        reset_mass_array=self.xs, reset_mass_id=reset_mass_id)
+      self.is_mass_reset = True
     else:
-      xb_reset_mass = xb
+      self.xb_reset_mass = self.xb
+      self.is_mass_reset = False
     # normalize total weight
-    self.xs_norm = array_utils.modify_array(xs, norm=True,
-                                sumofweight=sig_weight)
-    self.xb_norm = array_utils.modify_array(xb, norm=True,
-                                sumofweight=bkg_weight)
+    self.xs_norm = array_utils.modify_array(
+      self.xs, norm=True, sumofweight=sig_weight)
+    self.xb_norm = array_utils.modify_array(
+      self.xb, norm=True, sumofweight=bkg_weight)
     self.xb_norm_reset_mass = array_utils.modify_array(
-      xb_reset_mass, norm=True, sumofweight=bkg_weight)
+      self.xb_reset_mass, norm=True, sumofweight=bkg_weight)
     # get train/test data set, split with ratio=test_rate
     self.x_train, self.x_test, self.y_train, self.y_test,\
-    self.xs_train, self.xs_test, self.xb_train, self.xb_test =\
-    train_utils.split_and_combine(self.xs_norm, self.xb_norm_reset_mass,
-    test_rate=test_rate, shuffle_seed=rdm_seed)
-    self.xs_train_original_mass, self.xs_test_original_mass,\
-      self.xb_train_original_mass, self.xb_test_original_mass,\
+      self.xs_train, self.xs_test, self.xb_train, self.xb_test =\
+      train_utils.split_and_combine(self.xs_norm, self.xb_norm_reset_mass,
+      test_rate=test_rate, shuffle_seed=rdm_seed)
+    self.x_train_original_mass, self.x_test_original_mass,\
+      self.y_train_original_mass, self.y_test_original_mass,\
       self.xs_train_original_mass, self.xs_test_original_mass,\
       self.xb_train_original_mass, self.xb_test_original_mass =\
       train_utils.split_and_combine(self.xs_norm, self.xb_norm,
@@ -574,17 +699,41 @@ class model_sequential(model_base):
     self.xb_train_selected = train_utils.get_valid_feature(self.xb_train)
     self.xs_test_selected = train_utils.get_valid_feature(self.xs_test)
     self.xb_test_selected = train_utils.get_valid_feature(self.xb_test)
-    self.xs_selected = train_utils.get_valid_feature(self.xs)
-    self.xb_selected = train_utils.get_valid_feature(self.xb)
-    self.x_train_selected_original_mass = train_utils.get_valid_feature(self.x_train)
-    self.x_test_selected_original_mass = train_utils.get_valid_feature(self.x_test)
-    self.xs_train_selected_original_mass = train_utils.get_valid_feature(self.xs_train)
-    self.xb_train_selected_original_mass = train_utils.get_valid_feature(self.xb_train)
-    self.xs_test_selected_original_mass = train_utils.get_valid_feature(self.xs_test)
-    self.xb_test_selected_original_mass = train_utils.get_valid_feature(self.xb_test)
-    self.xs_selected_original_mass = train_utils.get_valid_feature(self.xs)
-    self.xb_selected_original_mass = train_utils.get_valid_feature(self.xb)
-
+    self.xs_selected = train_utils.get_valid_feature(self.xs_norm)
+    self.xb_selected = train_utils.get_valid_feature(self.xb_norm_reset_mass)
+    self.x_train_selected_original_mass = train_utils.get_valid_feature(self.x_train_original_mass)
+    self.x_test_selected_original_mass = train_utils.get_valid_feature(self.x_test_original_mass)
+    self.xs_train_selected_original_mass = train_utils.get_valid_feature(self.xs_train_original_mass)
+    self.xb_train_selected_original_mass = train_utils.get_valid_feature(self.xb_train_original_mass)
+    self.xs_test_selected_original_mass = train_utils.get_valid_feature(self.xs_test_original_mass)
+    self.xb_test_selected_original_mass = train_utils.get_valid_feature(self.xb_test_original_mass)
+    self.xs_selected_original_mass = train_utils.get_valid_feature(self.xs_norm)
+    self.xb_selected_original_mass = train_utils.get_valid_feature(self.xb_norm)
+    # prepare data to apply model when apply_data is True
+    if apply_data == True:
+      if norm_array:
+        xd_norm_vars = xd.copy()
+        xd_norm_vars[:, 0:-2] = train_utils.norarray(xd_norm_vars[:, 0:-2],
+          average=self.norm_average, variance=self.norm_variance)
+        self.xd = xd_norm_vars
+      else:
+        self.xd = xd
+      if reset_mass:
+        reset_mass_id = self.selected_features.index(reset_mass_name)
+        self.xd_reset_mass = array_utils.modify_array(
+          self.xd,
+          reset_mass=reset_mass,
+          reset_mass_array=self.xs,
+          reset_mass_id=reset_mass_id)
+      else:
+        self.xd_reset_mass = xd
+      self.xd_norm = array_utils.modify_array(
+        self.xd, norm=True, sumofweight=data_weight)
+      self.xd_norm_reset_mass = array_utils.modify_array(
+        self.xd_reset_mass, norm=True, sumofweight=data_weight)
+      self.xd_selected = train_utils.get_valid_feature(self.xd_norm_reset_mass)
+      self.xd_selected_original_mass = train_utils.get_valid_feature(self.xd_norm)
+      self.has_data = True
     self.array_prepared = True
     if verbose == 1:
       print("Training array prepared.")
@@ -625,8 +774,8 @@ class model_sequential(model_base):
       file_name = self.model_name + '_' + self.model_label + '_' + datestr
     # Check path
     path_pattern = save_dir + '/' + file_name + '_v{}.h5'
-    save_path = get_newest_file_version(path_pattern)['path']
-    version_id = get_newest_file_version(path_pattern)['ver_num']
+    save_path = common_utils.get_newest_file_version(path_pattern)['path']
+    version_id = common_utils.get_newest_file_version(path_pattern)['ver_num']
     if not os.path.exists(os.path.dirname(save_path)):
       os.makedirs(os.path.dirname(save_path))
 
@@ -636,7 +785,7 @@ class model_sequential(model_base):
     print("model:", self.model_name, "has been saved to:", save_path)
     # update path for json
     path_pattern = save_dir + '/' + file_name + '_v{}_paras.json'
-    save_path = get_newest_file_version(
+    save_path = common_utils.get_newest_file_version(
       path_pattern,
       ver_num=version_id
       )['path']
@@ -668,7 +817,7 @@ class model_sequential(model_base):
       json.dump(paras_dict, write_file, indent=2)
 
   def show_performance(
-    self, figsize=(16, 24), show_fig=True,
+    self, apply_data=False ,figsize=(16, 24), show_fig=True,
     save_fig=False, save_path=None, job_type="train"
     ):
     """Shortly reports training result.
@@ -682,24 +831,24 @@ class model_sequential(model_base):
     assert isinstance(self, model_base)
     print("Model performance:")
     # Plots
-    if job_type == "train":
+    if job_type == "train" and self.is_mass_reset == True:
       fig, ax = plt.subplots(nrows=4, ncols=2, figsize=figsize)
       self.plot_accuracy(ax[0, 0])
       self.plot_loss(ax[0, 1])
       self.plot_train_test_roc(ax[1, 0])
       self.plot_feature_importance(ax[1, 1])
-      self.plot_train_scores(ax[2, 0])
-      self.plot_test_scores(ax[2, 1])
-      self.plot_train_scores_original_mass(ax[3,0])
-      self.plot_test_scores_original_mass(ax[3,1])
-    elif job_type == "apply":
+      self.plot_train_scores(ax[2, 0], bins=50, apply_data=apply_data)
+      self.plot_test_scores(ax[2, 1], bins=50, apply_data=apply_data)
+      self.plot_train_scores_original_mass(ax[3,0], bins=50, apply_data=apply_data)
+      self.plot_test_scores_original_mass(ax[3,1], bins=50, apply_data=apply_data)
+    else:
       fig, ax = plt.subplots(nrows=3, ncols=2, figsize=figsize)
       self.plot_accuracy(ax[0, 0])
       self.plot_loss(ax[0, 1])
       self.plot_train_test_roc(ax[1, 0])
       self.plot_feature_importance(ax[1, 1])
-      self.plot_train_scores_original_mass(ax[2,0])
-      self.plot_test_scores_original_mass(ax[2,1])
+      self.plot_train_scores_original_mass(ax[2,0], bins=50, apply_data=apply_data)
+      self.plot_test_scores_original_mass(ax[2,1], bins=50, apply_data=apply_data)
     
     fig.tight_layout()
     if show_fig:
@@ -734,14 +883,13 @@ class Model_1002(model_sequential):
     use_early_stop=False,
     early_stop_paras={}
     ):
-    model_sequential.__init__(
-      self, name,
+    super().__init__(
+      name,
       input_dim, num_node=num_node, 
       learn_rate=learn_rate, decay=decay,
       metrics=metrics,
       weighted_metrics=weighted_metrics,
-      selected_features=selected_features
-      )
+      selected_features=selected_features)
     self.model_label = "mod1002"
     self.model_note = "Sequential model optimized with old ntuple"\
                       + " at Oct. 2rd 2019"\
@@ -798,29 +946,6 @@ class Model_1002(model_sequential):
         weighted_metrics=self.weighted_metrics
         )
     self.model_is_compiled = True
-
-
-  def prepare_array(self, xs, xb, reset_mass=False,
-    reset_mass_name=None, sig_weight=1000, 
-    bkg_weight=1000, test_rate=0.2, verbose=1):
-    """Prepares array for training.
-    
-    Note:
-      Use normalized array for training.
-
-    """
-    # Stadard input normalization for training.
-    means, vars = train_utils.get_mean_var(xb[:, 0:-2], axis=0, weights=xb[:, -1])
-    self.norm_average = means
-    self.norm_variance = vars
-    xs_norm = xs.copy()
-    xb_norm = xb.copy()
-    xs_norm[:, 0:-2] = train_utils.norarray(xs[:, 0:-2], average=means, variance=vars)
-    xb_norm[:, 0:-2] = train_utils.norarray(xb[:, 0:-2], average=means, variance=vars)
-    model_sequential.prepare_array(self, xs_norm, xb_norm,
-      reset_mass=reset_mass, reset_mass_name=reset_mass_name,
-      sig_weight=sig_weight, bkg_weight=bkg_weight,
-      test_rate=test_rate, verbose=verbose)
 
 
   def train(self, batch_size=128, epochs=20, val_split=0.25,
@@ -905,6 +1030,7 @@ class Model_1016(Model_1002):
     self, name,
     input_dim, num_node=400,
     learn_rate=0.02, decay=1e-6,
+    dropout_rate=0.3,
     metrics=['plain_acc'],
     weighted_metrics=['accuracy'],
     selected_features=[],
@@ -913,8 +1039,8 @@ class Model_1016(Model_1002):
     use_early_stop=False,
     early_stop_paras={}
     ):
-    Model_1002.__init__(
-      self, name,
+    super().__init__(
+      name,
       input_dim, num_node=num_node,
       learn_rate=learn_rate, decay=decay,
       metrics=metrics,
@@ -925,43 +1051,27 @@ class Model_1016(Model_1002):
       use_early_stop=use_early_stop,
       early_stop_paras=early_stop_paras)
     self.model_label = "mod1016"
-    self.model_note = "New model structure based on 1002's model"\
-                      + " at Oct. 16th 2019"\
-                      + " to deal with training with full bkg mass."
-
+    self.model_note = "New model structure based on 1002's model." \
+      + "Created at Oct. 16th 2019 to deal with training with full bkg mass." \
+      + "Modified at Mar. 20th 2020 to add dropout layers."
+    self.dropout_rate=dropout_rate
+  
   def compile(self):
     """ Compile model, function to be changed in the future."""
     # Add layers
     # input
-    self.model.add(Dense(500, kernel_initializer='uniform', 
-                         input_dim = self.model_input_dim))
+    self.model.add(Dense(
+      100, kernel_initializer='uniform', input_dim = self.model_input_dim))
+    self.model.add(Dropout(self.dropout_rate))
     # hidden 1
-    #self.model.add(BatchNormalization())
-    self.model.add(Dense(400, 
-                         kernel_initializer="glorot_normal", 
-                         activation="relu"))
+    self.model.add(Dense(
+      100, kernel_initializer="glorot_normal", activation="relu"))
+    self.model.add(Dropout(self.dropout_rate))
     # hidden 2
-    #self.model.add(BatchNormalization())
-    self.model.add(Dense(300, 
-                         kernel_initializer="glorot_normal", 
-                         activation="relu"))
-    # hidden 3
-    #self.model.add(BatchNormalization())
-    self.model.add(Dense(200, 
-                         kernel_initializer="glorot_normal", 
-                         activation="relu"))
-    # hidden 4
-    #self.model.add(BatchNormalization())
-    self.model.add(Dense(100, 
-                         kernel_initializer="glorot_normal", 
-                         activation="relu"))
-    # hidden 5
-    #self.model.add(BatchNormalization())
-    #self.model.add(Dense(self.model_num_node, 
-    #                     kernel_initializer="glorot_normal", 
-    #                     activation="relu"))
+    self.model.add(Dense(
+      100, kernel_initializer="glorot_normal", activation="relu"))
+    self.model.add(Dropout(self.dropout_rate))
     # output
-    #self.model.add(BatchNormalization())
     self.model.add(Dense(1, kernel_initializer="glorot_uniform", 
                          activation="sigmoid"))
     # Compile
@@ -970,9 +1080,8 @@ class Model_1016(Model_1002):
       optimizer=SGD(
         lr=self.model_learn_rate, 
         decay=self.model_decay,
-        momentum=0.5, nesterov=True
-        ),
+        momentum=0.5,
+        nesterov=True),
       metrics=self.metrics,
-      weighted_metrics=self.weighted_metrics
-      )
+      weighted_metrics=self.weighted_metrics)
     self.model_is_compiled = True

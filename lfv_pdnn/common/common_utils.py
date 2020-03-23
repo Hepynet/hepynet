@@ -30,7 +30,7 @@ def dict_key_strtoint(json_data):
       value = dict_key_strtoint(value)
     try:
       key = int(key)
-    except Exception as ex:
+    except:
       pass
     correctedDict[key] = value
   return correctedDict

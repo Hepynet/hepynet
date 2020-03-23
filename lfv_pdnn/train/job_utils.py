@@ -34,9 +34,74 @@ class job_executor(object):
     self.cfg_is_collected = False
     self.array_is_loaded = False
     self.scan_para_dict = {}
+    # Initialize [job] section
+    self.job_name = None
+    self.job_type = None
+    self.save_dir = None
+    self.load_dir =None
+    self.load_job_name = None
+    self.Initialize_dir = None
+    self.Initialize_job_name = None
+    # Initialize [array] section
+    self.arr_version = None
+    self.campaign = None
+    self.bkg_dict_path = None
+    self.bkg_key = None
+    self.bkg_sumofweight = None
+    self.bkg_rm_neg_weight = None
+    self.sig_dict_path = None
+    self.sig_key = None
+    self.sig_sumofweight = None
+    self.sig_rm_neg_weight = None
+    self.data_dict_path = None
+    self.data_key = None
+    self.data_sumofweight = None
+    self.data_rm_neg_weight = None
+    self.bkg_list = []
+    self.sig_list = []
+    self.data_list = []
+    self.selected_features = []
+    self.input_dim = None
+    self.channel = None
+    self.norm_array = None
+    self.reset_feature = None
+    self.reset_feature_name = None
+    # Initialize [model] section
+    self.model_name = None
+    self.model_class = None
+    self.learn_rate = None
+    self.learn_rate_decay = None
+    self.test_rate = None
+    self.batch_size = None
+    self.epochs = None
+    self.val_split = None
+    self.sig_class_weight = None
+    self.bkg_class_weight = None
+    self.train_metrics = []
+    self.train_metrics_weighted = []
+    self.use_early_stop = None
+    self.early_stop_monitor = None
+    self.early_stop_min_delta = None
+    self.early_stop_patience = None
+    self.early_stop_mode = None
+    self.early_stop_restore_best_weights = None
+    self.save_model = None
+    # Initialize [para_scan]
+    self.perform_para_scan = None
+    self.para_scan_cfg = None
+    self.scan_id = None
+    # Initialize [report] section
+    self.plot_bkg_list = []
+    self.apply_data = None
+    self.show_report = None
+    self.save_pdf_report = None
+    self.save_tb_logs = None
+    self.verbose = None
+    self.cfg_is_collected = False
     # [scanned_para] section
     for para_name in SCANNED_PARAS:
       setattr(self, para_name, [])
+
 
 
   def execute_jobs(self):
@@ -79,9 +144,11 @@ class job_executor(object):
     if not self.array_is_loaded:
       self.load_arrays()
     xs = array_utils.modify_array(self.sig_dict[self.sig_key],
-      select_channel=True, remove_negative_weight=True)
+      select_channel=True, remove_negative_weight=self.sig_rm_neg_weight)
     xb = array_utils.modify_array(self.bkg_dict[self.bkg_key],
-      select_channel=True, remove_negative_weight=True)
+      select_channel=True, remove_negative_weight=self.bkg_rm_neg_weight)
+    xd = array_utils.modify_array(self.data_dict[self.data_key],
+      select_channel=True, remove_negative_weight=self.data_rm_neg_weight)
     if self.save_tb_logs:
       save_dir = self.save_sub_dir + '/tb_logs'
       if not os.path.exists(save_dir):
@@ -113,11 +180,14 @@ class job_executor(object):
       )
     # Set up training or loading model
     self.model.prepare_array(
-      xs, xb,
+      xs, xb, xd=xd,
+      apply_data=self.apply_data,
+      norm_array=self.norm_array,
       reset_mass=self.reset_feature,
       reset_mass_name=self.reset_feature_name,
       sig_weight=self.sig_sumofweight,
       bkg_weight=self.bkg_sumofweight,
+      data_weight=self.data_sumofweight,
       test_rate=self.test_rate,
       verbose=self.verbose)
     if self.job_type == "apply":
@@ -141,7 +211,6 @@ class job_executor(object):
       self.report_path = None
       # setup save parameters if reports need to be saved
       fig_save_path = None
-      path_pattern = None
       save_dir = None
       if self.perform_para_scan:
         save_dir = self.save_sub_dir + "/reports/scan_" + self.scan_id
@@ -153,6 +222,7 @@ class job_executor(object):
       self.fig_performance_path = fig_save_path
       # show and save according to setting
       self.model.show_performance(
+        apply_data=self.apply_data,
         show_fig=self.show_report,
         save_fig=self.save_pdf_report,
         save_path=fig_save_path,
@@ -161,15 +231,27 @@ class job_executor(object):
       # Extra plots (use model on non-mass-reset arrays)
       fig, ax = plt.subplots(ncols=2, figsize=(16, 4))
       self.model.plot_scores_separate(
-        ax[0], self.plot_bkg_dict, self.plot_bkg_list, self.selected_features,
-        plot_title='training scores', bins=40, range=(-0.25, 1.25),
-        density=True, log=False
-        )
+        ax[0],
+        self.plot_bkg_dict,
+        self.plot_bkg_list,
+        self.selected_features,
+        apply_data=True,
+        plot_title='training scores',
+        bins=40,
+        range=(-0.25, 1.25),
+        density=True,
+        log=False)
       self.model.plot_scores_separate(
-        ax[1], self.plot_bkg_dict, self.plot_bkg_list, self.selected_features,
-        plot_title='training scores', bins=40, range=(-0.25, 1.25),
-        density=True, log=True
-        )
+        ax[1],
+        self.plot_bkg_dict,
+        self.plot_bkg_list,
+        self.selected_features,
+        apply_data=True,
+        plot_title='training scores',
+        bins=40,
+        range=(-0.25, 1.25),
+        density=True,
+        log=True)
       fig.tight_layout()
       if self.save_pdf_report:
         fig_save_path = save_dir + '/non-mass-reset_plots.png'
@@ -219,17 +301,25 @@ class job_executor(object):
     self.try_parse_str('bkg_dict_path', config, 'array', 'bkg_dict_path')
     self.try_parse_str('bkg_key', config, 'array', 'bkg_key')
     self.try_parse_float('bkg_sumofweight', config, 'array', 'bkg_sumofweight')
+    self.try_parse_bool('bkg_rm_neg_weight', config, 'array', 'bkg_rm_neg_weight')
     self.try_parse_str('sig_dict_path', config, 'array', 'sig_dict_path')
     self.try_parse_str('sig_key', config, 'array', 'sig_key')
     self.try_parse_float('sig_sumofweight', config, 'array', 'sig_sumofweight')
+    self.try_parse_bool('sig_rm_neg_weight', config, 'array', 'sig_rm_neg_weight')
+    self.try_parse_str('data_dict_path', config, 'array', 'data_dict_path')
+    self.try_parse_str('data_key', config, 'array', 'data_key')
+    self.try_parse_float('data_sumofweight', config, 'array', 'data_sumofweight')
+    self.try_parse_bool('data_rm_neg_weight', config, 'array', 'data_rm_neg_weight')
     self.try_parse_list('bkg_list', config, 'array', 'bkg_list')
     self.try_parse_list('sig_list', config, 'array', 'sig_list')
+    self.try_parse_list('data_list', config, 'array', 'data_list')
     self.try_parse_list('selected_features', config, 'array', 'selected_features')
     if self.selected_features is not None:
       self.input_dim = len(self.selected_features)
     else:
       self.input_dim = None
     self.try_parse_str('channel', config, 'array', 'channel')
+    self.try_parse_bool('norm_array', config, 'array', 'norm_array')
     self.try_parse_bool('reset_feature', config, 'array', 'reset_feature')
     self.try_parse_str('reset_feature_name', config, 'array', 'reset_feature_name')
     # Load [model] section
@@ -257,6 +347,7 @@ class job_executor(object):
     self.try_parse_str('para_scan_cfg', config, 'para_scan', 'para_scan_cfg')
     # Load [report] section
     self.try_parse_list('plot_bkg_list', config, 'report', 'plot_bkg_list')
+    self.try_parse_bool('apply_data', config, 'report', 'apply_data')
     self.try_parse_bool('show_report', config, 'report', 'show_report')
     self.try_parse_bool('save_pdf_report', config, 'report', 'save_pdf_report')
     self.try_parse_bool('save_tb_logs', config, 'report', 'save_tb_logs')
@@ -357,71 +448,87 @@ class job_executor(object):
     reports.append(Paragraph(ptext, styles["Justify"]))
     ptext = "[array]"
     reports.append(Paragraph(ptext, styles["Justify"]))
-    ptext = "array version           :    " + self.arr_version
+    ptext = "array version                    : " + self.arr_version
     reports.append(Paragraph(ptext, styles["Justify"]))
-    ptext = "array campaign          :    " + self.campaign
+    ptext = "array campaign                   : " + self.campaign
     reports.append(Paragraph(ptext, styles["Justify"]))
-    ptext = "channel                 :    " + self.channel
+    ptext = "channel                          : " + self.channel
     reports.append(Paragraph(ptext, styles["Justify"]))
-    ptext = "selected features id    :    " + str(self.bkg_list)
+    ptext = "selected features id             : " + str(self.bkg_list)
     reports.append(Paragraph(ptext, styles["Justify"]))
-    ptext = "selected features id    :    " + str(self.sig_list)
+    ptext = "selected features id             : " + str(self.sig_list)
     reports.append(Paragraph(ptext, styles["Justify"]))
-    ptext = "selected features id    :    " + str(self.selected_features)
+    ptext = "selected features id             : " + str(self.data_list)
     reports.append(Paragraph(ptext, styles["Justify"]))
-    ptext = "selected features id    :    " + str(self.reset_feature)
+    ptext = "selected features id             : " + str(self.selected_features)
     reports.append(Paragraph(ptext, styles["Justify"]))
-    ptext = "selected features id    :    " + str(self.reset_feature_name)
+    ptext = "selected features id             : " + str(self.reset_feature)
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = "selected features id             : " + str(self.reset_feature_name)
     reports.append(Paragraph(ptext, styles["Justify"]))
     reports.append(Spacer(1, 12))
-    ptext = "bkg arrays path         :    " + self.bkg_dict_path
+    ptext = "bkg arrays path                  : " + self.bkg_dict_path
     reports.append(Paragraph(ptext, styles["Justify"]))
-    ptext = "bkg arrays used         :    " + self.bkg_key
+    ptext = "bkg arrays used                  : " + self.bkg_key
     reports.append(Paragraph(ptext, styles["Justify"]))
-    ptext = "bkg total weight set    :    " + str(self.bkg_sumofweight)
+    ptext = "bkg total weight set             : " + str(self.bkg_sumofweight)
     reports.append(Paragraph(ptext, styles["Justify"]))
-    ptext = "sig arrays path         :    " + self.sig_dict_path
+    ptext = "bkg remove negtive weight:   " + str(self.bkg_rm_neg_weight)
     reports.append(Paragraph(ptext, styles["Justify"]))
-    ptext = "sig arrays used         :    " + self.sig_key
+    ptext = "sig arrays path                  : " + self.sig_dict_path
     reports.append(Paragraph(ptext, styles["Justify"]))
-    ptext = "sig total weight        :    " + str(self.sig_sumofweight)
+    ptext = "sig arrays used                  : " + self.sig_key
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = "sig total weight                 : " + str(self.sig_sumofweight)
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = "sig remove negtive weight        : " + str(self.sig_rm_neg_weight)
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = "data arrays path                 : " + self.data_dict_path
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = "data arrays used                 : " + self.data_key
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = "data total weight                : " + str(self.data_sumofweight)
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = "data remove negtive weight       : " + str(self.data_rm_neg_weight)
+    reports.append(Paragraph(ptext, styles["Justify"]))
+    ptext = "data normalize input variables   : " + str(self.norm_array)
     reports.append(Paragraph(ptext, styles["Justify"]))
     reports.append(Spacer(1, 12))
     ptext = "[model]"
     reports.append(Paragraph(ptext, styles["Justify"]))
-    ptext = "name                    :    " + self.model_name
+    ptext = "name                             : " + self.model_name
     reports.append(Paragraph(ptext, styles["Justify"]))
-    ptext = "class                   :    " + self.model_class
+    ptext = "class                            : " + self.model_class
     reports.append(Paragraph(ptext, styles["Justify"]))
-    ptext = "learn rate              :    " + str(self.learn_rate)
+    ptext = "learn rate                       : " + str(self.learn_rate)
     reports.append(Paragraph(ptext, styles["Justify"]))
-    ptext = "learn decay             :    " + str(self.learn_rate_decay)
+    ptext = "learn decay                      : " + str(self.learn_rate_decay)
     reports.append(Paragraph(ptext, styles["Justify"]))
-    ptext = "test ratio              :    " + str(self.test_rate)
+    ptext = "test ratio                       : " + str(self.test_rate)
     reports.append(Paragraph(ptext, styles["Justify"]))
-    ptext = "validation split        :    " + str(self.val_split)
+    ptext = "validation split                 : " + str(self.val_split)
     reports.append(Paragraph(ptext, styles["Justify"]))
-    ptext = "batch size              :    " + str(self.batch_size)
+    ptext = "batch size                       : " + str(self.batch_size)
     reports.append(Paragraph(ptext, styles["Justify"]))
-    ptext = "epochs                  :    " + str(self.epochs)
+    ptext = "epochs                           : " + str(self.epochs)
     reports.append(Paragraph(ptext, styles["Justify"]))
-    ptext = "signal class weight     :    " + str(self.sig_class_weight)
+    ptext = "signal class weight              : " + str(self.sig_class_weight)
     reports.append(Paragraph(ptext, styles["Justify"]))
-    ptext = "background class weight :    " + str(self.bkg_class_weight)
+    ptext = "background class weight          : " + str(self.bkg_class_weight)
     reports.append(Paragraph(ptext, styles["Justify"]))
-    ptext = "use early stop :             " + str(self.use_early_stop)
+    ptext = "use early stop                   : " + str(self.use_early_stop)
     reports.append(Paragraph(ptext, styles["Justify"]))
-    ptext = "early stop monitor :         " + str(self.early_stop_monitor)
+    ptext = "early stop monitor               : " + str(self.early_stop_monitor)
     reports.append(Paragraph(ptext, styles["Justify"]))
-    ptext = "early stop min_delta:        " + str(self.early_stop_min_delta)
+    ptext = "early stop min_delta             : " + str(self.early_stop_min_delta)
     reports.append(Paragraph(ptext, styles["Justify"]))
-    ptext = "early stop patience :        " + str(self.early_stop_patience)
+    ptext = "early stop patience              : " + str(self.early_stop_patience)
     reports.append(Paragraph(ptext, styles["Justify"]))
-    ptext = "early stop mode :            " + str(self.early_stop_mode)
+    ptext = "early stop mode                  : " + str(self.early_stop_mode)
     reports.append(Paragraph(ptext, styles["Justify"]))
-    ptext = "early stop restore_best_weights :" + str(self.early_stop_restore_best_weights)
+    ptext = "early stop restore_best_weights  : " + str(self.early_stop_restore_best_weights)
     reports.append(Paragraph(ptext, styles["Justify"]))
-    ptext = "model saved :                " + str(self.save_model)
+    ptext = "model saved                      : " + str(self.save_model)
     reports.append(Paragraph(ptext, styles["Justify"]))
     reports.append(Spacer(1, 12))
     ptext = "[TensorBoard logs]"
@@ -449,6 +556,8 @@ class job_executor(object):
       self.channel, self.bkg_list, self.selected_features)
     self.sig_dict = get_arrays.get_sig(self.sig_dict_path, self.campaign,
       self.channel, self.sig_list, self.selected_features)
+    self.data_dict = get_arrays.get_data(self.data_dict_path, self.campaign,
+      self.channel, self.data_list, self.selected_features)
     self.array_is_loaded = True
     if self.show_report or self.save_pdf_report:
       self.plot_bkg_dict = {key:self.bkg_dict[key] for key in self.plot_bkg_list}

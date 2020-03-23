@@ -3,7 +3,7 @@
 # Temparary folders
 backups/*
 test/*
-run/results/*
+run/*
 lfv_pdnn.egg-info/*
 env_setup/*
 

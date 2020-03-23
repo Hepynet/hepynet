@@ -16,7 +16,6 @@ from math import sqrt
 from sklearn.metrics import classification_report, accuracy_score, auc
 
 from lfv_pdnn.common import array_utils
-from lfv_pdnn.common.common_utils import *
 
 
 def get_mass_range(mass_array, weights, nsig=1):
