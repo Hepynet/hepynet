@@ -89,44 +89,6 @@ def norarray_min_max(array, min, max, axis=None):
   output_array = output_array / ratio
 
 
-def plot_different_mass(mass_scan_map, input_path, para_index, model = "zprime", bins = 50, range = (-10000, 10000), 
-                        density = True, xlabel="x axis", ylabel="y axis"):
-  """
-  TODO: function should be removed since it's too dedicated.
-
-  """
-  for i, mass in enumerate(mass_scan_map):
-    # load signal
-    if model == "zprime":
-      xs_add = np.load(input_path + '/data_npy/emu/tree_{}00GeV.npy'.format(mass))
-      """ # only use emu channel currently
-      xs_temp = np.load(input_path + '/data_npy/etau/tree_{}00GeV.npy'.format(mass))
-      xs_add = np.concatenate((xs_add, xs_temp))
-      xs_temp = np.load(input_path + '/data_npy/mutau/tree_{}00GeV.npy'.format(mass))
-      xs_add = np.concatenate((xs_add, xs_temp))
-      """
-    elif model == "rpv":
-      xs_add = np.load(input_path + '/data_npy/emu/rpv_{}00GeV.npy'.format(mass))
-      """ # only use emu channel currently
-      xs_temp = np.load(input_path + '/data_npy/etau/rpv_{}00GeV.npy'.format(mass))
-      xs_add = np.concatenate((xs_add, xs_temp))
-      xs_temp = np.load(input_path + '/data_npy/mutau/rpv_{}00GeV.npy'.format(mass))
-      xs_add = np.concatenate((xs_add, xs_temp))
-      """
-    xs_emu = xs_add.copy()
-    # select emu channel and shuffle
-    xs_emu = array_utils.modify_array(xs_emu, select_channel = True, norm = True,
-      shuffle = True, shuffle_seed = 486)
-
-    # make plots
-    plt.hist(xs_emu[:, para_index], bins = bins, weights = xs_emu[:,-1], 
-             histtype='step', label='signal {}00GeV'.format(mass), range = range, density = density)
-  plt.legend(prop={'size': 10})
-  plt.xlabel(xlabel)
-  plt.ylabel(ylabel)
-  plt.show()
-
-
 def split_and_combine(xs, xb, test_rate=0.2, shuffle_combined_array=True, shuffle_seed=None):
   """Prepares array for training & validation
 
@@ -193,34 +155,3 @@ def unison_shuffled_copies(*arr):
   assert all(len(a) for a in arr)
   p = np.random.permutation(len(arr[0]))
   return (a[p] for a in arr)
-
-
-def calculate_significance(xs, xb, mass_point, mass_min, mass_max, model=None, 
-                           xs_model_input=None, xb_model_input=None, use_model_cut=False):
-  """
-  TODO: Old function, need to be removed later
-
-  """
-  # 1st value of each xs/xb's entry must be the mass
-  signal_quantity = 0.
-  background_quantity = 0.
-  if (model != None) and (len(xs_model_input) != 0) and (len(xb_model_input) != 0) and (use_model_cut == True):
-    signal_predict_result = model.predict(xs_model_input)
-    background_predict_result = model.predict(xb_model_input)
-    for n, (entry, predict_result) in enumerate(zip(xs, signal_predict_result)):
-      if entry[0] > mass_min and entry[0] < mass_max and predict_result > 0.5:
-        signal_quantity += entry[-1]
-    for n, (entry, predict_result) in enumerate(zip(xb, background_predict_result)):
-      if entry[0] > mass_min and entry[0] < mass_max and predict_result > 0.5:
-        background_quantity += entry[-1]
-  else:
-    for entry in xs:
-      if entry[0] > mass_min and entry[0] < mass_max:
-        signal_quantity += entry[-1]
-    for entry in xb:
-      if entry[0] > mass_min and entry[0] < mass_max:
-        background_quantity += entry[-1]
-          
-  print("for mass =", mass_point, "range = (", mass_min, mass_max, "):")
-  print("  signal quantity =", signal_quantity, "background quantity =", background_quantity)
-  print("  significance =", signal_quantity / sqrt(background_quantity))

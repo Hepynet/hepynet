@@ -428,7 +428,7 @@ class model_sequential(model_base):
     x_plot, y_plot, y_pred = self.process_array(
       xs, xb, class_weight=class_weight
     )
-    fpr_dm, tpr_dm, threshold = roc_curve(y_plot, y_pred,
+    fpr_dm, tpr_dm, _ = roc_curve(y_plot, y_pred,
       sample_weight=x_plot[:,-1])
     # Make plots
     ax.plot(fpr_dm, tpr_dm)

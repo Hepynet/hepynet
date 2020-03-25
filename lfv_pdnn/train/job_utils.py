@@ -459,7 +459,7 @@ class job_executor(object):
     ptext = "-" * 80
     reports.append(Paragraph(ptext, styles["Justify"]))
     reports.append(Spacer(1, 12))
-    ptext = "config file location: " + re.sub('[\s+]', '', self.cfg_path)
+    ptext = "config file location: " + re.sub(r"[\s+]", "", self.cfg_path)
     reports.append(Paragraph(ptext, styles["Justify"]))
     ptext = "[array]"
     reports.append(Paragraph(ptext, styles["Justify"]))
