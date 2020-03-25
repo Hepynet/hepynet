@@ -11,7 +11,7 @@ feature_list = [
   'Pt_ll', 'Eta_ll', 'Phi_ll', 'DPhi_ll', 'DR_ll',
   'met', 'met_eta', 'met_phi',
   'njets', 'nbjets', 'NTauLoose', 'NTauTight',
-  'emu', 'etau', 'mutau', 'weight']
+  'emu', 'etau', 'mutau', 'weight', 'NormSF']
 bkg_names = ['diboson', 'zll', 'top', 'wjets']
 sig_names = ['rpv_500', 'rpv_700', 'rpv_1000', 'rpv_1500', 'rpv_2000',
              'zpr_500', 'zpr_700', 'zpr_1000', 'zpr_1500', 'zpr_2000']
@@ -26,14 +26,16 @@ for camp in ["mc16a", "mc16d", "mc16e"]:
   # Dump bkg
   for bkg_name in bkg_names:
     root_path = ntup_dir + "/" + camp + "/bkg_{}.root".format(bkg_name)
-    print(root_path)
     dump_flat_ntuple_individual(root_path, ntuple_name, feature_list,
       arrays_dir + "/" + camp, "bkg_{}".format(bkg_name),
       use_lower_var_name=True)
   # Dump sig
   for sig_name in sig_names:
     root_path = ntup_dir + "/" + camp + "/sig_{}.root".format(sig_name)
-    print(root_path)
     dump_flat_ntuple_individual(root_path, ntuple_name, feature_list,
       arrays_dir + "/" + camp, "sig_{}".format(sig_name),
       use_lower_var_name=True)
+  # Dump data
+  root_path = ntup_dir + "/" + camp + "/data.root"
+  dump_flat_ntuple_individual(root_path, ntuple_name, feature_list,
+    arrays_dir + "/" + camp, "data_all", use_lower_var_name=True)
