@@ -25,6 +25,7 @@ from sklearn.metrics import roc_curve, auc
 from lfv_pdnn.common import array_utils, common_utils
 from lfv_pdnn.data_io import get_arrays
 from lfv_pdnn.train import train_utils
+from HEPTools.plot_utils import th1_tools
 
 # self-defined metrics functions
 def plain_acc(y_true, y_pred):
@@ -265,8 +266,6 @@ class model_sequential(model_base):
         "datas element should be numpy array."
       assert isinstance(weights, np.ndarray), \
         "weights element should be numpy array."
-      print("####datas shape:", datas.shape) #########
-      print("####weights shape:", weights.shape) #########
       assert datas.shape == weights.shape, \
         "Input weights should be None or have same type as arrays."
       data_1dim = datas
@@ -299,7 +298,6 @@ class model_sequential(model_base):
         bin_yerrs = np.concatenate((bin_yerrs, ele_yerr))
     # plot bar
     bin_size = bin_edges[1] - bin_edges[0]
-    print(bin_ys) #################
     if use_error:
       ax.errorbar(bin_centers, bin_ys, xerr=bin_size/2., yerr=bin_yerrs, 
         fmt='.k', label=labels)
@@ -500,7 +498,7 @@ class model_sequential(model_base):
       ax,
       self.xb_test_selected_original_mass, self.xb_test_original_mass[:, -1],
       self.xs_test_selected_original_mass, self.xs_test_original_mass[:, -1],
-      selected_data=self.xd_selected_original_mass,
+      selected_data=self.xd_selected_original_mass.copy(),
       data_weight=self.xd_norm [:, -1], apply_data=apply_data,
       title=title, bins=bins, range=range, density=density, log=log)
 
@@ -529,7 +527,7 @@ class model_sequential(model_base):
       ax,
       self.xb_train_selected_original_mass, self.xb_train_original_mass[:, -1],
       self.xs_train_selected_original_mass, self.xs_train_original_mass[:, -1],
-      selected_data=self.xd_selected_original_mass,
+      selected_data=self.xd_selected_original_mass.copy(),
       data_weight=self.xd_norm [:, -1], apply_data=apply_data,
       title=title, bins=bins, range=range, density=density, log=log)
 
@@ -546,12 +544,12 @@ class model_sequential(model_base):
       self.get_model().predict(selected_bkg),
       weights=bkg_weight,
       bins=bins, range=range, histtype='step', label='bkg',
-      density=True, log=log)
+      density=density, log=log)
     ax.hist(
       self.get_model().predict(selected_sig),
       weights=sig_weight,
       bins=bins, range=range, histtype='step', label='sig',
-      density=True, log=log)
+      density=density, log=log)
     if apply_data:
       """
       ax.hist(
@@ -572,25 +570,20 @@ class model_sequential(model_base):
 
   def plot_scores_separate(self, ax, arr_dict, key_list, selected_features, 
     sig_arr=None, sig_weights=None, apply_data=False, data_arr=None, 
-    data_weight=None, plot_title='all input scores', bins=40,
+    data_weight=None, plot_title='all input scores', bins=50,
     range=(-0.25, 1.25), density=True, log=False):
     """Plots training score distribution for different background."""
     print("Plotting scores with bkg separated.")
     predict_arr_list = []
     predict_arr_weight_list = []
-
-    average=self.norm_average
-    variance=self.norm_variance
-
     # plot background
     for arr_key in key_list:
       bkg_arr_temp = arr_dict[arr_key].copy()
-      average=self.norm_average
-      variance=self.norm_variance
       bkg_arr_temp[:, 0:-2] = train_utils.norarray(
-        bkg_arr_temp[:, 0:-2], average=average, variance=variance)
+        bkg_arr_temp[:, 0:-2],
+        average=self.norm_average,
+        variance=self.norm_variance)
       selected_arr = train_utils.get_valid_feature(bkg_arr_temp)
-      #print("debug", self.get_model().predict(selected_arr))   ################
       predict_arr_list.append(np.array(self.get_model().predict(selected_arr)))
       predict_arr_weight_list.append(bkg_arr_temp[:, -1])
     try:
@@ -601,7 +594,7 @@ class model_sequential(model_base):
         weights=np.transpose(predict_arr_weight_list),
         histtype='bar',
         label=key_list,
-        density=True, 
+        density=density, 
         stacked=True)
     except:
       ax.hist(
@@ -611,14 +604,14 @@ class model_sequential(model_base):
         weights=predict_arr_weight_list[0],
         histtype='bar',
         label=key_list,
-        density=True, 
+        density=density, 
         stacked=True)
     # plot signal
     if sig_arr is None:
       sig_arr=self.xs_selected.copy()
       sig_weights=self.xs[:,-1]
     ax.hist(self.get_model().predict(sig_arr), bins=bins, range=range,
-            weights=sig_weights, histtype='step', label='sig', density=True)
+            weights=sig_weights, histtype='step', label='sig', density=density)
     # plot data
     if apply_data:
       if data_arr is None:
@@ -626,15 +619,14 @@ class model_sequential(model_base):
         data_weight=self.xd[:,-1]
       """
       ax.hist(self.get_model().predict(data_arr), bins=bins, range=range,
-        weights=data_weight, histtype='step', label='data', color="black", density=True)
+        weights=data_weight, histtype='step', label='data', color="black", density=density)
       """
       self.make_bar_plot(
         ax, self.get_model().predict(data_arr), "data",
         weights=np.reshape(data_weight, (-1, 1)), bins=bins, range=range,
         density=density, use_error=False)
-
     ax.set_title(plot_title)
-    ax.legend(loc='upper center')
+    ax.legend(loc='upper right')
     ax.set_xlabel("Output score")
     ax.set_ylabel("arb. unit")
     ax.grid()
@@ -816,9 +808,79 @@ class model_sequential(model_base):
     with open(save_path, 'w') as write_file:
       json.dump(paras_dict, write_file, indent=2)
 
+  def show_input_distributions(
+    self,
+    apply_data=False,
+    figsize=(8, 6),
+    style_cfg_path=None,
+    save_fig=False,
+    save_dir=None,
+    save_format="png"):
+    """Plots input distributions comparision plots for sig/bkg/data
+
+    """
+    print("Plotting input distributions.")
+    config = {}
+    if style_cfg_path is not None:
+      with open(style_cfg_path) as plot_config_file:
+        config=json.load(plot_config_file)
+
+    for feature_id, feature in enumerate(self.selected_features):
+      # prepare background histogram
+      hist_bkg = th1_tools.TH1FTool(
+        feature+"_bkg",
+        feature+"_bkg",
+        nbin=100,
+        xlow=-20,
+        xup=20)
+      hist_bkg.fill_hist(
+        np.reshape(self.xb_selected_original_mass[:,feature_id], (-1,1)),
+        np.reshape(self.xb_norm[:,-1], (-1, 1)))
+      hist_bkg.set_config(config)
+      hist_bkg.update_config("hist", "SetLineColor", 4)
+      hist_bkg.apply_config()
+      hist_bkg.draw()
+      hist_bkg.save(
+        save_dir=save_dir,
+        save_file_name=feature+"_bkg",
+        save_format=save_format)
+      # prepare signal histogram
+      hist_sig = th1_tools.TH1FTool(
+        feature+"_sig",
+        feature+"_sig",
+        nbin=100,
+        xlow=-20,
+        xup=20)
+      hist_sig.fill_hist(
+        np.reshape(self.xs_selected_original_mass[:,feature_id], (-1,1)),
+        np.reshape(self.xs_norm[:,-1], (-1, 1)))
+      hist_sig.set_config(config)
+      hist_sig.update_config("hist", "SetLineColor", 2)
+      hist_sig.apply_config()
+      hist_sig.draw()
+      hist_sig.save(
+        save_dir=save_dir,
+        save_file_name=feature+"_sig",
+        save_format=save_format)
+      # prepare sig vs bkg comparison plots
+      hist_col = th1_tools.HistCollection(
+        [hist_bkg, hist_sig],
+        collection_name=feature,
+        collection_title=feature)
+      hist_col.draw(config_str="hist", draw_norm=True)
+      hist_col.save(
+        save_dir=save_dir,
+        save_file_name=feature,
+        save_format=save_format)
+
   def show_performance(
-    self, apply_data=False ,figsize=(16, 24), show_fig=True,
-    save_fig=False, save_path=None, job_type="train"
+    self,
+    apply_data=False,
+    figsize=(16, 24),
+    show_fig=True,
+    save_fig=False,
+    save_path=None,
+    job_type="train"
     ):
     """Shortly reports training result.
 
@@ -837,10 +899,16 @@ class model_sequential(model_base):
       self.plot_loss(ax[0, 1])
       self.plot_train_test_roc(ax[1, 0])
       self.plot_feature_importance(ax[1, 1])
-      self.plot_train_scores(ax[2, 0], bins=50, apply_data=apply_data)
-      self.plot_test_scores(ax[2, 1], bins=50, apply_data=apply_data)
-      self.plot_train_scores_original_mass(ax[3,0], bins=50, apply_data=apply_data)
-      self.plot_test_scores_original_mass(ax[3,1], bins=50, apply_data=apply_data)
+      #following plots shoud use density plot because bkg (train/test) arrays
+      # are part of full arrays and data arrays are full arrays  
+      self.plot_train_scores(
+        ax[2, 0], bins=50, apply_data=apply_data, density=True)
+      self.plot_test_scores(
+        ax[2, 1], bins=50, apply_data=apply_data, density=True)
+      self.plot_train_scores_original_mass(
+        ax[3,0], bins=50, apply_data=apply_data, density=True)
+      self.plot_test_scores_original_mass(
+        ax[3,1], bins=50, apply_data=apply_data, density=True)
     else:
       fig, ax = plt.subplots(nrows=3, ncols=2, figsize=figsize)
       self.plot_accuracy(ax[0, 0])

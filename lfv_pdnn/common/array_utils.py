@@ -23,14 +23,14 @@ def clean_array(array, weight_id, remove_negative=False, verbose=False):
   # Clean
   # create new array for output to avoid direct operation on input array
   new = []
-  if remove_negative == False:
-    for d in array:
-      if d[weight_id] == 0.:  # only remove zero weight row
-        continue
-      new.append(d)
-  elif remove_negative == True:
+  if remove_negative == True:
     for d in array:
       if d[weight_id] <= 0.:  # remove zero or negative weight row
+        continue
+      new.append(d)
+  else:
+    for d in array:
+      if d[weight_id] == 0.:  # only remove zero weight row
         continue
       new.append(d)
 

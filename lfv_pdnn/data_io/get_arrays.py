@@ -24,6 +24,13 @@ def get_bkg(npy_path, campaign, channel, bkg_list, selected_features):
   bkg_dict['all'] = bkg_all_array
   return bkg_dict
 
+def get_data(npy_path, campaign, channel, data_list, selected_features):
+  print("Loading raw data array.")
+  # Load data, only one tag "all"
+  data_dict = get_npy_individuals(
+    npy_path, campaign, channel, data_list, selected_features, "data")
+  return data_dict
+
 def get_sig(npy_path, campaign, channel, sig_list, selected_features):
   print("Loading raw signal array.")
   # Load individual sig
@@ -71,6 +78,21 @@ def get_npy_individuals(npy_path, campaign, channel, npy_list,
         temp_array3 = np.reshape(temp_array3, (-1, 1))
         temp_array = np.concatenate(
           (temp_array1, temp_array2, temp_array3), axis=0)
+        #### hot fix
+        temp_array1 = np.load(
+          directory+"/mc16a" + "/" + npy_prefix + "_"+npy+"_normsf.npy")
+        temp_array1 = np.reshape(temp_array1, (-1, 1))
+        temp_array2 = np.load(
+          directory+"/mc16d" + "/" + npy_prefix + "_"+npy+"_normsf.npy")
+        temp_array2 = np.reshape(temp_array2, (-1, 1))
+        temp_array3 = np.load(
+          directory+"/mc16e" + "/" + npy_prefix + "_"+npy+"_normsf.npy")
+        temp_array3 = np.reshape(temp_array3, (-1, 1))
+        temp_array_normsf = np.concatenate(
+          (temp_array1, temp_array2, temp_array3), axis=0)
+        if feature == "weight":
+          temp_array = temp_array * temp_array_normsf
+        ####
         if npy_array is None:
           npy_array = temp_array
         else:
@@ -84,6 +106,13 @@ def get_npy_individuals(npy_path, campaign, channel, npy_list,
         temp_array = np.load(
           directory+"/" + npy_prefix + "_"+npy+"_"+feature+".npy")
         temp_array = np.reshape(temp_array, (-1, 1))
+        #### hot fix
+        temp_array_normsf = np.load(
+          directory+"/" + npy_prefix + "_"+npy+"_normsf.npy")
+        temp_array_normsf = np.reshape(temp_array_normsf, (-1, 1))
+        if feature == "weight":
+          temp_array = temp_array * temp_array_normsf
+        ####
         if npy_array is None:
           npy_array = temp_array
         else:

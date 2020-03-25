@@ -6,6 +6,7 @@ import re
 from configparser import ConfigParser
 import json
 import matplotlib.pyplot as plt
+import numpy as np
 import platform
 import re
 from reportlab.lib.enums import TA_JUSTIFY
@@ -48,22 +49,22 @@ class job_executor(object):
     self.bkg_dict_path = None
     self.bkg_key = None
     self.bkg_sumofweight = None
-    self.bkg_rm_neg_weight = None
+    self.bkg_rm_neg_weight = False
     self.sig_dict_path = None
     self.sig_key = None
     self.sig_sumofweight = None
-    self.sig_rm_neg_weight = None
+    self.sig_rm_neg_weight = False
     self.data_dict_path = None
     self.data_key = None
     self.data_sumofweight = None
-    self.data_rm_neg_weight = None
+    self.data_rm_neg_weight = False
     self.bkg_list = []
     self.sig_list = []
     self.data_list = []
     self.selected_features = []
     self.input_dim = None
     self.channel = None
-    self.norm_array = None
+    self.norm_array = True
     self.reset_feature = None
     self.reset_feature_name = None
     # Initialize [model] section
@@ -92,7 +93,9 @@ class job_executor(object):
     self.scan_id = None
     # Initialize [report] section
     self.plot_bkg_list = []
-    self.apply_data = None
+    self.kine_cfg = None
+    self.plot_density = True
+    self.apply_data = False
     self.show_report = None
     self.save_pdf_report = None
     self.save_tb_logs = None
@@ -149,6 +152,11 @@ class job_executor(object):
       select_channel=True, remove_negative_weight=self.bkg_rm_neg_weight)
     xd = array_utils.modify_array(self.data_dict[self.data_key],
       select_channel=True, remove_negative_weight=self.data_rm_neg_weight)
+    for key in self.plot_bkg_list:
+      self.plot_bkg_dict[key] = array_utils.modify_array(
+        self.plot_bkg_dict[key],
+        select_channel=True,
+        remove_negative_weight=self.bkg_rm_neg_weight)
     if self.save_tb_logs:
       save_dir = self.save_sub_dir + '/tb_logs'
       if not os.path.exists(save_dir):
@@ -221,13 +229,18 @@ class job_executor(object):
       fig_save_path = save_dir + '/performance.png'
       self.fig_performance_path = fig_save_path
       # show and save according to setting
+      self.model.show_input_distributions(
+        apply_data=False,
+        figsize=(8, 6),
+        style_cfg_path=self.kine_cfg,
+        save_fig=True,
+        save_dir=self.save_sub_dir+"/kinematics")
       self.model.show_performance(
         apply_data=self.apply_data,
         show_fig=self.show_report,
         save_fig=self.save_pdf_report,
         save_path=fig_save_path,
-        job_type=self.job_type
-        )
+        job_type=self.job_type)
       # Extra plots (use model on non-mass-reset arrays)
       fig, ax = plt.subplots(ncols=2, figsize=(16, 4))
       self.model.plot_scores_separate(
@@ -237,9 +250,9 @@ class job_executor(object):
         self.selected_features,
         apply_data=True,
         plot_title='training scores',
-        bins=40,
+        bins=50,
         range=(-0.25, 1.25),
-        density=True,
+        density=self.plot_density,
         log=False)
       self.model.plot_scores_separate(
         ax[1],
@@ -248,9 +261,9 @@ class job_executor(object):
         self.selected_features,
         apply_data=True,
         plot_title='training scores',
-        bins=40,
+        bins=50,
         range=(-0.25, 1.25),
-        density=True,
+        density=self.plot_density,
         log=True)
       fig.tight_layout()
       if self.save_pdf_report:
@@ -347,7 +360,9 @@ class job_executor(object):
     self.try_parse_str('para_scan_cfg', config, 'para_scan', 'para_scan_cfg')
     # Load [report] section
     self.try_parse_list('plot_bkg_list', config, 'report', 'plot_bkg_list')
+    self.try_parse_bool('plot_density', config, 'report', 'plot_density')
     self.try_parse_bool('apply_data', config, 'report', 'apply_data')
+    self.try_parse_str('kine_cfg', config, 'report', 'kine_cfg')
     self.try_parse_bool('show_report', config, 'report', 'show_report')
     self.try_parse_bool('save_pdf_report', config, 'report', 'save_pdf_report')
     self.try_parse_bool('save_tb_logs', config, 'report', 'save_tb_logs')
