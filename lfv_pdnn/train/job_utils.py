@@ -12,8 +12,8 @@ from reportlab.lib.enums import TA_JUSTIFY
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
-from reportlab.platypus import (
-    Image, PageBreak, Paragraph, SimpleDocTemplate, Spacer)
+from reportlab.platypus import (Image, PageBreak, Paragraph, SimpleDocTemplate,
+                                Spacer, Table)
 
 from lfv_pdnn.common import array_utils, common_utils
 from lfv_pdnn.data_io import get_arrays
@@ -252,7 +252,7 @@ class job_executor(object):
                                             self.plot_bkg_list,
                                             self.selected_features,
                                             apply_data=True,
-                                            plot_title='training scores',
+                                            plot_title="DNN scores (lin)",
                                             bins=50,
                                             range=(-0.25, 1.25),
                                             density=self.plot_density,
@@ -262,16 +262,42 @@ class job_executor(object):
                                             self.plot_bkg_list,
                                             self.selected_features,
                                             apply_data=True,
-                                            plot_title='training scores',
+                                            plot_title="DNN scores (log)",
                                             bins=50,
                                             range=(-0.25, 1.25),
                                             density=self.plot_density,
                                             log=True)
             fig.tight_layout()
+            self.model.plot_scores_separate_root(self.plot_bkg_dict,
+                                                 self.plot_bkg_list,
+                                                 self.selected_features,
+                                                 apply_data=True,
+                                                 plot_title="DNN scores (lin)",
+                                                 bins=50,
+                                                 range=(-0.25, 1.25),
+                                                 density=self.plot_density,
+                                                 log_scale=False,
+                                                 save_plot=True,
+                                                 save_dir=save_dir,
+                                                 save_file_name="DNN_scores_lin")
+            self.model.plot_scores_separate_root(self.plot_bkg_dict,
+                                                 self.plot_bkg_list,
+                                                 self.selected_features,
+                                                 apply_data=True,
+                                                 plot_title="DNN scores (log)",
+                                                 bins=50,
+                                                 range=(-0.25, 1.25),
+                                                 density=self.plot_density,
+                                                 log_scale=True,
+                                                 save_plot=True,
+                                                 save_dir=save_dir,
+                                                 save_file_name="DNN_scores_log")
             if self.save_pdf_report:
                 fig_save_path = save_dir + '/non-mass-reset_plots.png'
                 fig.savefig(fig_save_path)
                 self.fig_non_mass_reset_path = fig_save_path
+                self.fig_dnn_scores_lin_path = save_dir + "/DNN_scores_lin.png"
+                self.fig_dnn_scores_log_path = save_dir + "/DNN_scores_log.png"
                 pdf_save_path = save_dir + '/summary_report.pdf'
                 self.generate_report(pdf_save_path=pdf_save_path)
                 self.report_path = pdf_save_path
@@ -596,10 +622,11 @@ class job_executor(object):
         fig = self.fig_performance_path
         im = Image(fig, 6.4 * inch, 7.2 * inch)
         reports.append(im)
-        fig = self.fig_non_mass_reset_path
-        im = Image(fig, 6.4 * inch, 1.6 * inch)
-        reports.append(im)
-
+        fig = self.fig_dnn_scores_lin_path
+        im1 = Image(fig, 3.2 * inch, 2.4 * inch)
+        fig = self.fig_dnn_scores_log_path
+        im2 = Image(fig, 3.2 * inch, 2.4 * inch)
+        reports.append(Table([[im1, im2]]))
         # build/save
         doc.build(reports)
 

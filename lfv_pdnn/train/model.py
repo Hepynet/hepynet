@@ -22,6 +22,7 @@ from keras.wrappers.scikit_learn import KerasClassifier, KerasRegressor
 from matplotlib.ticker import FixedLocator, NullFormatter
 from sklearn.metrics import auc, roc_curve
 
+import ROOT
 from HEPTools.plot_utils import th1_tools
 from lfv_pdnn.common import array_utils, common_utils
 from lfv_pdnn.data_io import get_arrays
@@ -37,25 +38,25 @@ def plain_acc(y_true, y_pred):
 class model_base(object):
     """Base model of deep neural network for pdnn training.
   
-  In feature_list:
-    model_create_time: datetime.datetime
-      Time stamp of model object created time.
-    model_is_compiled: bool
-      Whether the model has been compiled.
-    model_name: str
-      Name of the model.
-    train_history: 
-      Training of keras model, include 'acc', 'loss', 'val_acc' and 'val_loss'.
+    In feature_list:
+        model_create_time: datetime.datetime
+        Time stamp of model object created time.
+        model_is_compiled: bool
+        Whether the model has been compiled.
+        model_name: str
+        Name of the model.
+        train_history: 
+        Training of keras model, include 'acc', 'loss', 'val_acc' and 'val_loss'.
 
-  """
+    """
     def __init__(self, name):
         """Initialize model.
 
-    Args: 
-      name: str
-        Name of the model.
+        Args: 
+        name: str
+            Name of the model.
 
-    """
+        """
         self.has_data = False
         self.is_mass_reset = False
         self.model_create_time = str(datetime.datetime.now())
@@ -71,61 +72,61 @@ class model_base(object):
 class model_sequential(model_base):
     """Sequential model base.
 
-  Attributes:
-    model_input_dim: int
-      Number of input variables.
-    model_num_node: int
-      Number of nodes in each layer. 
-    model_learn_rate: float
-    model_decay: float
-    model: keras model
-      Keras training model object.
-    array_prepared = bool
-      Whether the array for training has been prepared.
-    x_train: numpy array
-      x array for training.
-    x_test: numpy array
-      x array for testing.
-    y_train: numpy array
-      y array for training.
-    y_test: numpy array
-      y array for testing.
-    xs_test: numpy array
-      Signal component of x array for testing.
-    xb_test: numpy array
-      Background component of x array for testing.
-    selected_features: list
-      Names of input array of features that will be used for training.
-    x_train_selected: numpy array
-      x array for training with feature selection.
-    x_test_selected: numpy array
-      x array for testing with feature selection.
-    xs_test_selected: numpy array
-      Signal component of x array for testing with feature selection.
-    xb_test_selected: numpy array
-      Background component of x array for testing with feature selection.
-    xs_selected: numpy array
-      Signal component of x array (train + test) with feature selection.
-    xb_selected: numpy array
-      Background component of x array (train + test) with feature selection.
+    Attributes:
+        model_input_dim: int
+        Number of input variables.
+        model_num_node: int
+        Number of nodes in each layer. 
+        model_learn_rate: float
+        model_decay: float
+        model: keras model
+        Keras training model object.
+        array_prepared = bool
+        Whether the array for training has been prepared.
+        x_train: numpy array
+        x array for training.
+        x_test: numpy array
+        x array for testing.
+        y_train: numpy array
+        y array for training.
+        y_test: numpy array
+        y array for testing.
+        xs_test: numpy array
+        Signal component of x array for testing.
+        xb_test: numpy array
+        Background component of x array for testing.
+        selected_features: list
+        Names of input array of features that will be used for training.
+        x_train_selected: numpy array
+        x array for training with feature selection.
+        x_test_selected: numpy array
+        x array for testing with feature selection.
+        xs_test_selected: numpy array
+        Signal component of x array for testing with feature selection.
+        xb_test_selected: numpy array
+        Background component of x array for testing with feature selection.
+        xs_selected: numpy array
+        Signal component of x array (train + test) with feature selection.
+        xb_selected: numpy array
+        Background component of x array (train + test) with feature selection.
 
-    Example:
-    To use to model class, first to create the class:
-    >>> model_name = "test model"
-    >>> selected_features = ["pt", "eta", "phi"]
-    >>> model_deep = model.model_0913(model_name, len(selected_features))
-    Then compile model:
-    >>> model_deep.compile()
-    Prepare array for training:
-    >>> xs_emu = np.load('path/to/numpy/signal/array.npy')
-    >>> xb_emu = np.load('path/to/numpy/background/array.npy')
-    >>> model_deep.prepare_array(xs_emu, xb_emu)
-    Perform training:
-    >>> model_deep.train(epochs = epochs, val_split = 0.1, verbose = 0)
-    Make plots to shoe training performance:
-    >>> model_deep.show_performance()
-  
-  """
+        Example:
+        To use to model class, first to create the class:
+        >>> model_name = "test model"
+        >>> selected_features = ["pt", "eta", "phi"]
+        >>> model_deep = model.model_0913(model_name, len(selected_features))
+        Then compile model:
+        >>> model_deep.compile()
+        Prepare array for training:
+        >>> xs_emu = np.load('path/to/numpy/signal/array.npy')
+        >>> xb_emu = np.load('path/to/numpy/background/array.npy')
+        >>> model_deep.prepare_array(xs_emu, xb_emu)
+        Perform training:
+        >>> model_deep.train(epochs = epochs, val_split = 0.1, verbose = 0)
+        Make plots to shoe training performance:
+        >>> model_deep.show_performance()
+    
+    """
     def __init__(self,
                  name,
                  input_dim,
@@ -267,11 +268,11 @@ class model_sequential(model_base):
                       use_error=False):
         """Plot with verticle bar, can be used for data display.
     
-    Note:
-      According to ROOT: 
-      "The error per bin will be computed as sqrt(sum of squares of weight) for each bin."
+            Note:
+            According to ROOT: 
+            "The error per bin will be computed as sqrt(sum of squares of weight) for each bin."
 
-    """
+        """
         plt.ioff()
         # Check input
         data_1dim = np.array([])
@@ -436,9 +437,9 @@ class model_sequential(model_base):
 
     def plot_final_roc(self, ax):
         """Plots roc curve for to check final training result on original samples.
-    (backgound sample mass not reset according to signal)
+        (backgound sample mass not reset according to signal)
 
-    """
+        """
         print("Plotting final roc curve.")
         # Check
         if not self.model_is_trained:
@@ -684,12 +685,12 @@ class model_sequential(model_base):
                              log=False):
         """Plots training score distribution for different background.
     
-    Note:
-      bkg_plot_key_list can be used to adjust order of background sample 
-      stacking. For example, if bkg_plot_key_list = ['top', 'zll', 'diboson']
-      'top' will be put at bottom & 'zll' in the middle & 'diboson' on the top
+        Note:
+            bkg_plot_key_list can be used to adjust order of background sample 
+            stacking. For example, if bkg_plot_key_list = ['top', 'zll', 'diboson']
+            'top' will be put at bottom & 'zll' in the middle & 'diboson' on the top
 
-    """
+        """
         print("Plotting scores with bkg separated.")
         predict_arr_list = []
         predict_arr_weight_list = []
@@ -738,10 +739,6 @@ class model_sequential(model_base):
             if data_arr is None:
                 data_arr = self.xd_selected_original_mass.copy()
                 data_weight = self.xd[:, -1]
-            """
-      ax.hist(self.get_model().predict(data_arr), bins=bins, range=range,
-        weights=data_weight, histtype='step', label='data', color="black", density=density)
-      """
             self.make_bar_plot(ax,
                                self.get_model().predict(data_arr),
                                "data",
@@ -760,6 +757,92 @@ class model_sequential(model_base):
             ax.set_title(plot_title + "(log)")
         else:
             ax.set_title(plot_title + "(lin)")
+
+    def plot_scores_separate_root(self,
+                                  bkg_dict,
+                                  bkg_plot_key_list,
+                                  selected_features,
+                                  sig_arr=None,
+                                  sig_weights=None,
+                                  apply_data=False,
+                                  data_arr=None,
+                                  data_weight=None,
+                                  plot_title='all input scores',
+                                  bins=50,
+                                  range=(-0.25, 1.25),
+                                  density=True,
+                                  log_scale=False,
+                                  save_plot=False,
+                                  save_dir=None,
+                                  save_file_name=None):
+        """Plots training score distribution for different background with ROOT
+    
+        Note:
+            bkg_plot_key_list can be used to adjust order of background sample 
+            stacking. For example, if bkg_plot_key_list = ['top', 'zll', 'diboson']
+            'top' will be put at bottom & 'zll' in the middle & 'diboson' on the top
+
+        """
+        print("Plotting scores with bkg separated with ROOT.")
+        hist_list = []
+        # plot background
+        for arr_key in bkg_plot_key_list:
+            bkg_arr_temp = bkg_dict[arr_key].copy()
+            bkg_arr_temp[:, 0:-2] = train_utils.norarray(
+                bkg_arr_temp[:, 0:-2],
+                average=self.norm_average,
+                variance=self.norm_variance)
+            selected_arr = train_utils.get_valid_feature(bkg_arr_temp)
+            predict_arr = np.array(self.get_model().predict(selected_arr))
+            predict_weight_arr = bkg_arr_temp[:, -1]
+
+            th1_temp = th1_tools.TH1FTool(arr_key,
+                                          arr_key,
+                                          nbin=bins,
+                                          xlow=range[0],
+                                          xup=range[1])
+            th1_temp.fill_hist(predict_arr, predict_weight_arr)
+            hist_list.append(th1_temp)
+        hist_stacked_bkgs = th1_tools.THStackTool("bkg stack plot", plot_title,
+                                                  hist_list)
+        hist_stacked_bkgs.draw("pfc hist", log_scale=log_scale)
+        # plot signal
+        if sig_arr is None:
+            selected_arr = self.xs_selected.copy()
+            predict_arr = self.get_model().predict(selected_arr)
+            predict_weight_arr = self.xs[:, -1]
+        hist_sig = th1_tools.TH1FTool("sig added",
+                                      plot_title,
+                                      nbin=bins,
+                                      xlow=range[0],
+                                      xup=range[1],
+                                      canvas=hist_stacked_bkgs.get_canvas())
+        hist_sig.fill_hist(predict_arr, predict_weight_arr)
+        hist_sig.update_config("hist", "SetLineColor", ROOT.kRed)
+        hist_sig.draw("same hist", log_scale=log_scale)
+        # plot data if required
+        if apply_data:
+            if data_arr is None:
+                selected_arr = self.xd_selected_original_mass.copy()
+                predict_arr = self.get_model().predict(selected_arr)
+                predict_weight_arr = self.xd[:, -1]
+            hist_data = th1_tools.TH1FTool("data added",
+                                           plot_title,
+                                           nbin=bins,
+                                           xlow=range[0],
+                                           xup=range[1],
+                                           canvas=hist_sig.get_canvas())
+            hist_data.fill_hist(predict_arr, predict_weight_arr)
+            hist_data.update_config("hist", "SetMarkerStyle", ROOT.kFullCircle)
+            hist_data.update_config("hist", "SetMarkerColor", ROOT.kBlack)
+            hist_data.update_config("hist", "SetMarkerSize", 0.8)
+            hist_data.draw("same e1", log_scale=log_scale)
+            hist_data.build_legend()
+        else:
+            hist_data = hist_sig
+        # save plot
+        if save_plot:
+            hist_data.save(save_dir=save_dir, save_file_name=save_file_name)
 
     def prepare_array(self,
                       xs,
@@ -910,11 +993,11 @@ class model_sequential(model_base):
     def save_model(self, save_dir=None, file_name=None):
         """Saves trained model.
     
-    Args:
-      save_dir: str
-        Path to save model.
+        Args:
+            save_dir: str
+            Path to save model.
 
-    """
+        """
         # Define save path
         if save_dir is None:
             save_dir = "./models"
@@ -972,9 +1055,7 @@ class model_sequential(model_base):
                                  save_fig=False,
                                  save_dir=None,
                                  save_format="png"):
-        """Plots input distributions comparision plots for sig/bkg/data
-
-    """
+        """Plots input distributions comparision plots for sig/bkg/data"""
         print("Plotting input distributions.")
         config = {}
         if style_cfg_path is not None:
@@ -982,12 +1063,16 @@ class model_sequential(model_base):
                 config = json.load(plot_config_file)
 
         for feature_id, feature in enumerate(self.selected_features):
+            test_canvas = ROOT.TCanvas("test_canvas", "test_canvas", 800, 600)
+            test_canvas.Divide(1, 2)
             # prepare background histogram
             hist_bkg = th1_tools.TH1FTool(feature + "_bkg",
                                           feature + "_bkg",
                                           nbin=100,
                                           xlow=-20,
-                                          xup=20)
+                                          xup=20,
+                                          canvas=test_canvas,
+                                          canvas_id=1)
             hist_bkg.fill_hist(
                 np.reshape(self.xb_selected_original_mass[:, feature_id],
                            (-1, 1)), np.reshape(self.xb_norm[:, -1], (-1, 1)))
@@ -1003,7 +1088,9 @@ class model_sequential(model_base):
                                           feature + "_sig",
                                           nbin=100,
                                           xlow=-20,
-                                          xup=20)
+                                          xup=20,
+                                          canvas=test_canvas,
+                                          canvas_id=2)
             hist_sig.fill_hist(
                 np.reshape(self.xs_selected_original_mass[:, feature_id],
                            (-1, 1)), np.reshape(self.xs_norm[:, -1], (-1, 1)))
@@ -1016,12 +1103,13 @@ class model_sequential(model_base):
                           save_format=save_format)
             # prepare sig vs bkg comparison plots
             hist_col = th1_tools.HistCollection([hist_bkg, hist_sig],
-                                                collection_name=feature,
-                                                collection_title=feature)
+                                                name=feature,
+                                                title=feature)
             hist_col.draw(config_str="hist", draw_norm=True)
             hist_col.save(save_dir=save_dir,
                           save_file_name=feature,
                           save_format=save_format)
+            test_canvas.SaveAs("/work/test/test_canvas_{}.png".format(feature))
 
     def show_performance(self,
                          apply_data=False,
@@ -1032,11 +1120,11 @@ class model_sequential(model_base):
                          job_type="train"):
         """Shortly reports training result.
 
-    Args:
-      figsize: tuple
-        Defines plot size.
+        Args:
+            figsize: tuple
+                Defines plot size.
 
-    """
+        """
         # Check input
         assert isinstance(self, model_base)
         print("Model performance:")
@@ -1093,12 +1181,12 @@ class model_sequential(model_base):
 class Model_1002(model_sequential):
     """Sequential model optimized with old ntuple at Sep. 9th 2019.
   
-  Major modification based on 0913 model:
-    1. Optimized to train on full mass range. (Used to be on bkg samples with
-       cut to have similar mass range as signal.)
-    2. Use normalized data for training.
-  
-  """
+    Major modification based on 0913 model:
+        1. Optimized to train on full mass range. (Used to be on bkg samples with
+        cut to have similar mass range as signal.)
+        2. Use normalized data for training.
+    
+    """
     def __init__(self,
                  name,
                  input_dim,
@@ -1266,10 +1354,10 @@ class Model_1002(model_sequential):
 class Model_1016(Model_1002):
     """Sequential model optimized with old ntuple at Sep. 9th 2019.
   
-  Major modification based on 1002 model:
-    1. Change structure to make quantity of nodes decrease with layer num.
-  
-  """
+    Major modification based on 1002 model:
+        1. Change structure to make quantity of nodes decrease with layer num.
+    
+    """
     def __init__(self,
                  name,
                  input_dim,
