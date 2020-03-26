@@ -19,7 +19,11 @@ from lfv_pdnn.common import array_utils, common_utils
 from lfv_pdnn.data_io import get_arrays
 from lfv_pdnn.train import model, train_utils
 
-SCANNED_PARAS = ['scan_learn_rate', 'scan_learn_rate_decay', 'scan_batch_size']
+SCANNED_PARAS = [
+    'scan_learn_rate', 'scan_learn_rate_decay', 'scan_batch_size',
+    'scan_sig_sumofweight', 'scan_bkg_sumofweight', 'scan_sig_class_weight',
+    'scan_bkg_class_weight', 'scan_sig_key', 'scan_bkg_key'
+]
 # possible main directory names, in docker it's "work", otherwise it's "pdnn-lfv"
 MAIN_DIR_NAMES = ["pdnn-lfv", "work"]
 
@@ -183,6 +187,7 @@ class job_executor(object):
             self.input_dim,
             learn_rate=self.learn_rate,
             decay=self.learn_rate_decay,
+            dropout_rate=0.5,
             metrics=self.train_metrics,
             weighted_metrics=self.train_metrics_weighted,
             selected_features=self.selected_features,
@@ -231,8 +236,6 @@ class job_executor(object):
                 save_dir = self.save_sub_dir + "/reports/"
             if not os.path.exists(save_dir):
                 os.makedirs(save_dir)
-            fig_save_path = save_dir + '/performance.png'
-            self.fig_performance_path = fig_save_path
             # show and save according to setting
             self.model.show_input_distributions(apply_data=False,
                                                 figsize=(8, 6),
@@ -240,6 +243,19 @@ class job_executor(object):
                                                 save_fig=True,
                                                 save_dir=self.save_sub_dir +
                                                 "/kinematics")
+            # Make correlation plot
+            fig, ax = plt.subplots(ncols=2, figsize=(16, 8))
+            ax[0].set_title("bkg correlation")
+            self.model.plot_correlation_matrix(ax[0], matrix_key="bkg")
+            ax[1].set_title("sig correlation")
+            self.model.plot_correlation_matrix(ax[1], matrix_key="sig")
+            if self.save_pdf_report:
+                fig_save_path = save_dir + '/correlation_matrix.png'
+                self.fig_correlation_matrix_path = fig_save_path
+                fig.savefig(fig_save_path)
+            # Make performance plots
+            fig_save_path = save_dir + '/performance.png'
+            self.fig_performance_path = fig_save_path
             self.model.show_performance(apply_data=self.apply_data,
                                         show_fig=self.show_report,
                                         save_fig=self.save_pdf_report,
@@ -268,30 +284,34 @@ class job_executor(object):
                                             density=self.plot_density,
                                             log=True)
             fig.tight_layout()
-            self.model.plot_scores_separate_root(self.plot_bkg_dict,
-                                                 self.plot_bkg_list,
-                                                 self.selected_features,
-                                                 apply_data=True,
-                                                 plot_title="DNN scores (lin)",
-                                                 bins=50,
-                                                 range=(-0.25, 1.25),
-                                                 density=self.plot_density,
-                                                 log_scale=False,
-                                                 save_plot=True,
-                                                 save_dir=save_dir,
-                                                 save_file_name="DNN_scores_lin")
-            self.model.plot_scores_separate_root(self.plot_bkg_dict,
-                                                 self.plot_bkg_list,
-                                                 self.selected_features,
-                                                 apply_data=True,
-                                                 plot_title="DNN scores (log)",
-                                                 bins=50,
-                                                 range=(-0.25, 1.25),
-                                                 density=self.plot_density,
-                                                 log_scale=True,
-                                                 save_plot=True,
-                                                 save_dir=save_dir,
-                                                 save_file_name="DNN_scores_log")
+            self.model.plot_scores_separate_root(
+                self.plot_bkg_dict,
+                self.plot_bkg_list,
+                self.selected_features,
+                apply_data=True,
+                plot_title="DNN scores (lin)",
+                bins=25,
+                range=(0, 1),
+                scale_sig=True,
+                density=self.plot_density,
+                log_scale=False,
+                save_plot=True,
+                save_dir=save_dir,
+                save_file_name="DNN_scores_lin")
+            self.model.plot_scores_separate_root(
+                self.plot_bkg_dict,
+                self.plot_bkg_list,
+                self.selected_features,
+                apply_data=True,
+                plot_title="DNN scores (log)",
+                bins=25,
+                range=(0, 1),
+                scale_sig=True,
+                density=self.plot_density,
+                log_scale=True,
+                save_plot=True,
+                save_dir=save_dir,
+                save_file_name="DNN_scores_log")
             if self.save_pdf_report:
                 fig_save_path = save_dir + '/non-mass-reset_plots.png'
                 fig.savefig(fig_save_path)
@@ -627,6 +647,9 @@ class job_executor(object):
         fig = self.fig_dnn_scores_log_path
         im2 = Image(fig, 3.2 * inch, 2.4 * inch)
         reports.append(Table([[im1, im2]]))
+        fig = self.fig_correlation_matrix_path
+        im = Image(fig, 6.4 * inch, 3.2 * inch)
+        reports.append(im)
         # build/save
         doc.build(reports)
 

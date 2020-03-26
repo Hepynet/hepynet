@@ -11,6 +11,8 @@ import eli5
 import keras
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
+import seaborn as sns
 from eli5.sklearn import PermutationImportance
 from keras import backend as K
 from keras.callbacks import TensorBoard, callbacks
@@ -23,7 +25,7 @@ from matplotlib.ticker import FixedLocator, NullFormatter
 from sklearn.metrics import auc, roc_curve
 
 import ROOT
-from HEPTools.plot_utils import th1_tools
+from HEPTools.plot_utils import plot_utils, th1_tools
 from lfv_pdnn.common import array_utils, common_utils
 from lfv_pdnn.data_io import get_arrays
 from lfv_pdnn.train import train_utils
@@ -186,6 +188,18 @@ class model_sequential(model_base):
         if self.train_history is None:
             warnings.warn("Empty training history found")
         return self.train_history
+
+    def get_corrcoef(self) -> dict:
+        d_bkg = pd.DataFrame(data=self.xb_selected_original_mass,
+                 columns=list(self.selected_features))
+        bkg_matrix = d_bkg.corr()
+        d_sig = pd.DataFrame(data=self.xs_selected_original_mass,
+                 columns=list(self.selected_features))
+        sig_matrix = d_sig.corr()
+        corrcoef_matrix_dict = {}
+        corrcoef_matrix_dict["bkg"] = bkg_matrix
+        corrcoef_matrix_dict["sig"] = sig_matrix
+        return corrcoef_matrix_dict
 
     def load_model(self,
                    dir,
@@ -391,13 +405,32 @@ class model_sequential(model_base):
                 verticalalignment='top',
                 bbox=props)
 
+    def plot_correlation_matrix(self, ax, matrix_key="bkg"):
+        corr_matrix_dict = self.get_corrcoef()
+        # Get matrix
+        corr_matrix = corr_matrix_dict[matrix_key]
+        # Generate a mask for the upper triangle
+        mask = np.triu(np.ones_like(corr_matrix, dtype=np.bool))
+        # Generate a custom diverging colormap
+        cmap = sns.diverging_palette(220, 10, as_cmap=True)
+        # Draw the heatmap with the mask and correct aspect ratio
+        sns.heatmap(corr_matrix,
+                    mask=mask,
+                    cmap=cmap,
+                    vmax=.3,
+                    center=0,
+                    square=True,
+                    linewidths=.5,
+                    cbar_kws={"shrink": .5},
+                    ax=ax)
+
     def plot_feature_importance(self, ax):
         """Calculates importance of features and sort the feature.
     
-    Definition of feature importance used here can be found in:
-    https://christophm.github.io/interpretable-ml-book/feature-importance.html#feature-importance-data
+        Definition of feature importance used here can be found in:
+        https://christophm.github.io/interpretable-ml-book/feature-importance.html#feature-importance-data
 
-    """
+        """
         print("Plotting feature importance.")
         # Prepare
         num_feature = len(self.selected_features)
@@ -770,6 +803,7 @@ class model_sequential(model_base):
                                   plot_title='all input scores',
                                   bins=50,
                                   range=(-0.25, 1.25),
+                                  scale_sig=False,
                                   density=True,
                                   log_scale=False,
                                   save_plot=False,
@@ -784,6 +818,12 @@ class model_sequential(model_base):
 
         """
         print("Plotting scores with bkg separated with ROOT.")
+        plot_canvas = ROOT.TCanvas(plot_title, plot_title, 800, 800)
+        plot_pad_score = ROOT.TPad("pad1", "pad1", 0, 0.3, 1, 1.0)
+        plot_pad_score.SetBottomMargin(0)
+        plot_pad_score.SetGridx()
+        plot_pad_score.Draw()
+        plot_pad_score.cd()
         hist_list = []
         # plot background
         for arr_key in bkg_plot_key_list:
@@ -803,23 +843,41 @@ class model_sequential(model_base):
                                           xup=range[1])
             th1_temp.fill_hist(predict_arr, predict_weight_arr)
             hist_list.append(th1_temp)
-        hist_stacked_bkgs = th1_tools.THStackTool("bkg stack plot", plot_title,
-                                                  hist_list)
+        hist_stacked_bkgs = th1_tools.THStackTool("bkg stack plot",
+                                                  plot_title,
+                                                  hist_list,
+                                                  canvas=plot_pad_score)
         hist_stacked_bkgs.draw("pfc hist", log_scale=log_scale)
+        hist_stacked_bkgs.get_hstack().GetYaxis().SetTitle("events/bin")
         # plot signal
         if sig_arr is None:
             selected_arr = self.xs_selected.copy()
             predict_arr = self.get_model().predict(selected_arr)
             predict_weight_arr = self.xs[:, -1]
+        if scale_sig:
+            sig_title = "sig"
+        else:
+            sig_title = "sig-scaled"
         hist_sig = th1_tools.TH1FTool("sig added",
-                                      plot_title,
+                                      sig_title,
                                       nbin=bins,
                                       xlow=range[0],
                                       xup=range[1],
-                                      canvas=hist_stacked_bkgs.get_canvas())
+                                      canvas=plot_pad_score)
         hist_sig.fill_hist(predict_arr, predict_weight_arr)
+        if scale_sig:
+            total_weight = hist_stacked_bkgs.get_total_weights()
+            scale_factor = total_weight / hist_sig.get_hist().GetSumOfWeights()
+            hist_sig.get_hist().Scale(scale_factor)
         hist_sig.update_config("hist", "SetLineColor", ROOT.kRed)
-        hist_sig.draw("same hist", log_scale=log_scale)
+        # set proper y range
+        maximum_y = max(plot_utils.get_highest_bin_value(hist_list),
+                        plot_utils.get_highest_bin_value(hist_sig))
+        hist_stacked_bkgs.get_hstack().SetMaximum(1.2 * maximum_y)
+        hist_stacked_bkgs.get_hstack().SetMinimum(0.1)
+        hist_stacked_bkgs.get_hstack().GetYaxis().SetLabelFont(43)
+        hist_stacked_bkgs.get_hstack().GetYaxis().SetLabelSize(15)
+        hist_sig.draw("same hist")
         # plot data if required
         if apply_data:
             if data_arr is None:
@@ -827,22 +885,63 @@ class model_sequential(model_base):
                 predict_arr = self.get_model().predict(selected_arr)
                 predict_weight_arr = self.xd[:, -1]
             hist_data = th1_tools.TH1FTool("data added",
-                                           plot_title,
+                                           "data",
                                            nbin=bins,
                                            xlow=range[0],
                                            xup=range[1],
-                                           canvas=hist_sig.get_canvas())
+                                           canvas=plot_pad_score)
             hist_data.fill_hist(predict_arr, predict_weight_arr)
             hist_data.update_config("hist", "SetMarkerStyle", ROOT.kFullCircle)
             hist_data.update_config("hist", "SetMarkerColor", ROOT.kBlack)
             hist_data.update_config("hist", "SetMarkerSize", 0.8)
             hist_data.draw("same e1", log_scale=log_scale)
-            hist_data.build_legend()
         else:
             hist_data = hist_sig
+        hist_data.build_legend(0.4, 0.7, 0.6, 0.9)
+
+        # ratio plot
+        plot_canvas.cd()
+        plot_pad_ratio = ROOT.TPad("pad2", "pad2", 0, 0.05, 1, 0.3)
+        plot_pad_ratio.SetTopMargin(0)
+        plot_pad_ratio.SetGridx()
+        plot_pad_ratio.Draw()
+        plot_pad_ratio.cd()
+        ## plot bkg error bar
+        hist_bkg_total = hist_stacked_bkgs.get_added_hists()
+        hist_bkg_err = hist_bkg_total.Clone()
+        hist_bkg_err.Divide(hist_bkg_err.Clone())
+        hist_bkg_err.SetDefaultSumw2()
+        hist_bkg_err.SetMinimum(0.5)
+        hist_bkg_err.SetMaximum(1.5)
+        hist_bkg_err.SetStats(0)
+        hist_bkg_err.SetTitle("")
+        hist_bkg_err.SetFillColor(ROOT.kGray)
+        hist_bkg_err.GetXaxis().SetTitle("DNN score")
+        hist_bkg_err.GetXaxis().SetTitleSize(20)
+        hist_bkg_err.GetXaxis().SetTitleFont(43)
+        hist_bkg_err.GetXaxis().SetTitleOffset(4.)
+        hist_bkg_err.GetXaxis().SetLabelFont(43)
+        hist_bkg_err.GetXaxis().SetLabelSize(15)
+        hist_bkg_err.GetYaxis().SetTitle("ratio")
+        hist_bkg_err.GetYaxis().SetNdivisions(505)
+        hist_bkg_err.GetYaxis().SetTitleSize(20)
+        hist_bkg_err.GetYaxis().SetTitleFont(43)
+        hist_bkg_err.GetYaxis().SetTitleOffset(1.55)
+        hist_bkg_err.GetYaxis().SetLabelFont(43)
+        hist_bkg_err.GetYaxis().SetLabelSize(15)
+        hist_bkg_err.Draw("e3")
+        ## plot base line
+        base_line = ROOT.TF1("one", "1", 0, 1)
+        base_line.SetLineColor(ROOT.kRed)
+        base_line.Draw("same")
+        ## plot ratio
+        hist_ratio = hist_data.get_hist().Clone()
+        hist_ratio.Divide(hist_bkg_total)
+        hist_ratio.Draw("same")
+
         # save plot
         if save_plot:
-            hist_data.save(save_dir=save_dir, save_file_name=save_file_name)
+            plot_canvas.SaveAs(save_dir + "/" + save_file_name + ".png")
 
     def prepare_array(self,
                       xs,
@@ -1063,16 +1162,12 @@ class model_sequential(model_base):
                 config = json.load(plot_config_file)
 
         for feature_id, feature in enumerate(self.selected_features):
-            test_canvas = ROOT.TCanvas("test_canvas", "test_canvas", 800, 600)
-            test_canvas.Divide(1, 2)
             # prepare background histogram
             hist_bkg = th1_tools.TH1FTool(feature + "_bkg",
                                           feature + "_bkg",
                                           nbin=100,
                                           xlow=-20,
-                                          xup=20,
-                                          canvas=test_canvas,
-                                          canvas_id=1)
+                                          xup=20)
             hist_bkg.fill_hist(
                 np.reshape(self.xb_selected_original_mass[:, feature_id],
                            (-1, 1)), np.reshape(self.xb_norm[:, -1], (-1, 1)))
@@ -1088,9 +1183,7 @@ class model_sequential(model_base):
                                           feature + "_sig",
                                           nbin=100,
                                           xlow=-20,
-                                          xup=20,
-                                          canvas=test_canvas,
-                                          canvas_id=2)
+                                          xup=20)
             hist_sig.fill_hist(
                 np.reshape(self.xs_selected_original_mass[:, feature_id],
                            (-1, 1)), np.reshape(self.xs_norm[:, -1], (-1, 1)))
@@ -1109,7 +1202,6 @@ class model_sequential(model_base):
             hist_col.save(save_dir=save_dir,
                           save_file_name=feature,
                           save_format=save_format)
-            test_canvas.SaveAs("/work/test/test_canvas_{}.png".format(feature))
 
     def show_performance(self,
                          apply_data=False,
