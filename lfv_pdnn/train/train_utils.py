@@ -9,13 +9,18 @@ manipulation, making plots, evaluation functions and so on.
 import os
 import sys
 import time
-from math import sqrt
+from math import log, sqrt
 
 import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.metrics import accuracy_score, auc, classification_report
 
 from lfv_pdnn.common import array_utils
+
+
+def calculate_asimove(sig, bkg):
+    """Returns asimove significance with given sig/bkg events"""
+    return sqrt(2 * ((sig + bkg) * log(1 + sig / bkg) - sig))
 
 
 def get_mass_range(mass_array, weights, nsig=1):

@@ -3,6 +3,7 @@
 import datetime
 import glob
 import json
+import math
 import os
 import time
 import warnings
@@ -191,10 +192,10 @@ class model_sequential(model_base):
 
     def get_corrcoef(self) -> dict:
         d_bkg = pd.DataFrame(data=self.xb_selected_original_mass,
-                 columns=list(self.selected_features))
+                             columns=list(self.selected_features))
         bkg_matrix = d_bkg.corr()
         d_sig = pd.DataFrame(data=self.xs_selected_original_mass,
-                 columns=list(self.selected_features))
+                             columns=list(self.selected_features))
         sig_matrix = d_sig.corr()
         corrcoef_matrix_dict = {}
         corrcoef_matrix_dict["bkg"] = bkg_matrix
@@ -522,6 +523,75 @@ class model_sequential(model_base):
         # Calculate auc and return parameters
         auc_value = auc(fpr_dm, tpr_dm)
         return auc_value, fpr_dm, tpr_dm
+
+    def plot_significance_scan(self, ax) -> None:
+        """Shows significance change with threshould.
+        
+        Note:
+            significance is calculated by s/sqrt(b)
+        """
+        print("Plotting significance scan.")
+        """
+        x_plot, y_plot, y_pred = self.process_array(self.xs_norm, self.xb_norm)
+        fpr_dm, tpr_dm, threshoulds = roc_curve(y_plot,
+                                                y_pred,
+                                                sample_weight=x_plot[:, -1])
+        
+        significances = (total_sig_weight / np.sqrt(total_bkg_weight)) * (
+            tpr_dm / np.sqrt(fpr_dm))
+        """
+        sig_predictions = self.model.predict(self.xs_selected_original_mass)
+        sig_predictions_weights = np.reshape(self.xs[:, -1], (-1, 1))
+        print("##sig_predictions shape##",
+              sig_predictions.shape)  #############
+        print("##sig_predictions_weights shape##",
+              sig_predictions_weights.shape)  #############
+        bkg_predictions = self.model.predict(self.xb_selected_original_mass)
+        bkg_predictions_weights = np.reshape(self.xb[:, -1], (-1, 1))
+        # prepare threshoulds
+        bin_array = np.array(range(-1000, 1000))
+        threshoulds = 1. / (1. + 1. / np.exp(bin_array * 0.02))
+        # scan
+        significances = []
+        for dnn_cut in threshoulds:
+            sig_ids_passed = sig_predictions > dnn_cut
+            total_sig_weights_passed = np.sum(
+                sig_predictions_weights[sig_ids_passed])
+            bkg_ids_passed = bkg_predictions > dnn_cut
+            total_bkg_weights_passed = np.sum(
+                bkg_predictions_weights[bkg_ids_passed])
+            current_significance = train_utils.calculate_asimove(
+                total_sig_weights_passed, total_bkg_weights_passed)
+            significances.append(current_significance)
+        total_sig_weight = np.sum(sig_predictions_weights)
+        total_bkg_weight = np.sum(bkg_predictions_weights)
+
+        # Make plots
+        original_significance = train_utils.calculate_asimove(
+            total_sig_weight, total_bkg_weight)
+        ax.axhline(y=original_significance, color='k')
+        ax.plot(threshoulds, significances, color='r')
+        significances_no_nan = np.nan_to_num(significances)
+        max_significance = np.amax(significances_no_nan)
+        max_significance_threshould = threshoulds[np.argmax(
+            significances_no_nan)]
+        ax.axvline(x=max_significance_threshould, color='b')
+        ax.text(0.1,
+                0.9,
+                "max asimov:" + str(max_significance) + "\nbest threshould:" +
+                str(max_significance_threshould) + "\nbase asimov:" +
+                str(original_significance),
+                verticalalignment='top',
+                horizontalalignment='left',
+                transform=ax.transAxes,
+                color='green',
+                fontsize=12)
+        ax.set_title("significance scan")
+        ax.set_xscale("logit")
+        ax.set_xlabel('DNN score threshould')
+        ax.set_ylabel('s/sqrt(b)')
+        ax.set_ylim(bottom=0)
+        ax.yaxis.set_minor_formatter(NullFormatter())
 
     def plot_train_test_roc(self, ax):
         """Plots roc curve."""
@@ -865,6 +935,7 @@ class model_sequential(model_base):
                                       xup=range[1],
                                       canvas=plot_pad_score)
         hist_sig.fill_hist(predict_arr, predict_weight_arr)
+        total_weight_sig = hist_sig.get_hist().GetSumOfWeights()
         if scale_sig:
             total_weight = hist_stacked_bkgs.get_total_weights()
             scale_factor = total_weight / hist_sig.get_hist().GetSumOfWeights()
@@ -879,6 +950,7 @@ class model_sequential(model_base):
         hist_stacked_bkgs.get_hstack().GetYaxis().SetLabelSize(15)
         hist_sig.draw("same hist")
         # plot data if required
+        total_weight_data = 0
         if apply_data:
             if data_arr is None:
                 selected_arr = self.xd_selected_original_mass.copy()
@@ -895,8 +967,10 @@ class model_sequential(model_base):
             hist_data.update_config("hist", "SetMarkerColor", ROOT.kBlack)
             hist_data.update_config("hist", "SetMarkerSize", 0.8)
             hist_data.draw("same e1", log_scale=log_scale)
+            total_weight_data = hist_data.get_hist().GetSumOfWeights()
         else:
             hist_data = hist_sig
+            total_weight_data = 0
         hist_data.build_legend(0.4, 0.7, 0.6, 0.9)
 
         # ratio plot
@@ -908,6 +982,7 @@ class model_sequential(model_base):
         plot_pad_ratio.cd()
         ## plot bkg error bar
         hist_bkg_total = hist_stacked_bkgs.get_added_hists()
+        total_weight_bkg = hist_bkg_total.GetSumOfWeights()
         hist_bkg_err = hist_bkg_total.Clone()
         hist_bkg_err.Divide(hist_bkg_err.Clone())
         hist_bkg_err.SetDefaultSumw2()
@@ -938,6 +1013,14 @@ class model_sequential(model_base):
         hist_ratio = hist_data.get_hist().Clone()
         hist_ratio.Divide(hist_bkg_total)
         hist_ratio.Draw("same")
+
+        # show & save total weight info
+        self.total_weight_sig = total_weight_sig
+        print("sig total weight:", total_weight_sig)
+        self.total_weight_bkg = total_weight_bkg
+        print("bkg total weight:", total_weight_bkg)
+        self.total_weight_data = total_weight_data
+        print("data total weight:", total_weight_data)
 
         # save plot
         if save_plot:

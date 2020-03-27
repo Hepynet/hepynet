@@ -22,7 +22,7 @@ from lfv_pdnn.train import model, train_utils
 SCANNED_PARAS = [
     'scan_learn_rate', 'scan_learn_rate_decay', 'scan_batch_size',
     'scan_sig_sumofweight', 'scan_bkg_sumofweight', 'scan_sig_class_weight',
-    'scan_bkg_class_weight', 'scan_sig_key', 'scan_bkg_key'
+    'scan_bkg_class_weight', 'scan_sig_key', 'scan_bkg_key', 'scan_channel'
 ]
 # possible main directory names, in docker it's "work", otherwise it's "pdnn-lfv"
 MAIN_DIR_NAMES = ["pdnn-lfv", "work"]
@@ -261,6 +261,14 @@ class job_executor(object):
                                         save_fig=self.save_pdf_report,
                                         save_path=fig_save_path,
                                         job_type=self.job_type)
+            # Make significance scan plot
+            fig, ax = plt.subplots(figsize=(16, 5))
+            ax.set_title("significance scan")
+            self.model.plot_significance_scan(ax)
+            if self.save_pdf_report:
+                fig_save_path = save_dir + '/significance_scan.png'
+                self.fig_significance_scan_path = fig_save_path
+                fig.savefig(fig_save_path)
             # Extra plots (use model on non-mass-reset arrays)
             fig, ax = plt.subplots(ncols=2, figsize=(16, 4))
             self.model.plot_scores_separate(ax[0],
@@ -633,7 +641,7 @@ class job_executor(object):
         reports.append(Spacer(1, 12))
         ptext = "[TensorBoard logs]"
         reports.append(Paragraph(ptext, styles["Justify"]))
-        # plots
+        # Evaluation results
         reports.append(PageBreak())
         ptext = "PERFORMANCE PLOTS:"
         reports.append(Paragraph(ptext, styles["Justify"]))
@@ -642,11 +650,24 @@ class job_executor(object):
         fig = self.fig_performance_path
         im = Image(fig, 6.4 * inch, 7.2 * inch)
         reports.append(im)
+        ## show total weights of sig/bkg/data
+        ptext = "sig total weight  : " + str(self.model.total_weight_sig)
+        reports.append(Paragraph(ptext, styles["Justify"]))
+        ptext = "bkg total weight  : " + str(self.model.total_weight_bkg)
+        reports.append(Paragraph(ptext, styles["Justify"]))
+        ptext = "data total weight : " + str(self.model.total_weight_data)
+        reports.append(Paragraph(ptext, styles["Justify"]))
+        ### dnn scores
         fig = self.fig_dnn_scores_lin_path
         im1 = Image(fig, 3.2 * inch, 2.4 * inch)
         fig = self.fig_dnn_scores_log_path
         im2 = Image(fig, 3.2 * inch, 2.4 * inch)
         reports.append(Table([[im1, im2]]))
+        ### significance scan
+        fig = self.fig_significance_scan_path
+        im = Image(fig, 6.4 * inch, 2 * inch)
+        reports.append(im)
+        ### correlation matrix
         fig = self.fig_correlation_matrix_path
         im = Image(fig, 6.4 * inch, 3.2 * inch)
         reports.append(im)
