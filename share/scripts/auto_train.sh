@@ -1,8 +1,8 @@
-execute_pdnn_jobs ../train/test_emu.ini
-execute_pdnn_jobs ../train/test_emu_zprime.ini
+execute_pdnn_jobs /work/share/train/emu_default.ini
+execute_pdnn_jobs /work/share/train/emu_zprime_default.ini
 
-execute_pdnn_jobs ../train/test_etau.ini
-execute_pdnn_jobs ../train/test_etau_zprime.ini
+execute_pdnn_jobs /work/share/train/etau_default.ini
+execute_pdnn_jobs /work/share/train/etau_zprime_default.ini
 
-execute_pdnn_jobs ../train/test_mutau.ini
-execute_pdnn_jobs ../train/test_mutau_zprime.ini
+execute_pdnn_jobs /work/share/train/mutau_default.ini
+execute_pdnn_jobs /work/share/train/mutau_zprime_default.ini
