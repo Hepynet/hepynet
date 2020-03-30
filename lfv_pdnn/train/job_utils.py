@@ -8,13 +8,15 @@ from configparser import ConfigParser
 
 import matplotlib.pyplot as plt
 import numpy as np
+from reportlab.lib import colors
 from reportlab.lib.enums import TA_JUSTIFY
-from reportlab.lib.pagesizes import letter
+from reportlab.lib.pagesizes import A3, letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.platypus import (Image, PageBreak, Paragraph, SimpleDocTemplate,
-                                Spacer, Table)
+                                Spacer, Table, TableStyle)
 
+import ROOT
 from lfv_pdnn.common import array_utils, common_utils
 from lfv_pdnn.data_io import get_arrays
 from lfv_pdnn.train import model, train_utils
@@ -22,7 +24,8 @@ from lfv_pdnn.train import model, train_utils
 SCANNED_PARAS = [
     'scan_learn_rate', 'scan_learn_rate_decay', 'scan_batch_size',
     'scan_sig_sumofweight', 'scan_bkg_sumofweight', 'scan_sig_class_weight',
-    'scan_bkg_class_weight', 'scan_sig_key', 'scan_bkg_key', 'scan_channel'
+    'scan_bkg_class_weight', 'scan_sig_key', 'scan_bkg_key', 'scan_channel',
+    'scan_early_stop_patience'
 ]
 # possible main directory names, in docker it's "work", otherwise it's "pdnn-lfv"
 MAIN_DIR_NAMES = ["pdnn-lfv", "work"]
@@ -119,6 +122,8 @@ class job_executor(object):
                       + "_v{}"
         self.save_sub_dir = common_utils.get_newest_file_version(
             dir_pattern)['path']
+        # Suppress inevitably ROOT warnings in python
+        ROOT.gROOT.ProcessLine("gErrorIgnoreLevel = 2001;")
         # Execute job(s)
         if self.perform_para_scan is not True:  # Execute single job if parameter scan is not needed
             self.execute_single_job()
@@ -126,20 +131,56 @@ class job_executor(object):
             print('#' * 80)
             print("Executing parameters scanning.")
             scan_list, scan_list_id = self.get_scan_para_list()
-            for scan_set, scan_set_id in zip(scan_list, scan_list_id):
+            scanned_var_names = list(scan_list[0].keys())
+            scan_meta_report = [
+                scanned_var_names + [
+                    "asimov_ori", "asimov_best", "asimov_cut", "auc_tr",
+                    "auc_te", "auc_tr_ori", "auc_te_ori"
+                ]
+            ]
+            # asimov_ori: original significance
+            # asimov_best: best significance with DNN applied
+            # asimov_cut: DNN cut for best significance
+            # auc_tr: auc (area under roc curve) value with train dataset
+            # auc_te: auc value with test dataset
+            # auc_tr_ori: auc value with train dataset
+            # auc_te_ori: auc value with test dataset
+            for job_num, (scan_set, scan_set_id) in enumerate(
+                    zip(scan_list, scan_list_id)):
+                # Train with current scan parameter set
                 print('*' * 80)
-                print("Scanning parameter set:")
+                print("Scanning parameter set {}/{}:".format(
+                    job_num + 1, len(scan_list)))
                 common_utils.display_dict(scan_set)
                 keys = list(scan_set.keys())
                 scan_id = "scan"
+                scanned_var_value_list = []
                 for num, key in enumerate(keys):
                     scanned_var_name = key.split("scan_")[1]
+                    scanned_var_value_list.append(scan_set[key])
                     setattr(self, scanned_var_name, scan_set[key])
                     scan_id = scan_id + "--" + scanned_var_name + "_" \
                       + str(scan_set_id[num])
                 print("scan id:", scan_id)
                 setattr(self, "scan_id", scan_id)
-                self.execute_single_job()
+                meta_data_single = self.execute_single_job(
+                )  # performs sigle train
+                report_keys = [
+                    "original_significance", "max_significance",
+                    "max_significance_threshould", "auc_train", "auc_test",
+                    "auc_train_original", "auc_test_original"
+                ]
+                # Add scan meta data contents
+                single_scan_meta_data = scanned_var_value_list
+                for report_key in report_keys:
+                    report_value = meta_data_single[report_key]
+                    if isinstance(report_value, float):
+                        report_value = format(report_value, ".6f")
+                    single_scan_meta_data.append(report_value)
+                scan_meta_report.append(single_scan_meta_data)
+            make_table(scan_meta_report,
+                       self.save_sub_dir + "/scan_meta_report.pdf",
+                       num_para=len(scanned_var_names))
 
     def execute_single_job(self):
         """Execute single DNN training with given configuration."""
@@ -275,7 +316,7 @@ class job_executor(object):
                                             self.plot_bkg_dict,
                                             self.plot_bkg_list,
                                             self.selected_features,
-                                            apply_data=True,
+                                            apply_data=self.apply_data,
                                             plot_title="DNN scores (lin)",
                                             bins=50,
                                             range=(-0.25, 1.25),
@@ -285,7 +326,7 @@ class job_executor(object):
                                             self.plot_bkg_dict,
                                             self.plot_bkg_list,
                                             self.selected_features,
-                                            apply_data=True,
+                                            apply_data=self.apply_data,
                                             plot_title="DNN scores (log)",
                                             bins=50,
                                             range=(-0.25, 1.25),
@@ -296,7 +337,7 @@ class job_executor(object):
                 self.plot_bkg_dict,
                 self.plot_bkg_list,
                 self.selected_features,
-                apply_data=True,
+                apply_data=self.apply_data,
                 plot_title="DNN scores (lin)",
                 bins=25,
                 range=(0, 1),
@@ -310,7 +351,7 @@ class job_executor(object):
                 self.plot_bkg_dict,
                 self.plot_bkg_list,
                 self.selected_features,
-                apply_data=True,
+                apply_data=self.apply_data,
                 plot_title="DNN scores (log)",
                 bins=25,
                 range=(0, 1),
@@ -336,6 +377,8 @@ class job_executor(object):
                 model_save_name = self.model_name + "_" + self.scan_id
             self.model.save_model(save_dir=mod_save_path,
                                   file_name=model_save_name)
+        # return training meta data
+        return self.model.get_train_performance_meta()
 
     def get_config(self, path=None):
         """Retrieves configurations from ini file."""
@@ -779,3 +822,53 @@ def get_valid_cfg_path(path):
         return share_dir + '/' + path
     else:
         raise ValueError('No valid path found, please check .ini file.')
+
+
+def make_table(data, save_path, num_para=1):
+    """Makes table for scan meta data and so on.
+    
+    Input example:
+        data = [
+            ["col-1", "col-2", "col-3", "col-4" ],
+            [1,2,3,4],
+            ["a", "b", "c", "d"]
+        ]
+    """
+    pdf = SimpleDocTemplate(save_path, pagesize=A3)
+    table = Table(data)
+    # add style
+    style = TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Courier-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+    ])
+    table.setStyle(style)
+    # 2) Alternate backgroud color
+    rowNumb = len(data)
+    for i in range(1, rowNumb):
+        if i % 2 == 0:
+            bc = colors.burlywood
+        else:
+            bc = colors.beige
+
+        ts = TableStyle([('BACKGROUND', (0, i), (-1, i), bc)])
+        table.setStyle(ts)
+    # 3) Change background color for scanned parameters
+    ts = TableStyle([('BACKGROUND', (0, 1), (num_para - 1, -1),
+                      colors.powderblue)])
+    table.setStyle(ts)
+    # 4) Add borders
+    ts = TableStyle([
+        ('BOX', (0, 0), (-1, -1), 2, colors.black),
+        ('LINEBEFORE', (2, 1), (2, -1), 2, colors.red),
+        ('LINEABOVE', (0, 2), (-1, 2), 2, colors.green),
+        ('GRID', (0, 0), (-1, -1), 2, colors.black),
+    ])
+    table.setStyle(ts)
+    elems = []
+    elems.append(table)
+    pdf.build(elems)

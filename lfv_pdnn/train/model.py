@@ -190,6 +190,41 @@ class model_sequential(model_base):
             warnings.warn("Empty training history found")
         return self.train_history
 
+    def get_train_performance_meta(self):
+        """Returns meta data of trainning performance
+        
+        Note:
+            This function should be called after show_performance and 
+        plot_significance_scan being called, otherwise "-" will be used as
+        content.
+
+        """
+        performance_meta_dict = {}
+        # try collect sifinifance scan result
+        try:
+            performance_meta_dict[
+                "original_significance"] = self.original_significance
+            performance_meta_dict["max_significance"] = self.max_significance
+            performance_meta_dict[
+                "max_significance_threshould"] = self.max_significance_threshould
+        except:
+            performance_meta_dict["original_significance"] = "-"
+            performance_meta_dict["max_significance"] = "-"
+            performance_meta_dict["max_significance_threshould"] = "-"
+        # try collect auc value
+        try:
+            performance_meta_dict["auc_train"] = self.auc_train
+            performance_meta_dict["auc_test"] = self.auc_test
+            performance_meta_dict[
+                "auc_train_original"] = self.auc_train_original
+            performance_meta_dict["auc_test_original"] = self.auc_test_original
+        except:
+            performance_meta_dict["auc_train"] = "-"
+            performance_meta_dict["auc_test"] = "-"
+            performance_meta_dict["auc_train_original"] = "-"
+            performance_meta_dict["auc_test_original"] = "-"
+        return performance_meta_dict
+
     def get_corrcoef(self) -> dict:
         d_bkg = pd.DataFrame(data=self.xb_selected_original_mass,
                              columns=list(self.selected_features))
@@ -542,10 +577,6 @@ class model_sequential(model_base):
         """
         sig_predictions = self.model.predict(self.xs_selected_original_mass)
         sig_predictions_weights = np.reshape(self.xs[:, -1], (-1, 1))
-        print("##sig_predictions shape##",
-              sig_predictions.shape)  #############
-        print("##sig_predictions_weights shape##",
-              sig_predictions_weights.shape)  #############
         bkg_predictions = self.model.predict(self.xb_selected_original_mass)
         bkg_predictions_weights = np.reshape(self.xb[:, -1], (-1, 1))
         # prepare threshoulds
@@ -553,6 +584,7 @@ class model_sequential(model_base):
         threshoulds = 1. / (1. + 1. / np.exp(bin_array * 0.02))
         # scan
         significances = []
+        plot_threshoulds = []
         for dnn_cut in threshoulds:
             sig_ids_passed = sig_predictions > dnn_cut
             total_sig_weights_passed = np.sum(
@@ -560,20 +592,21 @@ class model_sequential(model_base):
             bkg_ids_passed = bkg_predictions > dnn_cut
             total_bkg_weights_passed = np.sum(
                 bkg_predictions_weights[bkg_ids_passed])
-            current_significance = train_utils.calculate_asimove(
-                total_sig_weights_passed, total_bkg_weights_passed)
-            significances.append(current_significance)
+            if total_bkg_weights_passed > 0:
+                current_significance = train_utils.calculate_asimove(
+                    total_sig_weights_passed, total_bkg_weights_passed)
+                plot_threshoulds.append(dnn_cut)
+                significances.append(current_significance)
         total_sig_weight = np.sum(sig_predictions_weights)
         total_bkg_weight = np.sum(bkg_predictions_weights)
-
         # Make plots
         original_significance = train_utils.calculate_asimove(
             total_sig_weight, total_bkg_weight)
         ax.axhline(y=original_significance, color='k')
-        ax.plot(threshoulds, significances, color='r')
+        ax.plot(plot_threshoulds, significances, color='r')
         significances_no_nan = np.nan_to_num(significances)
         max_significance = np.amax(significances_no_nan)
-        max_significance_threshould = threshoulds[np.argmax(
+        max_significance_threshould = plot_threshoulds[np.argmax(
             significances_no_nan)]
         ax.axvline(x=max_significance_threshould, color='b')
         ax.text(0.1,
@@ -592,6 +625,10 @@ class model_sequential(model_base):
         ax.set_ylabel('s/sqrt(b)')
         ax.set_ylim(bottom=0)
         ax.yaxis.set_minor_formatter(NullFormatter())
+        # Collect meta data
+        self.original_significance = original_significance
+        self.max_significance = max_significance
+        self.max_significance_threshould = max_significance_threshould
 
     def plot_train_test_roc(self, ax):
         """Plots roc curve."""
@@ -621,6 +658,11 @@ class model_sequential(model_base):
         ],
                   loc='lower right')
         ax.grid()
+        # Collect meta data
+        self.auc_train = auc_train
+        self.auc_test = auc_test
+        self.auc_train_original = auc_train_original
+        self.auc_test_original = auc_test_original
 
     def plot_test_scores(self,
                          ax,
@@ -632,13 +674,19 @@ class model_sequential(model_base):
                          log=True):
         """Plots training score distribution for siganl and background."""
         print("Plotting test scores.")
+        if apply_data:
+            selected_data = self.xd_selected
+            data_weight = self.xd_norm[:, -1]
+        else:
+            selected_data = None
+            data_weight = None
         self.plot_scores(ax,
                          self.xb_test_selected,
                          self.xb_test[:, -1],
                          self.xs_test_selected,
                          self.xs_test[:, -1],
-                         selected_data=self.xd_selected,
-                         data_weight=self.xd_norm[:, -1],
+                         selected_data=selected_data,
+                         data_weight=data_weight,
                          apply_data=apply_data,
                          title=title,
                          bins=bins,
@@ -656,13 +704,19 @@ class model_sequential(model_base):
                                        log=True):
         """Plots training score distribution for siganl and background."""
         print("Plotting test scores with original mass.")
+        if apply_data:
+            selected_data = self.xd_selected_original_mass
+            data_weight = self.xd_norm[:, -1]
+        else:
+            selected_data = None
+            data_weight = None
         self.plot_scores(ax,
                          self.xb_test_selected_original_mass,
                          self.xb_test_original_mass[:, -1],
                          self.xs_test_selected_original_mass,
                          self.xs_test_original_mass[:, -1],
-                         selected_data=self.xd_selected_original_mass.copy(),
-                         data_weight=self.xd_norm[:, -1],
+                         selected_data=selected_data,
+                         data_weight=data_weight,
                          apply_data=apply_data,
                          title=title,
                          bins=bins,
@@ -680,13 +734,19 @@ class model_sequential(model_base):
                           log=True):
         """Plots training score distribution for siganl and background."""
         print("Plotting train scores.")
+        if apply_data:
+            selected_data = self.xd_selected
+            data_weight = self.xd_norm[:, -1]
+        else:
+            selected_data = None
+            data_weight = None
         self.plot_scores(ax,
                          self.xb_train_selected,
                          self.xb_train[:, -1],
                          self.xs_train_selected,
                          self.xs_train[:, -1],
-                         selected_data=self.xd_selected,
-                         data_weight=self.xd_norm[:, -1],
+                         selected_data=selected_data,
+                         data_weight=data_weight,
                          apply_data=apply_data,
                          title=title,
                          bins=bins,
@@ -704,13 +764,19 @@ class model_sequential(model_base):
                                         log=True):
         """Plots training score distribution for siganl and background."""
         print("Plotting train scores with original mass.")
+        if apply_data:
+            selected_data = self.xd_selected_original_mass
+            data_weight = self.xd_norm[:, -1]
+        else:
+            selected_data = None
+            data_weight = None
         self.plot_scores(ax,
                          self.xb_train_selected_original_mass,
                          self.xb_train_original_mass[:, -1],
                          self.xs_train_selected_original_mass,
                          self.xs_train_original_mass[:, -1],
-                         selected_data=self.xd_selected_original_mass.copy(),
-                         data_weight=self.xd_norm[:, -1],
+                         selected_data=selected_data,
+                         data_weight=data_weight,
                          apply_data=apply_data,
                          title=title,
                          bins=bins,
