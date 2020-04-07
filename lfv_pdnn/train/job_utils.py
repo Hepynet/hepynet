@@ -33,6 +33,7 @@ MAIN_DIR_NAMES = ["pdnn-lfv", "work"]
 
 class job_executor(object):
     """Core class to execute a pdnn job based on given cfg file."""
+
     def __init__(self, input_path):
         """Initialize executor."""
         # general
@@ -103,6 +104,7 @@ class job_executor(object):
         self.kine_cfg = None
         self.plot_density = True
         self.apply_data = False
+        self.apply_data_range = []
         self.show_report = None
         self.save_pdf_report = None
         self.save_tb_logs = None
@@ -119,7 +121,7 @@ class job_executor(object):
             self.get_config()
         # Set save sub-directory for this task
         dir_pattern = self.save_dir + '/' + self.datestr + '_' + self.job_name \
-                      + "_v{}"
+            + "_v{}"
         self.save_sub_dir = common_utils.get_newest_file_version(
             dir_pattern)['path']
         # Suppress inevitably ROOT warnings in python
@@ -160,7 +162,7 @@ class job_executor(object):
                     scanned_var_value_list.append(scan_set[key])
                     setattr(self, scanned_var_name, scan_set[key])
                     scan_id = scan_id + "--" + scanned_var_name + "_" \
-                      + str(scan_set_id[num])
+                        + str(scan_set_id[num])
                 print("scan id:", scan_id)
                 setattr(self, "scan_id", scan_id)
                 meta_data_single = self.execute_single_job(
@@ -200,11 +202,11 @@ class job_executor(object):
             self.data_dict[self.data_key],
             select_channel=True,
             remove_negative_weight=self.data_rm_neg_weight)
-        for key in self.plot_bkg_list:
+        for key in self.bkg_list:
             self.plot_bkg_dict[key] = array_utils.modify_array(
                 self.plot_bkg_dict[key],
                 select_channel=True,
-                remove_negative_weight=self.bkg_rm_neg_weight)
+                remove_negative_weight=False)  # Use negtive weight when applying model
         if self.save_tb_logs:
             save_dir = self.save_sub_dir + '/tb_logs'
             if not os.path.exists(save_dir):
@@ -317,7 +319,7 @@ class job_executor(object):
                                             self.plot_bkg_list,
                                             self.selected_features,
                                             apply_data=self.apply_data,
-                                            plot_title="DNN scores (lin)",
+                                            plot_title="DNN scores",
                                             bins=50,
                                             range=(-0.25, 1.25),
                                             density=self.plot_density,
@@ -327,7 +329,7 @@ class job_executor(object):
                                             self.plot_bkg_list,
                                             self.selected_features,
                                             apply_data=self.apply_data,
-                                            plot_title="DNN scores (log)",
+                                            plot_title="DNN scores",
                                             bins=50,
                                             range=(-0.25, 1.25),
                                             density=self.plot_density,
@@ -338,6 +340,7 @@ class job_executor(object):
                 self.plot_bkg_list,
                 self.selected_features,
                 apply_data=self.apply_data,
+                apply_data_range=self.apply_data_range,
                 plot_title="DNN scores (lin)",
                 bins=25,
                 range=(0, 1),
@@ -352,6 +355,7 @@ class job_executor(object):
                 self.plot_bkg_list,
                 self.selected_features,
                 apply_data=self.apply_data,
+                apply_data_range=self.apply_data_range,
                 plot_title="DNN scores (log)",
                 bins=25,
                 range=(0, 1),
@@ -481,6 +485,7 @@ class job_executor(object):
         self.try_parse_list('plot_bkg_list', config, 'report', 'plot_bkg_list')
         self.try_parse_bool('plot_density', config, 'report', 'plot_density')
         self.try_parse_bool('apply_data', config, 'report', 'apply_data')
+        self.try_parse_list('apply_data_range', config, 'report', 'apply_data_range')
         self.try_parse_str('kine_cfg', config, 'report', 'kine_cfg')
         self.try_parse_bool('show_report', config, 'report', 'show_report')
         self.try_parse_bool('save_pdf_report', config, 'report',
@@ -538,7 +543,7 @@ class job_executor(object):
         # Initalize
         if pdf_save_path is None:
             pdf_save_path = self.save_sub_dir + '/' + self.job_name \
-              + '_report_' + self.datestr + '.pdf'
+                + '_report_' + self.datestr + '.pdf'
         doc = SimpleDocTemplate(pdf_save_path,
                                 pagesize=letter,
                                 rightMargin=72,
@@ -693,24 +698,24 @@ class job_executor(object):
         fig = self.fig_performance_path
         im = Image(fig, 6.4 * inch, 7.2 * inch)
         reports.append(im)
-        ## show total weights of sig/bkg/data
+        # show total weights of sig/bkg/data
         ptext = "sig total weight  : " + str(self.model.total_weight_sig)
         reports.append(Paragraph(ptext, styles["Justify"]))
         ptext = "bkg total weight  : " + str(self.model.total_weight_bkg)
         reports.append(Paragraph(ptext, styles["Justify"]))
         ptext = "data total weight : " + str(self.model.total_weight_data)
         reports.append(Paragraph(ptext, styles["Justify"]))
-        ### dnn scores
+        # dnn scores
         fig = self.fig_dnn_scores_lin_path
         im1 = Image(fig, 3.2 * inch, 2.4 * inch)
         fig = self.fig_dnn_scores_log_path
         im2 = Image(fig, 3.2 * inch, 2.4 * inch)
         reports.append(Table([[im1, im2]]))
-        ### significance scan
+        # significance scan
         fig = self.fig_significance_scan_path
         im = Image(fig, 6.4 * inch, 2 * inch)
         reports.append(im)
-        ### correlation matrix
+        # correlation matrix
         fig = self.fig_correlation_matrix_path
         im = Image(fig, 6.4 * inch, 3.2 * inch)
         reports.append(im)
@@ -733,7 +738,7 @@ class job_executor(object):
         if self.show_report or self.save_pdf_report:
             self.plot_bkg_dict = {
                 key: self.bkg_dict[key]
-                for key in self.plot_bkg_list
+                for key in self.bkg_list
             }
 
     def set_para(self, parsed_val, data_type, config_parser, section,
@@ -788,7 +793,7 @@ class job_executor(object):
 
 def get_valid_cfg_path(path):
     """Finds valid path for cfg file in /share folder.
-  
+
   If path is already valid:
     Nothing will be done and original path will be returned.
   If path is not valid:
@@ -826,7 +831,7 @@ def get_valid_cfg_path(path):
 
 def make_table(data, save_path, num_para=1):
     """Makes table for scan meta data and so on.
-    
+
     Input example:
         data = [
             ["col-1", "col-2", "col-3", "col-4" ],
