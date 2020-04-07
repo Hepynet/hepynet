@@ -67,6 +67,7 @@ def get_npy_individuals(npy_path, campaign, channel, npy_list,
   """
     return_dict = {}
     # Load individual npy array
+    added_weights = 0
     for npy in npy_list:
         if campaign in ["run2", "all"]:
             directory = npy_path
@@ -83,26 +84,10 @@ def get_npy_individuals(npy_path, campaign, channel, npy_list,
                 temp_array3 = np.reshape(temp_array3, (-1, 1))
                 temp_array = np.concatenate(
                     (temp_array1, temp_array2, temp_array3), axis=0)
-                #### hot fix
-                temp_array1 = np.load(directory + "/mc16a" + "/" + npy_prefix +
-                                      "_" + npy + "_normsf.npy")
-                temp_array1 = np.reshape(temp_array1, (-1, 1))
-                temp_array2 = np.load(directory + "/mc16d" + "/" + npy_prefix +
-                                      "_" + npy + "_normsf.npy")
-                temp_array2 = np.reshape(temp_array2, (-1, 1))
-                temp_array3 = np.load(directory + "/mc16e" + "/" + npy_prefix +
-                                      "_" + npy + "_normsf.npy")
-                temp_array3 = np.reshape(temp_array3, (-1, 1))
-                temp_array_normsf = np.concatenate(
-                    (temp_array1, temp_array2, temp_array3), axis=0)
-                if feature == "weight":
-                    temp_array = temp_array * temp_array_normsf
-                ####
                 if npy_array is None:
                     npy_array = temp_array
                 else:
                     npy_array = np.concatenate((npy_array, temp_array), axis=1)
-            print(npy, "shape:", npy_array.shape)
             return_dict[npy] = npy_array
         else:
             directory = npy_path + "/" + campaign
@@ -111,17 +96,13 @@ def get_npy_individuals(npy_path, campaign, channel, npy_list,
                 temp_array = np.load(directory + "/" + npy_prefix + "_" + npy +
                                      "_" + feature + ".npy")
                 temp_array = np.reshape(temp_array, (-1, 1))
-                #### hot fix
-                temp_array_normsf = np.load(directory + "/" + npy_prefix +
-                                            "_" + npy + "_normsf.npy")
-                temp_array_normsf = np.reshape(temp_array_normsf, (-1, 1))
-                if feature == "weight":
-                    temp_array = temp_array * temp_array_normsf
-                ####
                 if npy_array is None:
                     npy_array = temp_array
                 else:
                     npy_array = np.concatenate((npy_array, temp_array), axis=1)
-            print(npy, "shape:", npy_array.shape)
             return_dict[npy] = npy_array
+        total_weights = np.sum(npy_array[:,-1])
+        added_weights += total_weights
+        print(npy, "shape:", npy_array.shape, "total weights:", total_weights)
+    print("All {} weight together:".format(npy_prefix), added_weights)
     return return_dict
