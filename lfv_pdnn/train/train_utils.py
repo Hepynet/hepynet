@@ -19,8 +19,18 @@ from lfv_pdnn.common import array_utils
 
 
 def calculate_asimove(sig, bkg):
-    """Returns asimove significance with given sig/bkg events"""
+    """Returns asimove significance"""
     return sqrt(2 * ((sig + bkg) * log(1 + sig / bkg) - sig))
+
+
+def calculate_simple_significance(sig, bkg):
+    """Returns significance calculated by sig/bkg
+    
+    Note:
+      Can be used only when bkg >> sig
+      
+    """
+    return sig / bkg
 
 
 def get_mass_range(mass_array, weights, nsig=1):

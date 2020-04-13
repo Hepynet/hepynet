@@ -23,6 +23,17 @@ def get_bkg(npy_path, campaign, channel, bkg_list, selected_features):
     # Add all bkg together
     bkg_all_array = np.concatenate(list(bkg_dict.values()))
     bkg_dict['all'] = bkg_all_array
+    # Add all bkg together with each mass point normalized
+    bkg_all_array_norm = None
+    for bkg in bkg_list:
+        temp_array = bkg_dict[bkg]
+        temp_array = array_utils.modify_array(temp_array, norm=True)
+        if bkg_all_array_norm is None:
+            bkg_all_array_norm = temp_array
+        else:
+            bkg_all_array_norm = np.concatenate(
+                (bkg_all_array_norm, temp_array))
+    bkg_dict['all_norm'] = bkg_all_array_norm
     return bkg_dict
 
 

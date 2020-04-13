@@ -116,6 +116,19 @@ def get_newest_file_version(path_pattern, n_digit=2, ver_num=None):
     }
 
 
+def get_significant_digits(number, n_digits):
+    if round(number) == number:
+        m = len(str(number)) - 1 - n_digits
+        if number / (10**m) == 0.0:
+            return number
+        else:
+            return float(int(number) / (10**m) * (10**m))
+    if len(str(number)) > n_digits + 1:
+        return round(number, n_digits - len(str(int(number))))
+    else:
+        return number
+
+
 def has_none(list):
     """Checks whether list's element has "None" value element.
   

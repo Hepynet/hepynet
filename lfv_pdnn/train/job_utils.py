@@ -22,10 +22,10 @@ from lfv_pdnn.data_io import get_arrays
 from lfv_pdnn.train import model, train_utils
 
 SCANNED_PARAS = [
-    'scan_learn_rate', 'scan_learn_rate_decay', 'scan_batch_size',
-    'scan_sig_sumofweight', 'scan_bkg_sumofweight', 'scan_sig_class_weight',
-    'scan_bkg_class_weight', 'scan_sig_key', 'scan_bkg_key', 'scan_channel',
-    'scan_early_stop_patience'
+    'scan_learn_rate', 'scan_learn_rate_decay', 'scan_dropout_rate',
+    'scan_batch_size', 'scan_sig_sumofweight', 'scan_bkg_sumofweight',
+    'scan_sig_class_weight', 'scan_bkg_class_weight', 'scan_sig_key',
+    'scan_bkg_key', 'scan_channel', 'scan_early_stop_patience'
 ]
 # possible main directory names, in docker it's "work", otherwise it's "pdnn-lfv"
 MAIN_DIR_NAMES = ["pdnn-lfv", "work"]
@@ -33,7 +33,6 @@ MAIN_DIR_NAMES = ["pdnn-lfv", "work"]
 
 class job_executor(object):
     """Core class to execute a pdnn job based on given cfg file."""
-
     def __init__(self, input_path):
         """Initialize executor."""
         # general
@@ -78,6 +77,11 @@ class job_executor(object):
         # Initialize [model] section
         self.model_name = None
         self.model_class = None
+        self.layers = None
+        self.nodes = []
+        self.dropout_rate = 0.5
+        self.momentum = 0.5
+        self.nesterov = True
         self.learn_rate = None
         self.learn_rate_decay = None
         self.test_rate = None
@@ -206,7 +210,8 @@ class job_executor(object):
             self.plot_bkg_dict[key] = array_utils.modify_array(
                 self.plot_bkg_dict[key],
                 select_channel=True,
-                remove_negative_weight=False)  # Use negtive weight when applying model
+                remove_negative_weight=False
+            )  # Use negtive weight when applying model
         if self.save_tb_logs:
             save_dir = self.save_sub_dir + '/tb_logs'
             if not os.path.exists(save_dir):
@@ -225,19 +230,36 @@ class job_executor(object):
                 "restore_best_weights"] = self.early_stop_restore_best_weights
         else:
             self.early_stop_paras = {}
-        self.model = getattr(model, self.model_class)(
-            self.model_name,
-            self.input_dim,
-            learn_rate=self.learn_rate,
-            decay=self.learn_rate_decay,
-            dropout_rate=0.5,
-            metrics=self.train_metrics,
-            weighted_metrics=self.train_metrics_weighted,
-            selected_features=self.selected_features,
-            save_tb_logs=self.save_tb_logs,
-            tb_logs_path=self.save_tb_logs_path_subdir,
-            use_early_stop=self.use_early_stop,
-            early_stop_paras=self.early_stop_paras)
+        try:
+            self.model = getattr(model, self.model_class)(
+                self.model_name,
+                self.input_dim,
+                layers=self.layers,
+                nodes=self.nodes,
+                learn_rate=self.learn_rate,
+                decay=self.learn_rate_decay,
+                dropout_rate=0.5,
+                metrics=self.train_metrics,
+                weighted_metrics=self.train_metrics_weighted,
+                selected_features=self.selected_features,
+                save_tb_logs=self.save_tb_logs,
+                tb_logs_path=self.save_tb_logs_path_subdir,
+                use_early_stop=self.use_early_stop,
+                early_stop_paras=self.early_stop_paras)
+        except:
+            self.model = getattr(model, self.model_class)(
+                self.model_name,
+                self.input_dim,
+                learn_rate=self.learn_rate,
+                decay=self.learn_rate_decay,
+                dropout_rate=0.5,
+                metrics=self.train_metrics,
+                weighted_metrics=self.train_metrics_weighted,
+                selected_features=self.selected_features,
+                save_tb_logs=self.save_tb_logs,
+                tb_logs_path=self.save_tb_logs_path_subdir,
+                use_early_stop=self.use_early_stop,
+                early_stop_paras=self.early_stop_paras)
         # Set up training or loading model
         self.model.prepare_array(xs,
                                  xb,
@@ -299,13 +321,14 @@ class job_executor(object):
             # Make performance plots
             fig_save_path = save_dir + '/performance.png'
             self.fig_performance_path = fig_save_path
-            self.model.show_performance(apply_data=self.apply_data,
-                                        show_fig=self.show_report,
-                                        save_fig=self.save_pdf_report,
-                                        save_path=fig_save_path,
-                                        job_type=self.job_type)
+            self.model.show_performance(
+                apply_data=False,  # don't apply data in training performance
+                show_fig=self.show_report,
+                save_fig=self.save_pdf_report,
+                save_path=fig_save_path,
+                job_type=self.job_type)
             # Make significance scan plot
-            fig, ax = plt.subplots(figsize=(16, 5))
+            fig, ax = plt.subplots(figsize=(12, 9))
             ax.set_title("significance scan")
             self.model.plot_significance_scan(ax)
             if self.save_pdf_report:
@@ -342,7 +365,7 @@ class job_executor(object):
                 apply_data=self.apply_data,
                 apply_data_range=self.apply_data_range,
                 plot_title="DNN scores (lin)",
-                bins=25,
+                bins=50,
                 range=(0, 1),
                 scale_sig=True,
                 density=self.plot_density,
@@ -357,7 +380,7 @@ class job_executor(object):
                 apply_data=self.apply_data,
                 apply_data_range=self.apply_data_range,
                 plot_title="DNN scores (log)",
-                bins=25,
+                bins=50,
                 range=(0, 1),
                 scale_sig=True,
                 density=self.plot_density,
@@ -449,6 +472,11 @@ class job_executor(object):
         # Load [model] section
         self.try_parse_str('model_name', config, 'model', 'model_name')
         self.try_parse_str('model_class', config, 'model', 'model_class')
+        self.try_parse_int('layers', config, 'model', 'layers')
+        self.try_parse_list('nodes', config, 'model', 'nodes')
+        self.try_parse_float('dropout_rate', config, 'model', 'dropout_rate')
+        self.try_parse_float('momentum', config, 'model', 'momentum')
+        self.try_parse_bool('nesterov', config, 'model', 'nesterov')
         self.try_parse_float('learn_rate', config, 'model', 'learn_rate')
         self.try_parse_float('learn_rate_decay', config, 'model',
                              'learn_rate_decay')
@@ -485,7 +513,8 @@ class job_executor(object):
         self.try_parse_list('plot_bkg_list', config, 'report', 'plot_bkg_list')
         self.try_parse_bool('plot_density', config, 'report', 'plot_density')
         self.try_parse_bool('apply_data', config, 'report', 'apply_data')
-        self.try_parse_list('apply_data_range', config, 'report', 'apply_data_range')
+        self.try_parse_list('apply_data_range', config, 'report',
+                            'apply_data_range')
         self.try_parse_str('kine_cfg', config, 'report', 'kine_cfg')
         self.try_parse_bool('show_report', config, 'report', 'show_report')
         self.try_parse_bool('save_pdf_report', config, 'report',
@@ -647,6 +676,16 @@ class job_executor(object):
         reports.append(Paragraph(ptext, styles["Justify"]))
         ptext = "class                            : " + self.model_class
         reports.append(Paragraph(ptext, styles["Justify"]))
+        ptext = "layers                           : " + str(self.layers)
+        reports.append(Paragraph(ptext, styles["Justify"]))
+        ptext = "nodes                            : " + str(self.nodes)
+        reports.append(Paragraph(ptext, styles["Justify"]))
+        ptext = "dropout_rate                     : " + str(self.dropout_rate)
+        reports.append(Paragraph(ptext, styles["Justify"]))
+        ptext = "momentum                         : " + str(self.momentum)
+        reports.append(Paragraph(ptext, styles["Justify"]))
+        ptext = "nesterov                         : " + str(self.nesterov)
+        reports.append(Paragraph(ptext, styles["Justify"]))
         ptext = "learn rate                       : " + str(self.learn_rate)
         reports.append(Paragraph(ptext, styles["Justify"]))
         ptext = "learn decay                      : " + str(
@@ -713,7 +752,7 @@ class job_executor(object):
         reports.append(Table([[im1, im2]]))
         # significance scan
         fig = self.fig_significance_scan_path
-        im = Image(fig, 6.4 * inch, 2 * inch)
+        im = Image(fig, 3.2 * inch, 2.4 * inch)
         reports.append(im)
         # correlation matrix
         fig = self.fig_correlation_matrix_path

@@ -21,3 +21,4 @@ env_setup/*
 *.ini
 
 # Packages #
+*.ipynb
