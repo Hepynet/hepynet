@@ -631,6 +631,8 @@ class Model_Sequential_Base(Model_Base):
                          self.xs_test[:, -1],
                          apply_data=False,
                          title="over training check",
+                         bkg_label="b-test",
+                         sig_label="s-test",
                          bins=bins,
                          range=range,
                          density=True,
@@ -638,7 +640,7 @@ class Model_Sequential_Base(Model_Base):
         # plot train scores
         self.make_bar_plot(ax,
                            self.get_model().predict(self.xb_train_selected),
-                           "train",
+                           "b-train",
                            weights=np.reshape(self.xb_train[:, -1], (-1, 1)),
                            bins=bins,
                            range=range,
@@ -648,7 +650,7 @@ class Model_Sequential_Base(Model_Base):
                            fmt=".")
         self.make_bar_plot(ax,
                            self.get_model().predict(self.xs_train_selected),
-                           "train",
+                           "s-train",
                            weights=np.reshape(self.xs_train[:, -1], (-1, 1)),
                            bins=bins,
                            range=range,
@@ -663,7 +665,7 @@ class Model_Sequential_Base(Model_Base):
                                            range=(-0.25, 1.25),
                                            log=True):
         """Plots train/test scores distribution to check overtrain"""
-        print("Plotting train/test scores.")
+        print("Plotting train/test scores (original mass).")
         # plot test scores
         self.plot_scores(ax,
                          self.xb_test_selected_original_mass,
@@ -672,6 +674,8 @@ class Model_Sequential_Base(Model_Base):
                          self.xs_test_original_mass[:, -1],
                          apply_data=False,
                          title="over training check",
+                         bkg_label="b-test",
+                         sig_label="s-test",
                          bins=bins,
                          range=range,
                          density=True,
@@ -680,7 +684,7 @@ class Model_Sequential_Base(Model_Base):
         self.make_bar_plot(
             ax,
             self.get_model().predict(self.xb_train_selected_original_mass),
-            "train",
+            "b-train",
             weights=np.reshape(self.xb_train_original_mass[:, -1], (-1, 1)),
             bins=bins,
             range=range,
@@ -691,7 +695,7 @@ class Model_Sequential_Base(Model_Base):
         self.make_bar_plot(
             ax,
             self.get_model().predict(self.xs_train_selected_original_mass),
-            "train",
+            "s-train",
             weights=np.reshape(self.xs_train_original_mass[:, -1], (-1, 1)),
             bins=bins,
             range=range,
@@ -710,6 +714,8 @@ class Model_Sequential_Base(Model_Base):
                     data_weight=None,
                     apply_data=False,
                     title="scores",
+                    bkg_label="bkg",
+                    sig_label="sig",
                     bins=50,
                     range=(-0.25, 1.25),
                     density=True,
@@ -720,7 +726,7 @@ class Model_Sequential_Base(Model_Base):
                 bins=bins,
                 range=range,
                 histtype='step',
-                label='bkg',
+                label=bkg_label,
                 density=density,
                 log=log,
                 facecolor='blue',
@@ -732,7 +738,7 @@ class Model_Sequential_Base(Model_Base):
                 bins=bins,
                 range=range,
                 histtype='step',
-                label='sig',
+                label=sig_label,
                 density=density,
                 log=log,
                 facecolor='red',

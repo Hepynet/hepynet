@@ -1,20 +1,22 @@
+import csv
 import datetime
 import itertools
 import json
 import os
 import platform
 import re
+import time
 from configparser import ConfigParser
 
 import matplotlib.pyplot as plt
 import numpy as np
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_JUSTIFY
-from reportlab.lib.pagesizes import A3, letter
+from reportlab.lib.pagesizes import A0, A3, letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
-from reportlab.platypus import (Image, PageBreak, Paragraph, SimpleDocTemplate,
-                                Spacer, Table, TableStyle)
+from reportlab.platypus import (
+    Image, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle)
 
 import ROOT
 from lfv_pdnn.common import array_utils, common_utils
@@ -23,9 +25,9 @@ from lfv_pdnn.train import model, train_utils
 
 SCANNED_PARAS = [
     'scan_learn_rate', 'scan_learn_rate_decay', 'scan_dropout_rate',
-    'scan_batch_size', 'scan_sig_sumofweight', 'scan_bkg_sumofweight',
-    'scan_sig_class_weight', 'scan_bkg_class_weight', 'scan_sig_key',
-    'scan_bkg_key', 'scan_channel', 'scan_early_stop_patience'
+    'scan_momentum', 'scan_batch_size', 'scan_sig_sumofweight',
+    'scan_bkg_sumofweight', 'scan_sig_class_weight', 'scan_bkg_class_weight',
+    'scan_sig_key', 'scan_bkg_key', 'scan_channel', 'scan_early_stop_patience'
 ]
 # possible main directory names, in docker it's "work", otherwise it's "pdnn-lfv"
 MAIN_DIR_NAMES = ["pdnn-lfv", "work"]
@@ -33,6 +35,7 @@ MAIN_DIR_NAMES = ["pdnn-lfv", "work"]
 
 class job_executor(object):
     """Core class to execute a pdnn job based on given cfg file."""
+
     def __init__(self, input_path):
         """Initialize executor."""
         # general
@@ -117,6 +120,8 @@ class job_executor(object):
         # [scanned_para] section
         for para_name in SCANNED_PARAS:
             setattr(self, para_name, [])
+        # timing
+        self.job_execute_time = -1
 
     def execute_jobs(self):
         """Execute all planned jobs."""
@@ -185,13 +190,14 @@ class job_executor(object):
                     single_scan_meta_data.append(report_value)
                 scan_meta_report.append(single_scan_meta_data)
             make_table(scan_meta_report,
-                       self.save_sub_dir + "/scan_meta_report.pdf",
+                       self.save_sub_dir,
                        num_para=len(scanned_var_names))
 
     def execute_single_job(self):
         """Execute single DNN training with given configuration."""
 
         # Prepare
+        job_start_time = time.perf_counter()
         if not self.array_is_loaded:
             self.load_arrays()
         xs = array_utils.modify_array(
@@ -327,6 +333,7 @@ class job_executor(object):
                 save_fig=self.save_pdf_report,
                 save_path=fig_save_path,
                 job_type=self.job_type)
+            plt.close(fig)  # release memory
             # Make significance scan plot
             fig, ax = plt.subplots(figsize=(12, 9))
             ax.set_title("significance scan")
@@ -335,6 +342,7 @@ class job_executor(object):
                 fig_save_path = save_dir + '/significance_scan.png'
                 self.fig_significance_scan_path = fig_save_path
                 fig.savefig(fig_save_path)
+            plt.close(fig)  # release memory
             # Extra plots (use model on non-mass-reset arrays)
             fig, ax = plt.subplots(ncols=2, figsize=(16, 4))
             self.model.plot_scores_separate(ax[0],
@@ -391,6 +399,7 @@ class job_executor(object):
             if self.save_pdf_report:
                 fig_save_path = save_dir + '/non-mass-reset_plots.png'
                 fig.savefig(fig_save_path)
+                plt.close(fig)  # release memory
                 self.fig_non_mass_reset_path = fig_save_path
                 self.fig_dnn_scores_lin_path = save_dir + "/DNN_scores_lin.png"
                 self.fig_dnn_scores_log_path = save_dir + "/DNN_scores_log.png"
@@ -404,6 +413,10 @@ class job_executor(object):
                 model_save_name = self.model_name + "_" + self.scan_id
             self.model.save_model(save_dir=mod_save_path,
                                   file_name=model_save_name)
+        # post procedure
+        plt.close('all')
+        job_end_time = time.perf_counter()
+        self.job_execute_time = job_end_time - job_start_time
         # return training meta data
         return self.model.get_train_performance_meta()
 
@@ -589,6 +602,8 @@ class job_executor(object):
         ptext = "JOB TYPE: " + self.job_type
         reports.append(Paragraph(ptext, styles["Justify"]))
         ptext = "DATE TIME: " + self.job_create_time
+        reports.append(Paragraph(ptext, styles["Justify"]))
+        ptext = "JOB EXECUTE TIME (min): " + str(self.job_execute_time / 60.0)
         reports.append(Paragraph(ptext, styles["Justify"]))
         reports.append(Spacer(1, 12))
         # machine info
@@ -868,7 +883,7 @@ def get_valid_cfg_path(path):
         raise ValueError('No valid path found, please check .ini file.')
 
 
-def make_table(data, save_path, num_para=1):
+def make_table(data, save_dir, num_para=1):
     """Makes table for scan meta data and so on.
 
     Input example:
@@ -878,41 +893,9 @@ def make_table(data, save_path, num_para=1):
             ["a", "b", "c", "d"]
         ]
     """
-    pdf = SimpleDocTemplate(save_path, pagesize=A3)
-    table = Table(data)
-    # add style
-    style = TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Courier-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 10),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-    ])
-    table.setStyle(style)
-    # 2) Alternate backgroud color
-    rowNumb = len(data)
-    for i in range(1, rowNumb):
-        if i % 2 == 0:
-            bc = colors.burlywood
-        else:
-            bc = colors.beige
-
-        ts = TableStyle([('BACKGROUND', (0, i), (-1, i), bc)])
-        table.setStyle(ts)
-    # 3) Change background color for scanned parameters
-    ts = TableStyle([('BACKGROUND', (0, 1), (num_para - 1, -1),
-                      colors.powderblue)])
-    table.setStyle(ts)
-    # 4) Add borders
-    ts = TableStyle([
-        ('BOX', (0, 0), (-1, -1), 2, colors.black),
-        ('LINEBEFORE', (2, 1), (2, -1), 2, colors.red),
-        ('LINEABOVE', (0, 2), (-1, 2), 2, colors.green),
-        ('GRID', (0, 0), (-1, -1), 2, colors.black),
-    ])
-    table.setStyle(ts)
-    elems = []
-    elems.append(table)
-    pdf.build(elems)
+    # save csv format
+    save_path = save_dir + "/scan_meta_report.csv"
+    with open(save_path, 'w', newline='') as myfile:
+        wr = csv.writer(myfile, quoting=csv.QUOTE_ALL)
+        for single_list in data:
+            wr.writerow(single_list)
