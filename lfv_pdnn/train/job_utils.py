@@ -59,15 +59,12 @@ class job_executor(object):
         self.bkg_dict_path = None
         self.bkg_key = None
         self.bkg_sumofweight = None
-        self.bkg_rm_neg_weight = False
         self.sig_dict_path = None
         self.sig_key = None
         self.sig_sumofweight = None
-        self.sig_rm_neg_weight = False
         self.data_dict_path = None
         self.data_key = None
         self.data_sumofweight = None
-        self.data_rm_neg_weight = False
         self.bkg_list = []
         self.sig_list = []
         self.data_list = []
@@ -85,6 +82,7 @@ class job_executor(object):
         self.dropout_rate = 0.5
         self.momentum = 0.5
         self.nesterov = True
+        self.rm_negative_weight_events = True
         self.learn_rate = None
         self.learn_rate_decay = None
         self.test_rate = None
@@ -202,16 +200,13 @@ class job_executor(object):
             self.load_arrays()
         xs = array_utils.modify_array(
             self.sig_dict[self.sig_key],
-            select_channel=True,
-            remove_negative_weight=self.sig_rm_neg_weight)
+            select_channel=True)
         xb = array_utils.modify_array(
             self.bkg_dict[self.bkg_key],
-            select_channel=True,
-            remove_negative_weight=self.bkg_rm_neg_weight)
+            select_channel=True)
         xd = array_utils.modify_array(
             self.data_dict[self.data_key],
-            select_channel=True,
-            remove_negative_weight=self.data_rm_neg_weight)
+            select_channel=True)
         for key in self.bkg_list:
             self.plot_bkg_dict[key] = array_utils.modify_array(
                 self.plot_bkg_dict[key],
@@ -274,6 +269,7 @@ class job_executor(object):
                                  norm_array=self.norm_array,
                                  reset_mass=self.reset_feature,
                                  reset_mass_name=self.reset_feature_name,
+                                 remove_negative_weight=self.rm_negative_weight_events,
                                  sig_weight=self.sig_sumofweight,
                                  bkg_weight=self.bkg_sumofweight,
                                  data_weight=self.data_sumofweight,
@@ -454,20 +450,14 @@ class job_executor(object):
         self.try_parse_str('bkg_key', config, 'array', 'bkg_key')
         self.try_parse_float('bkg_sumofweight', config, 'array',
                              'bkg_sumofweight')
-        self.try_parse_bool('bkg_rm_neg_weight', config, 'array',
-                            'bkg_rm_neg_weight')
         self.try_parse_str('sig_dict_path', config, 'array', 'sig_dict_path')
         self.try_parse_str('sig_key', config, 'array', 'sig_key')
         self.try_parse_float('sig_sumofweight', config, 'array',
                              'sig_sumofweight')
-        self.try_parse_bool('sig_rm_neg_weight', config, 'array',
-                            'sig_rm_neg_weight')
         self.try_parse_str('data_dict_path', config, 'array', 'data_dict_path')
         self.try_parse_str('data_key', config, 'array', 'data_key')
         self.try_parse_float('data_sumofweight', config, 'array',
                              'data_sumofweight')
-        self.try_parse_bool('data_rm_neg_weight', config, 'array',
-                            'data_rm_neg_weight')
         self.try_parse_list('bkg_list', config, 'array', 'bkg_list')
         self.try_parse_list('sig_list', config, 'array', 'sig_list')
         self.try_parse_list('data_list', config, 'array', 'data_list')
@@ -490,6 +480,8 @@ class job_executor(object):
         self.try_parse_float('dropout_rate', config, 'model', 'dropout_rate')
         self.try_parse_float('momentum', config, 'model', 'momentum')
         self.try_parse_bool('nesterov', config, 'model', 'nesterov')
+        self.try_parse_bool('rm_negative_weight_events',
+                            config, 'model', 'rm_negative_weight_events')
         self.try_parse_float('learn_rate', config, 'model', 'learn_rate')
         self.try_parse_float('learn_rate_decay', config, 'model',
                              'learn_rate_decay')
@@ -660,8 +652,6 @@ class job_executor(object):
         ptext = "bkg total weight set             : " + str(
             self.bkg_sumofweight)
         reports.append(Paragraph(ptext, styles["Justify"]))
-        ptext = "bkg remove negtive weight:   " + str(self.bkg_rm_neg_weight)
-        reports.append(Paragraph(ptext, styles["Justify"]))
         ptext = "sig arrays path                  : " + self.sig_dict_path
         reports.append(Paragraph(ptext, styles["Justify"]))
         ptext = "sig arrays used                  : " + self.sig_key
@@ -669,18 +659,12 @@ class job_executor(object):
         ptext = "sig total weight                 : " + str(
             self.sig_sumofweight)
         reports.append(Paragraph(ptext, styles["Justify"]))
-        ptext = "sig remove negtive weight        : " + str(
-            self.sig_rm_neg_weight)
-        reports.append(Paragraph(ptext, styles["Justify"]))
         ptext = "data arrays path                 : " + self.data_dict_path
         reports.append(Paragraph(ptext, styles["Justify"]))
         ptext = "data arrays used                 : " + self.data_key
         reports.append(Paragraph(ptext, styles["Justify"]))
         ptext = "data total weight                : " + str(
             self.data_sumofweight)
-        reports.append(Paragraph(ptext, styles["Justify"]))
-        ptext = "data remove negtive weight       : " + str(
-            self.data_rm_neg_weight)
         reports.append(Paragraph(ptext, styles["Justify"]))
         ptext = "data normalize input variables   : " + str(self.norm_array)
         reports.append(Paragraph(ptext, styles["Justify"]))
@@ -700,6 +684,9 @@ class job_executor(object):
         ptext = "momentum                         : " + str(self.momentum)
         reports.append(Paragraph(ptext, styles["Justify"]))
         ptext = "nesterov                         : " + str(self.nesterov)
+        reports.append(Paragraph(ptext, styles["Justify"]))
+        ptext = "rm_negative_weight_events        : " + \
+            str(self.rm_negative_weight_events)
         reports.append(Paragraph(ptext, styles["Justify"]))
         ptext = "learn rate                       : " + str(self.learn_rate)
         reports.append(Paragraph(ptext, styles["Justify"]))

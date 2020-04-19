@@ -52,6 +52,7 @@ class Model_Base(object):
         Training of keras model, include 'acc', 'loss', 'val_acc' and 'val_loss'.
 
     """
+
     def __init__(self, name):
         """Initialize model.
 
@@ -130,6 +131,7 @@ class Model_Sequential_Base(Model_Base):
         >>> model_deep.show_performance()
 
     """
+
     def __init__(self,
                  name,
                  input_dim,
@@ -575,8 +577,8 @@ class Model_Sequential_Base(Model_Base):
         if not self.model_is_trained:
             warnings.warn("Model is not trained yet.")
         # Make plots
-        xs_plot = self.xs_norm_vars.copy()
-        xb_plot = self.xb_norm_vars.copy()
+        xs_plot = self.xs_reshape.copy()
+        xb_plot = self.xb_reshape.copy()
         auc_value, _, _ = self.plot_roc(ax,
                                         xs_plot,
                                         xb_plot,
@@ -830,9 +832,9 @@ class Model_Sequential_Base(Model_Base):
                     stacked=True)
         # plot signal
         if sig_arr is None:
-            selected_arr = train_utils.get_valid_feature(self.xs_norm_vars)
+            selected_arr = train_utils.get_valid_feature(self.xs_reshape)
             predict_arr = self.get_model().predict(selected_arr)
-            predict_weight_arr = self.xs_norm_vars[:, -1]
+            predict_weight_arr = self.xs_reshape[:, -1]
         else:
             sig_arr_temp = sig_arr.copy()
             sig_arr_temp[:, 0:-2] = train_utils.norarray(
@@ -946,9 +948,9 @@ class Model_Sequential_Base(Model_Base):
         total_weight_bkg = hist_bkg_total.GetSumOfWeights()
         # plot signal
         if sig_arr is None:
-            selected_arr = train_utils.get_valid_feature(self.xs_norm_vars)
+            selected_arr = train_utils.get_valid_feature(self.xs_reshape)
             predict_arr = self.get_model().predict(selected_arr)
-            predict_weight_arr = self.xs_norm_vars[:, -1]
+            predict_weight_arr = self.xs_reshape[:, -1]
         else:
             sig_arr_temp = sig_arr.copy()
             sig_arr_temp[:, 0:-2] = train_utils.norarray(
@@ -1069,10 +1071,10 @@ class Model_Sequential_Base(Model_Base):
             significance is calculated by s/sqrt(b)
         """
         print("Plotting significance scan.")
-        sig_predictions = self.model.predict(self.xs_selected_original_mass)
-        sig_predictions_weights = np.reshape(self.xs_norm_vars[:, -1], (-1, 1))
-        bkg_predictions = self.model.predict(self.xb_selected_original_mass)
-        bkg_predictions_weights = np.reshape(self.xb_norm_vars[:, -1], (-1, 1))
+        sig_predictions = self.model.predict(self.xs_reshape_selected)
+        sig_predictions_weights = np.reshape(self.xs_reshape[:, -1], (-1, 1))
+        bkg_predictions = self.model.predict(self.xb_reshape_selected)
+        bkg_predictions_weights = np.reshape(self.xb_reshape[:, -1], (-1, 1))
         # prepare threshoulds
         bin_array = np.array(range(-1000, 1000))
         threshoulds = 1. / (1. + 1. / np.exp(bin_array * 0.02))
@@ -1088,29 +1090,30 @@ class Model_Sequential_Base(Model_Base):
             bkg_ids_passed = bkg_predictions > dnn_cut
             total_bkg_weights_passed = np.sum(
                 bkg_predictions_weights[bkg_ids_passed])
-            if total_bkg_weights_passed > 0:
+            if total_bkg_weights_passed > 0 and total_sig_weights_passed > 0:
                 plot_threshoulds.append(dnn_cut)
                 current_significance = train_utils.calculate_asimove(
                     total_sig_weights_passed, total_bkg_weights_passed)
+                #current_significance = total_sig_weights_passed / total_bkg_weights_passed
                 significances.append(current_significance)
                 sig_above_threshould.append(total_sig_weights_passed)
                 bkg_above_threshould.append(total_bkg_weights_passed)
         total_sig_weight = np.sum(sig_predictions_weights)
         total_bkg_weight = np.sum(bkg_predictions_weights)
-        # make plots
-        ## plot original significance
-        original_significance = train_utils.calculate_asimove(
-            total_sig_weight, total_bkg_weight)
-        ax.axhline(y=original_significance, color="grey", linestyle="--")
-        ## significance scan curve
-        ax.plot(plot_threshoulds, significances, color='r', label="asimov")
         significances_no_nan = np.nan_to_num(significances)
         max_significance = np.amax(significances_no_nan)
         index = np.argmax(significances_no_nan)
         max_significance_threshould = plot_threshoulds[index]
         max_significance_sig_total = sig_above_threshould[index]
         max_significance_bkg_total = bkg_above_threshould[index]
-        ## signal/background events scan curve
+        # make plots
+        # plot original significance
+        original_significance = train_utils.calculate_asimove(
+            total_sig_weight, total_bkg_weight)
+        ax.axhline(y=original_significance, color="grey", linestyle="--")
+        # significance scan curve
+        ax.plot(plot_threshoulds, significances_no_nan, color='r', label="asimov")
+        # signal/background events scan curve
         ax2 = ax.twinx()
         max_sig_events = sig_above_threshould[0]
         max_bkg_events = bkg_above_threshould[0]
@@ -1127,11 +1130,11 @@ class Model_Sequential_Base(Model_Base):
                  color="blue",
                  label="bkg")
         ax2.set_ylabel('sig(bkg) ratio after cut')
-        ## reference threshould
+        # reference threshould
         ax.axvline(x=max_significance_threshould,
                    color='green',
                    linestyle="-.")
-        ## more infomation
+        # more infomation
         content = "max asimov:" + str(
             common_utils.get_significant_digits(max_significance, 6)
         ) + "\nbest threshould:" + str(
@@ -1153,7 +1156,7 @@ class Model_Sequential_Base(Model_Base):
                 transform=ax.transAxes,
                 color='green',
                 fontsize=12)
-        ## set up plot
+        # set up plot
         ax.set_title("significance scan")
         ax.set_xscale("logit")
         ax.set_xlabel('DNN score threshould')
@@ -1163,6 +1166,7 @@ class Model_Sequential_Base(Model_Base):
         ax.yaxis.set_minor_formatter(NullFormatter())
         ax.legend(loc='center left')
         ax2.legend(loc='center right')
+        ##ax2.set_yscale("log")
         # collect meta data
         self.original_significance = original_significance
         self.max_significance = max_significance
@@ -1194,7 +1198,7 @@ class Model_Sequential_Base(Model_Base):
             'TV (train+val)', 'TE (test)', 'TVO (train+val original)',
             'TEO (test original)'
         ],
-                  loc='lower right')
+            loc='lower right')
         ax.grid()
         # Collect meta data
         self.auc_train = auc_train
@@ -1346,44 +1350,44 @@ class Model_Sequential_Base(Model_Base):
                                                         weights=xb[:, -1])
             self.norm_average = means
             self.norm_variance = variances
-            xs_norm_vars = xs.copy()
-            xb_norm_vars = xb.copy()
-            xs_norm_vars[:, 0:-2] = train_utils.norarray(xs_norm_vars[:, 0:-2],
-                                                         average=means,
-                                                         variance=variances)
-            xb_norm_vars[:, 0:-2] = train_utils.norarray(xb_norm_vars[:, 0:-2],
-                                                         average=means,
-                                                         variance=variances)
-            self.xs_norm_vars = xs_norm_vars
-            self.xb_norm_vars = xb_norm_vars
+            xs_reshape = xs.copy()
+            xb_reshape = xb.copy()
+            xs_reshape[:, 0:-2] = train_utils.norarray(xs_reshape[:, 0:-2],
+                                                       average=means,
+                                                       variance=variances)
+            xb_reshape[:, 0:-2] = train_utils.norarray(xb_reshape[:, 0:-2],
+                                                       average=means,
+                                                       variance=variances)
+            self.xs_reshape = xs_reshape
+            self.xb_reshape = xb_reshape
         else:
-            self.xs_norm_vars = xs_norm_vars.copy()
-            self.xb_norm_vars = xb_norm_vars.copy()
+            self.xs_reshape = xs_reshape.copy()
+            self.xb_reshape = xb_reshape.copy()
         rdm_seed = int(time.time())
         # get bkg array with mass reset
         if reset_mass:
             reset_mass_id = self.selected_features.index(reset_mass_name)
             self.xb_reset_mass = array_utils.modify_array(
-                self.xb_norm_vars,
+                self.xb_reshape,
                 reset_mass=reset_mass,
-                reset_mass_array=self.xs_norm_vars,
+                reset_mass_array=self.xs_reshape,
                 reset_mass_id=reset_mass_id)
             self.is_mass_reset = True
         else:
-            self.xb_reset_mass = self.xb_norm_vars
+            self.xb_reset_mass = self.xb_reshape
             self.is_mass_reset = False
         # remove negative weights & normalize total weight
-        self.xs_norm = array_utils.modify_array(
-            self.xs_norm_vars,
+        self.xs_reweight = array_utils.modify_array(
+            self.xs_reshape,
             remove_negative_weight=remove_negative_weight,
             norm=True,
             sumofweight=sig_weight)
-        self.xb_norm = array_utils.modify_array(
-            self.xb_norm_vars,
+        self.xb_reweight = array_utils.modify_array(
+            self.xb_reshape,
             remove_negative_weight=remove_negative_weight,
             norm=True,
             sumofweight=bkg_weight)
-        self.xb_norm_reset_mass = array_utils.modify_array(
+        self.xb_reweight_reset_mass = array_utils.modify_array(
             self.xb_reset_mass,
             remove_negative_weight=remove_negative_weight,
             norm=True,
@@ -1391,14 +1395,18 @@ class Model_Sequential_Base(Model_Base):
         # get train/test data set, split with ratio=test_rate
         self.x_train, self.x_test, self.y_train, self.y_test,\
             self.xs_train, self.xs_test, self.xb_train, self.xb_test =\
-            train_utils.split_and_combine(self.xs_norm, self.xb_norm_reset_mass,
-                                          test_rate=test_rate, shuffle_seed=rdm_seed)
+            train_utils.split_and_combine(self.xs_reweight,
+                                          self.xb_reweight_reset_mass,
+                                          test_rate=test_rate,
+                                          shuffle_seed=rdm_seed)
         self.x_train_original_mass, self.x_test_original_mass,\
             self.y_train_original_mass, self.y_test_original_mass,\
             self.xs_train_original_mass, self.xs_test_original_mass,\
             self.xb_train_original_mass, self.xb_test_original_mass =\
-            train_utils.split_and_combine(self.xs_norm, self.xb_norm,
-                                          test_rate=test_rate, shuffle_seed=rdm_seed)
+            train_utils.split_and_combine(self.xs_reweight,
+                                          self.xb_reweight,
+                                          test_rate=test_rate,
+                                          shuffle_seed=rdm_seed)
         # select features used for training
         self.x_train_selected = train_utils.get_valid_feature(self.x_train)
         self.x_test_selected = train_utils.get_valid_feature(self.x_test)
@@ -1406,9 +1414,9 @@ class Model_Sequential_Base(Model_Base):
         self.xb_train_selected = train_utils.get_valid_feature(self.xb_train)
         self.xs_test_selected = train_utils.get_valid_feature(self.xs_test)
         self.xb_test_selected = train_utils.get_valid_feature(self.xb_test)
-        self.xs_selected = train_utils.get_valid_feature(self.xs_norm)
+        self.xs_selected = train_utils.get_valid_feature(self.xs_reweight)
         self.xb_selected = train_utils.get_valid_feature(
-            self.xb_norm_reset_mass)
+            self.xb_reweight_reset_mass)
         self.x_train_selected_original_mass = train_utils.get_valid_feature(
             self.x_train_original_mass)
         self.x_test_selected_original_mass = train_utils.get_valid_feature(
@@ -1422,18 +1430,20 @@ class Model_Sequential_Base(Model_Base):
         self.xb_test_selected_original_mass = train_utils.get_valid_feature(
             self.xb_test_original_mass)
         self.xs_selected_original_mass = train_utils.get_valid_feature(
-            self.xs_norm)
+            self.xs_reweight)
         self.xb_selected_original_mass = train_utils.get_valid_feature(
-            self.xb_norm)
+            self.xb_reweight)
+        self.xs_reshape_selected = train_utils.get_valid_feature(self.xs_reshape)
+        self.xb_reshape_selected = train_utils.get_valid_feature(self.xb_reshape)
         # prepare data to apply model when apply_data is True
         if apply_data == True:
             if norm_array:
-                xd_norm_vars = xd.copy()
-                xd_norm_vars[:, 0:-2] = train_utils.norarray(
-                    xd_norm_vars[:, 0:-2],
+                xd_reshape = xd.copy()
+                xd_reshape[:, 0:-2] = train_utils.norarray(
+                    xd_reshape[:, 0:-2],
                     average=self.norm_average,
                     variance=self.norm_variance)
-                self.xd = xd_norm_vars
+                self.xd = xd_reshape
             else:
                 self.xd = xd
             if reset_mass:
@@ -1441,7 +1451,7 @@ class Model_Sequential_Base(Model_Base):
                 self.xd_reset_mass = array_utils.modify_array(
                     self.xd,
                     reset_mass=reset_mass,
-                    reset_mass_array=self.xs_norm_vars,
+                    reset_mass_array=self.xs_reshape,
                     reset_mass_id=reset_mass_id)
             else:
                 self.xd_reset_mass = xd
@@ -1567,8 +1577,8 @@ class Model_Sequential_Base(Model_Base):
             hist_bkg.update_config("hist", "SetFillColor", ROOT.kBlue)
             hist_bkg.update_config('x_axis', 'SetTitle', feature)
             hist_bkg.apply_config()
-            #hist_bkg.draw()
-            #hist_bkg.save(save_dir=save_dir,
+            # hist_bkg.draw()
+            # hist_bkg.save(save_dir=save_dir,
             #              save_file_name=feature + "_bkg",
             #              save_format=save_format)
             # prepare signal histogram
@@ -1587,8 +1597,8 @@ class Model_Sequential_Base(Model_Base):
             hist_sig.update_config("hist", "SetFillColor", ROOT.kRed)
             hist_sig.update_config('x_axis', 'SetTitle', feature)
             hist_sig.apply_config()
-            #hist_sig.draw()
-            #hist_sig.save(save_dir=save_dir,
+            # hist_sig.draw()
+            # hist_sig.save(save_dir=save_dir,
             #              save_file_name=feature + "_sig",
             #              save_format=save_format)
             # prepare sig vs bkg comparison plots
@@ -1735,6 +1745,7 @@ class Model_1002(Model_Sequential_Base):
         2. Use normalized data for training.
 
     """
+
     def __init__(self,
                  name,
                  input_dim,
@@ -1913,6 +1924,7 @@ class Model_1016(Model_1002):
         1. Change structure to make quantity of nodes decrease with layer num.
 
     """
+
     def __init__(self,
                  name,
                  input_dim,
@@ -1984,6 +1996,7 @@ class Model_Sequential_Flat(Model_Sequential_Base):
         1. Change structure to make quantity of nodes decrease with layer num.
 
     """
+
     def __init__(self,
                  name,
                  input_dim,
