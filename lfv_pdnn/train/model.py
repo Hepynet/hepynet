@@ -173,12 +173,12 @@ class Model_Sequential_Base(Model_Base):
         self.norm_average = None
         self.norm_variance = None
 
-    def calculate_auc(self, xs, xb, class_weight=None, shuffle_col=None):
+    def calculate_auc(self, xs, xb, shuffle_col=None, rm_last_two=False):
         """Returns auc of given sig/bkg array."""
         x_plot, y_plot, y_pred = self.process_array(xs,
                                                     xb,
-                                                    class_weight=class_weight,
-                                                    shuffle_col=shuffle_col)
+                                                    shuffle_col=shuffle_col,
+                                                    rm_last_two=rm_last_two)
         fpr_dm, tpr_dm, _ = roc_curve(y_plot,
                                       y_pred,
                                       sample_weight=x_plot[:, -1])
@@ -536,14 +536,14 @@ class Model_Sequential_Base(Model_Base):
         feature_importance = np.zeros(num_feature)
         xs = self.xs_test_original_mass
         xb = self.xb_test_original_mass
-        base_auc = self.calculate_auc(xs, xb, class_weight=self.class_weight)
+        base_auc = self.calculate_auc(xs, xb, rm_last_two=True)
         print("base auc:", base_auc)
         # Calculate importance
         for num, feature_name in enumerate(selected_feature_names):
             current_auc = self.calculate_auc(xs,
                                              xb,
-                                             class_weight=self.class_weight,
-                                             shuffle_col=num)
+                                             shuffle_col=num,
+                                             rm_last_two=True)
             #current_auc = 1
             feature_importance[num] = (1 - current_auc) / (1 - base_auc)
             print(feature_name, ":", feature_importance[num])
@@ -606,7 +606,7 @@ class Model_Sequential_Base(Model_Base):
         # Get data
         x_plot, y_plot, y_pred = self.process_array(xs,
                                                     xb,
-                                                    class_weight=class_weight)
+                                                    rm_last_two=True)
         fpr_dm, tpr_dm, _ = roc_curve(y_plot,
                                       y_pred,
                                       sample_weight=x_plot[:, -1])
@@ -1112,7 +1112,8 @@ class Model_Sequential_Base(Model_Base):
             total_sig_weight, total_bkg_weight)
         ax.axhline(y=original_significance, color="grey", linestyle="--")
         # significance scan curve
-        ax.plot(plot_threshoulds, significances_no_nan, color='r', label="asimov")
+        ax.plot(plot_threshoulds, significances_no_nan,
+                color='r', label="asimov")
         # signal/background events scan curve
         ax2 = ax.twinx()
         max_sig_events = sig_above_threshould[0]
@@ -1166,7 +1167,7 @@ class Model_Sequential_Base(Model_Base):
         ax.yaxis.set_minor_formatter(NullFormatter())
         ax.legend(loc='center left')
         ax2.legend(loc='center right')
-        ##ax2.set_yscale("log")
+        # ax2.set_yscale("log")
         # collect meta data
         self.original_significance = original_significance
         self.max_significance = max_significance
@@ -1326,163 +1327,18 @@ class Model_Sequential_Base(Model_Base):
                          density=density,
                          log=log)
 
-    def prepare_array(self,
-                      xs,
-                      xb,
-                      xd=None,
-                      apply_data=False,
-                      norm_array=True,
-                      reset_mass=False,
-                      reset_mass_name=None,
-                      remove_negative_weight=False,
-                      sig_weight=1000,
-                      bkg_weight=1000,
-                      data_weight=1000,
-                      test_rate=0.2,
-                      verbose=1):
-        """Prepares array for training."""
-        self.xs_raw = xs
-        self.xb_raw = xb
-        # normalize input variables if norm_array is True
-        if norm_array:
-            means, variances = train_utils.get_mean_var(xb[:, 0:-2],
-                                                        axis=0,
-                                                        weights=xb[:, -1])
-            self.norm_average = means
-            self.norm_variance = variances
-            xs_reshape = xs.copy()
-            xb_reshape = xb.copy()
-            xs_reshape[:, 0:-2] = train_utils.norarray(xs_reshape[:, 0:-2],
-                                                       average=means,
-                                                       variance=variances)
-            xb_reshape[:, 0:-2] = train_utils.norarray(xb_reshape[:, 0:-2],
-                                                       average=means,
-                                                       variance=variances)
-            self.xs_reshape = xs_reshape
-            self.xb_reshape = xb_reshape
-        else:
-            self.xs_reshape = xs_reshape.copy()
-            self.xb_reshape = xb_reshape.copy()
-        rdm_seed = int(time.time())
-        # get bkg array with mass reset
-        if reset_mass:
-            reset_mass_id = self.selected_features.index(reset_mass_name)
-            self.xb_reset_mass = array_utils.modify_array(
-                self.xb_reshape,
-                reset_mass=reset_mass,
-                reset_mass_array=self.xs_reshape,
-                reset_mass_id=reset_mass_id)
-            self.is_mass_reset = True
-        else:
-            self.xb_reset_mass = self.xb_reshape
-            self.is_mass_reset = False
-        # remove negative weights & normalize total weight
-        self.xs_reweight = array_utils.modify_array(
-            self.xs_reshape,
-            remove_negative_weight=remove_negative_weight,
-            norm=True,
-            sumofweight=sig_weight)
-        self.xb_reweight = array_utils.modify_array(
-            self.xb_reshape,
-            remove_negative_weight=remove_negative_weight,
-            norm=True,
-            sumofweight=bkg_weight)
-        self.xb_reweight_reset_mass = array_utils.modify_array(
-            self.xb_reset_mass,
-            remove_negative_weight=remove_negative_weight,
-            norm=True,
-            sumofweight=bkg_weight)
-        # get train/test data set, split with ratio=test_rate
-        self.x_train, self.x_test, self.y_train, self.y_test,\
-            self.xs_train, self.xs_test, self.xb_train, self.xb_test =\
-            train_utils.split_and_combine(self.xs_reweight,
-                                          self.xb_reweight_reset_mass,
-                                          test_rate=test_rate,
-                                          shuffle_seed=rdm_seed)
-        self.x_train_original_mass, self.x_test_original_mass,\
-            self.y_train_original_mass, self.y_test_original_mass,\
-            self.xs_train_original_mass, self.xs_test_original_mass,\
-            self.xb_train_original_mass, self.xb_test_original_mass =\
-            train_utils.split_and_combine(self.xs_reweight,
-                                          self.xb_reweight,
-                                          test_rate=test_rate,
-                                          shuffle_seed=rdm_seed)
-        # select features used for training
-        self.x_train_selected = train_utils.get_valid_feature(self.x_train)
-        self.x_test_selected = train_utils.get_valid_feature(self.x_test)
-        self.xs_train_selected = train_utils.get_valid_feature(self.xs_train)
-        self.xb_train_selected = train_utils.get_valid_feature(self.xb_train)
-        self.xs_test_selected = train_utils.get_valid_feature(self.xs_test)
-        self.xb_test_selected = train_utils.get_valid_feature(self.xb_test)
-        self.xs_selected = train_utils.get_valid_feature(self.xs_reweight)
-        self.xb_selected = train_utils.get_valid_feature(
-            self.xb_reweight_reset_mass)
-        self.x_train_selected_original_mass = train_utils.get_valid_feature(
-            self.x_train_original_mass)
-        self.x_test_selected_original_mass = train_utils.get_valid_feature(
-            self.x_test_original_mass)
-        self.xs_train_selected_original_mass = train_utils.get_valid_feature(
-            self.xs_train_original_mass)
-        self.xb_train_selected_original_mass = train_utils.get_valid_feature(
-            self.xb_train_original_mass)
-        self.xs_test_selected_original_mass = train_utils.get_valid_feature(
-            self.xs_test_original_mass)
-        self.xb_test_selected_original_mass = train_utils.get_valid_feature(
-            self.xb_test_original_mass)
-        self.xs_selected_original_mass = train_utils.get_valid_feature(
-            self.xs_reweight)
-        self.xb_selected_original_mass = train_utils.get_valid_feature(
-            self.xb_reweight)
-        self.xs_reshape_selected = train_utils.get_valid_feature(self.xs_reshape)
-        self.xb_reshape_selected = train_utils.get_valid_feature(self.xb_reshape)
-        # prepare data to apply model when apply_data is True
-        if apply_data == True:
-            if norm_array:
-                xd_reshape = xd.copy()
-                xd_reshape[:, 0:-2] = train_utils.norarray(
-                    xd_reshape[:, 0:-2],
-                    average=self.norm_average,
-                    variance=self.norm_variance)
-                self.xd = xd_reshape
-            else:
-                self.xd = xd
-            if reset_mass:
-                reset_mass_id = self.selected_features.index(reset_mass_name)
-                self.xd_reset_mass = array_utils.modify_array(
-                    self.xd,
-                    reset_mass=reset_mass,
-                    reset_mass_array=self.xs_reshape,
-                    reset_mass_id=reset_mass_id)
-            else:
-                self.xd_reset_mass = xd
-            self.xd_norm = array_utils.modify_array(self.xd,
-                                                    norm=True,
-                                                    sumofweight=data_weight)
-            self.xd_norm_reset_mass = array_utils.modify_array(
-                self.xd_reset_mass, norm=True, sumofweight=data_weight)
-            self.xd_selected = train_utils.get_valid_feature(
-                self.xd_norm_reset_mass)
-            self.xd_selected_original_mass = train_utils.get_valid_feature(
-                self.xd_norm)
-            self.has_data = True
-        self.array_prepared = True
-        if verbose == 1:
-            print("Training array prepared.")
-            print("> signal shape:", self.xs_selected.shape)
-            print("> background shape:", self.xb_selected.shape)
-
-    def process_array(self, xs, xb, class_weight=None, shuffle_col=None):
+    def process_array(self, xs, xb, shuffle_col=None, rm_last_two=False):
         """Process sig/bkg arrays in the same way for training arrays."""
         # Get data
         xs_proc = xs.copy()
         xb_proc = xb.copy()
-        if class_weight is not None:
-            xs_proc[:, -1] = xs_proc[:, -1] * class_weight[1]
-            xb_proc[:, -1] = xb_proc[:, -1] * class_weight[0]
         x_proc = np.concatenate((xs_proc, xb_proc))
         if shuffle_col is not None:
             x_proc = array_utils.reset_col(x_proc, x_proc, shuffle_col)
-        x_proc_selected = train_utils.get_valid_feature(x_proc)
+        if rm_last_two:
+            x_proc_selected = train_utils.get_valid_feature(x_proc)
+        else:
+            x_proc_selected = x_proc
         y_proc = np.concatenate(
             (np.ones(xs_proc.shape[0]), np.zeros(xb_proc.shape[0])))
         y_pred = self.get_model().predict(x_proc_selected)
@@ -1545,6 +1401,69 @@ class Model_Sequential_Base(Model_Base):
         paras_dict['train_history_val_loss'] = self.train_history_val_loss
         with open(save_path, 'w') as write_file:
             json.dump(paras_dict, write_file, indent=2)
+
+    def set_inputs(self, feed_box: dict, apply_data=False) -> None:
+        """Prepares array for training."""
+        self.xs_raw = feed_box["xs_raw"]
+        self.xb_raw = feed_box["xb_raw"]
+        # normalized arrays
+        self.norm_average = feed_box["norm_average"]
+        self.norm_variance = feed_box["norm_variance"]
+        self.xs_reshape = feed_box["xs_reshape"]
+        self.xb_reshape = feed_box["xb_reshape"]
+        # bkg array with mass reset
+        self.xb_reset_mass = feed_box["xb_reset_mass"]
+        self.is_mass_reset = feed_box["is_mass_reset"]
+        # reweighted arrays
+        self.xs_reweight = feed_box["xs_reweight"]
+        self.xb_reweight = feed_box["xb_reweight"]
+        self.xb_reweight_reset_mass = feed_box["xb_reweight_reset_mass"]
+        # train/test data set, split with ratio=test_rate
+        self.x_train = feed_box["x_train"]
+        self.x_test = feed_box["x_test"]
+        self.y_train = feed_box["y_train"]
+        self.y_test = feed_box["y_test"]
+        self.xs_train = feed_box["xs_train"]
+        self.xs_test = feed_box["xs_test"]
+        self.xb_train = feed_box["xb_train"]
+        self.xb_test = feed_box["xb_test"]
+        self.x_train_original_mass = feed_box["x_train_original_mass"]
+        self.x_test_original_mass = feed_box["x_test_original_mass"]
+        self.y_train_original_mass = feed_box["y_train_original_mass"]
+        self.y_test_original_mass = feed_box["y_test_original_mass"]
+        self.xs_train_original_mass = feed_box["xs_train_original_mass"]
+        self.xs_test_original_mass = feed_box["xs_test_original_mass"]
+        self.xb_train_original_mass = feed_box["xb_train_original_mass"]
+        self.xb_test_original_mass = feed_box["xb_test_original_mass"]
+        # select features
+        self.x_train_selected = feed_box["x_train_selected"]
+        self.x_test_selected = feed_box["x_test_selected"]
+        self.xs_train_selected = feed_box["xs_train_selected"]
+        self.xb_train_selected = feed_box["xb_train_selected"]
+        self.xs_test_selected = feed_box["xs_test_selected"]
+        self.xb_test_selected = feed_box["xb_test_selected"]
+        self.xs_selected = feed_box["xs_selected"]
+        self.xb_selected = feed_box["xb_selected"]
+        self.x_train_selected_original_mass = feed_box["x_train_selected_original_mass"]
+        self.x_test_selected_original_mass = feed_box["x_test_selected_original_mass"]
+        self.xs_train_selected_original_mass = feed_box["xs_train_selected_original_mass"]
+        self.xb_train_selected_original_mass = feed_box["xb_train_selected_original_mass"]
+        self.xs_test_selected_original_mass = feed_box["xs_test_selected_original_mass"]
+        self.xb_test_selected_original_mass = feed_box["xb_test_selected_original_mass"]
+        self.xs_selected_original_mass = feed_box["xs_selected_original_mass"]
+        self.xb_selected_original_mass = feed_box["xb_selected_original_mass"]
+        self.xs_reshape_selected = feed_box["xs_reshape_selected"]
+        self.xb_reshape_selected = feed_box["xb_reshape_selected"]
+        # data
+        if apply_data:
+            self.xd = feed_box["xd"]
+            self.xd_reset_mass = feed_box["xd_reset_mass"]
+            self.xd_norm = feed_box["xd_norm"]
+            self.xd_norm_reset_mass = feed_box["xd_norm_reset_mass"]
+            self.xd_selected = feed_box["xd_selected"]
+            self.xd_selected_original_mass = feed_box["xd_selected_original_mass"]
+        self.has_data = feed_box["has_data"]
+        self.array_prepared = feed_box["array_prepared"]
 
     def show_input_distributions(self,
                                  apply_data=False,
@@ -1648,14 +1567,13 @@ class Model_Sequential_Base(Model_Base):
             fig.savefig(save_path)
 
     def train(
-        self,
-        batch_size=128,
-        epochs=20,
-        val_split=0.25,
-        sig_class_weight=1.,
-        bkg_class_weight=1.,
-        verbose=1,
-    ):
+            self,
+            batch_size=128,
+            epochs=20,
+            val_split=0.25,
+            sig_class_weight=1.,
+            bkg_class_weight=1.,
+            verbose=1):
         """Performs training."""
         # Check
         if self.model_is_compiled == False:
@@ -1704,7 +1622,8 @@ class Model_Sequential_Base(Model_Base):
                                           sample_weight=self.x_test[:, -1])
         print('> test loss:', score[0])
         print('> test accuracy:', score[1])
-
+        print(self.get_model().metrics_names)
+        print(score)
         # Save train history
         # save accuracy history
         self.train_history_accuracy = [
@@ -1732,9 +1651,65 @@ class Model_Sequential_Base(Model_Base):
         self.train_history_val_loss = [
             float(ele) for ele in self.train_history.history['val_loss']
         ]
-
+        # update status
         self.model_is_trained = True
 
+    def tuning_train(self,
+                     batch_size=128,
+                     epochs=20,
+                     val_split=0.25,
+                     sig_class_weight=1.,
+                     bkg_class_weight=1.,
+                     verbose=1):
+        """Performs quick training for hyperparameters tuning."""
+        # Check
+        if self.model_is_compiled == False:
+            raise ValueError("DNN model is not yet compiled")
+        if self.array_prepared == False:
+            raise ValueError("Training data is not ready.")
+        # separate validation samples
+        num_val = math.ceil(len(self.y_train) * val_split)
+        x_tr = self.x_train_selected[:-num_val, :]
+        x_val = self.x_train_selected[-num_val:, :]
+        y_tr = self.y_train[:-num_val]
+        y_val = self.y_train[-num_val:]
+        wt_tr = self.x_train[:-num_val, -1]
+        wt_val = self.x_train[-num_val:, -1]
+        val_tuple = (x_val, y_val, wt_val)
+        self.x_tr = x_tr
+        self.x_val = x_val
+        self.y_tr = y_tr
+        self.y_val = y_val
+        self.wt_tr = wt_tr
+        self.wt_val = wt_val
+        # Train
+        self.class_weight = {1: sig_class_weight, 0: bkg_class_weight}
+        train_callbacks = []
+        if self.use_early_stop:
+            early_stop_callback = callbacks.EarlyStopping(
+                monitor=self.early_stop_paras["monitor"],
+                min_delta=self.early_stop_paras["min_delta"],
+                patience=self.early_stop_paras["patience"],
+                mode=self.early_stop_paras["mode"],
+                restore_best_weights=self.
+                early_stop_paras["restore_best_weights"])
+            train_callbacks.append(early_stop_callback)
+        self.train_history = self.get_model().fit(
+            x_tr,
+            y_tr,
+            batch_size=batch_size,
+            epochs=epochs,
+            validation_data=val_tuple,
+            class_weight=self.class_weight,
+            sample_weight=wt_tr,
+            callbacks=train_callbacks,
+            verbose=verbose)
+        # Final evaluation
+        score = self.get_model().evaluate(x_val,
+                                          y_val,
+                                          verbose=verbose,
+                                          sample_weight=wt_val)
+        return score[0]
 
 class Model_1002(Model_Sequential_Base):
     """Sequential model optimized with old ntuple at Sep. 9th 2019.
@@ -2034,18 +2009,15 @@ class Model_Sequential_Flat(Model_Sequential_Base):
         self.model_dropout_rate = dropout_rate
         self.model_momentum = momentum
         self.model_nesterov = nesterov
-        assert layers == len(
-            nodes
-        ), "Model layer quantity and nodes list quantity doesn't match"
         assert layers > 0, "Model layer quantity should be positive"
 
     def compile(self):
         """ Compile model, function to be changed in the future."""
         # Add layers
         # input
-        for num_node in self.model_nodes:
+        for layer in range(self.model_layers):
             self.model.add(
-                Dense(num_node,
+                Dense(self.model_nodes,
                       kernel_initializer='uniform',
                       input_dim=self.model_input_dim))
             self.model.add(Dropout(self.model_dropout_rate))

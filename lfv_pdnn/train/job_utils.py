@@ -1,7 +1,9 @@
+import ast
 import csv
 import datetime
 import itertools
 import json
+import math
 import os
 import platform
 import re
@@ -10,6 +12,10 @@ from configparser import ConfigParser
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
+import seaborn as sns
+from hyperopt import Trials, fmin, hp, tpe
+from hyperopt.pyll.stochastic import sample
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_JUSTIFY
 from reportlab.lib.pagesizes import A0, A3, letter
@@ -17,6 +23,7 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.platypus import (
     Image, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle)
+from sklearn.metrics import auc, roc_curve
 
 import ROOT
 from lfv_pdnn.common import array_utils, common_utils
@@ -27,7 +34,8 @@ SCANNED_PARAS = [
     'scan_learn_rate', 'scan_learn_rate_decay', 'scan_dropout_rate',
     'scan_momentum', 'scan_batch_size', 'scan_sig_sumofweight',
     'scan_bkg_sumofweight', 'scan_sig_class_weight', 'scan_bkg_class_weight',
-    'scan_sig_key', 'scan_bkg_key', 'scan_channel', 'scan_early_stop_patience'
+    'scan_sig_key', 'scan_bkg_key', 'scan_channel', 'scan_early_stop_patience',
+    'scan_layers', 'scan_nodes'
 ]
 # possible main directory names, in docker it's "work", otherwise it's "pdnn-lfv"
 MAIN_DIR_NAMES = ["pdnn-lfv", "work"]
@@ -78,7 +86,7 @@ class job_executor(object):
         self.model_name = None
         self.model_class = None
         self.layers = None
-        self.nodes = []
+        self.nodes = None
         self.dropout_rate = 0.5
         self.momentum = 0.5
         self.nesterov = True
@@ -102,8 +110,9 @@ class job_executor(object):
         self.save_model = None
         # Initialize [para_scan]
         self.perform_para_scan = None
+        self.max_scan_interations = None
+        self.scan_loss_type = None
         self.para_scan_cfg = None
-        self.scan_id = None
         # Initialize [report] section
         self.plot_bkg_list = []
         self.kine_cfg = None
@@ -137,59 +146,21 @@ class job_executor(object):
         if self.perform_para_scan is not True:  # Execute single job if parameter scan is not needed
             self.execute_single_job()
         else:  # Otherwise perform scan as specified
-            print('#' * 80)
-            print("Executing parameters scanning.")
-            scan_list, scan_list_id = self.get_scan_para_list()
-            scanned_var_names = list(scan_list[0].keys())
-            scan_meta_report = [
-                scanned_var_names + [
-                    "asimov_ori", "asimov_best", "asimov_cut", "auc_tr",
-                    "auc_te", "auc_tr_ori", "auc_te_ori"
-                ]
-            ]
-            # asimov_ori: original significance
-            # asimov_best: best significance with DNN applied
-            # asimov_cut: DNN cut for best significance
-            # auc_tr: auc (area under roc curve) value with train dataset
-            # auc_te: auc value with test dataset
-            # auc_tr_ori: auc value with train dataset
-            # auc_te_ori: auc value with test dataset
-            for job_num, (scan_set, scan_set_id) in enumerate(
-                    zip(scan_list, scan_list_id)):
-                # Train with current scan parameter set
-                print('*' * 80)
-                print("Scanning parameter set {}/{}:".format(
-                    job_num + 1, len(scan_list)))
-                common_utils.display_dict(scan_set)
-                keys = list(scan_set.keys())
-                scan_id = "scan"
-                scanned_var_value_list = []
-                for num, key in enumerate(keys):
-                    scanned_var_name = key.split("scan_")[1]
-                    scanned_var_value_list.append(scan_set[key])
-                    setattr(self, scanned_var_name, scan_set[key])
-                    scan_id = scan_id + "--" + scanned_var_name + "_" \
-                        + str(scan_set_id[num])
-                print("scan id:", scan_id)
-                setattr(self, "scan_id", scan_id)
-                meta_data_single = self.execute_single_job(
-                )  # performs sigle train
-                report_keys = [
-                    "original_significance", "max_significance",
-                    "max_significance_threshould", "auc_train", "auc_test",
-                    "auc_train_original", "auc_test_original"
-                ]
-                # Add scan meta data contents
-                single_scan_meta_data = scanned_var_value_list
-                for report_key in report_keys:
-                    report_value = meta_data_single[report_key]
-                    if isinstance(report_value, float):
-                        report_value = format(report_value, ".6f")
-                    single_scan_meta_data.append(report_value)
-                scan_meta_report.append(single_scan_meta_data)
-            make_table(scan_meta_report,
-                       self.save_sub_dir,
-                       num_para=len(scanned_var_names))
+            self.get_scan_space()
+            self.execute_tuning_jobs()
+            # Perform final training with best hyperparmaters
+            print("#"*80)
+            print("Performing final training with best hyper parameter set.")
+            keys = list(self.best_hyper_set.keys())
+            for key in keys:
+                value = self.best_hyper_set[key]
+                value = float(value)
+                if type(value) is float:
+                    if value.is_integer():
+                        value = int(value)
+                setattr(self, key, value)
+            self.execute_single_job()
+            return 0
 
     def execute_single_job(self):
         """Execute single DNN training with given configuration."""
@@ -262,19 +233,22 @@ class job_executor(object):
                 use_early_stop=self.use_early_stop,
                 early_stop_paras=self.early_stop_paras)
         # Set up training or loading model
-        self.model.prepare_array(xs,
-                                 xb,
-                                 xd=xd,
-                                 apply_data=self.apply_data,
-                                 norm_array=self.norm_array,
-                                 reset_mass=self.reset_feature,
-                                 reset_mass_name=self.reset_feature_name,
-                                 remove_negative_weight=self.rm_negative_weight_events,
-                                 sig_weight=self.sig_sumofweight,
-                                 bkg_weight=self.bkg_sumofweight,
-                                 data_weight=self.data_sumofweight,
-                                 test_rate=self.test_rate,
-                                 verbose=self.verbose)
+        feed_box = train_utils.prepare_array(xs,
+                                             xb,
+                                             self.selected_features,
+                                             xd=xd,
+                                             apply_data=self.apply_data,
+                                             reshape_array=self.norm_array,
+                                             reset_mass=self.reset_feature,
+                                             reset_mass_name=self.reset_feature_name,
+                                             remove_negative_weight=self.rm_negative_weight_events,
+                                             sig_weight=self.sig_sumofweight,
+                                             bkg_weight=self.bkg_sumofweight,
+                                             data_weight=self.data_sumofweight,
+                                             test_rate=self.test_rate,
+                                             rdm_seed=None,
+                                             verbose=self.verbose)
+        self.model.set_inputs(feed_box, apply_data=self.apply_data)
         if self.job_type == "apply":
             self.model.load_model(self.load_dir,
                                   self.model_name,
@@ -297,10 +271,7 @@ class job_executor(object):
             # setup save parameters if reports need to be saved
             fig_save_path = None
             save_dir = None
-            if self.perform_para_scan:
-                save_dir = self.save_sub_dir + "/reports/scan_" + self.scan_id
-            else:
-                save_dir = self.save_sub_dir + "/reports/"
+            save_dir = self.save_sub_dir + "/reports/"
             if not os.path.exists(save_dir):
                 os.makedirs(save_dir)
             # show and save according to setting
@@ -405,8 +376,6 @@ class job_executor(object):
         if self.save_model and (self.job_type == "train"):
             mod_save_path = self.save_sub_dir + "/models"
             model_save_name = self.model_name
-            if self.perform_para_scan:
-                model_save_name = self.model_name + "_" + self.scan_id
             self.model.save_model(save_dir=mod_save_path,
                                   file_name=model_save_name)
         # post procedure
@@ -415,6 +384,210 @@ class job_executor(object):
         self.job_execute_time = job_end_time - job_start_time
         # return training meta data
         return self.model.get_train_performance_meta()
+
+    def execute_tuning_jobs(self):
+        print('#' * 80)
+        print("Executing parameters scanning.")
+        space = self.space
+        # prepare history record file
+        self.tuning_history_file = self.save_sub_dir + "/tuning_history.csv"
+        if not os.path.exists(self.save_sub_dir):
+            os.makedirs(self.save_sub_dir)
+        history_file = open(self.tuning_history_file, 'w')
+        writer = csv.writer(history_file)
+        writer.writerow(
+            ['loss', 'auc', 'iteration', 'epochs', 'train_time', 'params'])
+        history_file.close()
+        # perform Bayesion tuning
+        self.iteration = 0
+        bayes_trials = Trials()
+        best_set = fmin(fn=self.execute_tuning_job, space=space, algo=tpe.suggest,
+                        max_evals=self.max_scan_interations, trials=bayes_trials)
+        self.best_hyper_set = best_set
+        print('#' * 80)
+        print("best hyperparameters set:")
+        print(best_set)
+        # make plots
+        results = pd.read_csv(self.tuning_history_file)
+        bayes_params = pd.DataFrame(columns=list(
+            ast.literal_eval(results.loc[0, 'params']).keys()),
+            index=list(range(len(results))))
+        # Add the results with each parameter a different column
+        for i, params in enumerate(results['params']):
+            bayes_params.loc[i, :] = list(ast.literal_eval(params).values())
+
+        bayes_params['iteration'] = results['iteration']
+        bayes_params['loss'] = results['loss']
+        bayes_params['auc'] = results['auc']
+        bayes_params['epochs'] = results['epochs']
+        bayes_params['train_time'] = results['train_time']
+
+        bayes_params.head()
+
+        # Plot the random search distribution and the bayes search distribution
+        print("#"*80)
+        print("Making scan plots")
+        save_dir_distributions = self.save_sub_dir + "/hyper_distributions"
+        if not os.path.exists(save_dir_distributions):
+            os.makedirs(save_dir_distributions)
+        save_dir_evo = self.save_sub_dir + "/hyper_evolvements"
+        if not os.path.exists(save_dir_evo):
+            os.makedirs(save_dir_evo)
+        for hyper in list(self.space.keys()):
+            # plot distributions
+            fig, ax = plt.subplots(figsize=(14, 6))
+            sns.kdeplot([sample(space[hyper])
+                         for _ in range(100000)], label='Sampling Distribution', ax=ax)
+            sns.kdeplot(bayes_params[hyper], label='Bayes Optimization')
+            ax.axvline(x=best_set[hyper], color='orange', linestyle="-.")
+            ax.legend(loc=1)
+            ax.set_title("{} Distribution".format(hyper))
+            ax.set_xlabel("{}".format(hyper))
+            ax.set_ylabel('Density')
+            fig.savefig(save_dir_distributions + "/" +
+                        hyper + "_distribution.png")
+            # plot evolvements
+            fig, ax = plt.subplots(figsize=(14, 6))
+            sns.regplot('iteration', hyper, data=bayes_params)
+            ax.set(xlabel='Iteration', ylabel='{}'.format(
+                hyper), title='{} over Search'.format(hyper))
+            fig.savefig(save_dir_evo + "/" + hyper + "_evo.png")
+            plt.close('all')
+        # plot extra evolvements
+        for hyper in ["loss", "auc", "epochs", "train_time"]:
+            fig, ax = plt.subplots(figsize=(14, 6))
+            sns.regplot('iteration', hyper, data=bayes_params)
+            ax.set(xlabel='Iteration', ylabel='{}'.format(
+                hyper), title='{} over Search'.format(hyper))
+            fig.savefig(save_dir_evo + "/" + hyper + "_evo.png")
+            plt.close('all')
+
+    def execute_tuning_job(self, params, loss_type="val_loss"):
+        """Execute one quick DNN training for hyperparameter tuning."""
+        print("+ {}".format(params))
+        job_start_time = time.perf_counter()
+        # Keep track of evals
+        self.iteration += 1
+        try:
+            # set parameters
+            keys = list(params.keys())
+            for key in keys:
+                value = params[key]
+                if type(value) is float:
+                    if value.is_integer():
+                        value = int(value)
+                setattr(self, key, value)
+            # Prepare
+            if not self.array_is_loaded:
+                self.load_arrays()
+            xs = array_utils.modify_array(
+                self.sig_dict[self.sig_key],
+                select_channel=True)
+            xb = array_utils.modify_array(
+                self.bkg_dict[self.bkg_key],
+                select_channel=True)
+            xd = array_utils.modify_array(
+                self.data_dict[self.data_key],
+                select_channel=True)
+            for key in self.bkg_list:
+                self.plot_bkg_dict[key] = array_utils.modify_array(
+                    self.plot_bkg_dict[key],
+                    select_channel=True,
+                    remove_negative_weight=False
+                )  # Use negtive weight when applying model
+            if self.use_early_stop:
+                self.early_stop_paras = {}
+                self.early_stop_paras["monitor"] = self.early_stop_monitor
+                self.early_stop_paras["min_delta"] = self.early_stop_min_delta
+                self.early_stop_paras["patience"] = self.early_stop_patience
+                self.early_stop_paras["mode"] = self.early_stop_mode
+                self.early_stop_paras[
+                    "restore_best_weights"] = self.early_stop_restore_best_weights
+            else:
+                self.early_stop_paras = {}
+            try:
+                self.model = getattr(model, self.model_class)(
+                    self.model_name,
+                    self.input_dim,
+                    layers=self.layers,
+                    nodes=self.nodes,
+                    learn_rate=self.learn_rate,
+                    decay=self.learn_rate_decay,
+                    dropout_rate=0.5,
+                    metrics=self.train_metrics,
+                    weighted_metrics=self.train_metrics_weighted,
+                    selected_features=self.selected_features,
+                    use_early_stop=self.use_early_stop,
+                    early_stop_paras=self.early_stop_paras)
+            except:
+                self.model = getattr(model, self.model_class)(
+                    self.model_name,
+                    self.input_dim,
+                    learn_rate=self.learn_rate,
+                    decay=self.learn_rate_decay,
+                    dropout_rate=0.5,
+                    metrics=self.train_metrics,
+                    weighted_metrics=self.train_metrics_weighted,
+                    selected_features=self.selected_features,
+                    use_early_stop=self.use_early_stop,
+                    early_stop_paras=self.early_stop_paras)
+            # Set up training or loading model
+            feed_box = train_utils.prepare_array(xs,
+                                                 xb,
+                                                 self.selected_features,
+                                                 xd=xd,
+                                                 apply_data=self.apply_data,
+                                                 reshape_array=self.norm_array,
+                                                 reset_mass=self.reset_feature,
+                                                 reset_mass_name=self.reset_feature_name,
+                                                 remove_negative_weight=self.rm_negative_weight_events,
+                                                 sig_weight=self.sig_sumofweight,
+                                                 bkg_weight=self.bkg_sumofweight,
+                                                 data_weight=self.data_sumofweight,
+                                                 test_rate=self.test_rate,
+                                                 rdm_seed=None,
+                                                 verbose=0)
+            self.model.set_inputs(feed_box, apply_data=self.apply_data)
+            self.model.compile()
+            final_loss = self.model.tuning_train(batch_size=self.batch_size,
+                                                 epochs=self.epochs,
+                                                 val_split=self.val_split,
+                                                 sig_class_weight=self.sig_class_weight,
+                                                 bkg_class_weight=self.bkg_class_weight,
+                                                 verbose=0)
+            # Calculate auc
+            try:
+                fpr_dm, tpr_dm, _ = roc_curve(self.model.y_val,
+                                              self.model.get_model().predict(self.model.x_val),
+                                              sample_weight=self.model.wt_val)
+                val_auc = auc(fpr_dm, tpr_dm)
+            except:
+                val_auc = 0
+            # Get epochs
+            epochs = len(self.model.train_history.history['loss'])
+        except:
+            final_loss = 1000
+            val_auc = 0
+            epochs = 0
+        # post procedure
+        job_end_time = time.perf_counter()
+        self.job_execute_time = job_end_time - job_start_time
+        history_file = open(self.tuning_history_file, 'a')
+        writer = csv.writer(history_file)
+        writer.writerow([final_loss, val_auc, self.iteration,
+                         epochs, self.job_execute_time, params])
+        history_file.close()
+        # return loss value
+        loss_value = None
+        loss_type = self.scan_loss_type
+        if loss_type == "val_loss":
+            loss_value = final_loss
+        elif loss_type == "1_val_auc":
+            loss_value = 1 - val_auc
+        else:
+            raise ValueError("Unsupported loss_type")
+        print(">>> loss: {}".format(loss_value))
+        return loss_value
 
     def get_config(self, path=None):
         """Retrieves configurations from ini file."""
@@ -476,7 +649,7 @@ class job_executor(object):
         self.try_parse_str('model_name', config, 'model', 'model_name')
         self.try_parse_str('model_class', config, 'model', 'model_class')
         self.try_parse_int('layers', config, 'model', 'layers')
-        self.try_parse_list('nodes', config, 'model', 'nodes')
+        self.try_parse_int('nodes', config, 'model', 'nodes')
         self.try_parse_float('dropout_rate', config, 'model', 'dropout_rate')
         self.try_parse_float('momentum', config, 'model', 'momentum')
         self.try_parse_bool('nesterov', config, 'model', 'nesterov')
@@ -512,6 +685,10 @@ class job_executor(object):
         # Load [para_scan]
         self.try_parse_bool('perform_para_scan', config, 'para_scan',
                             'perform_para_scan')
+        self.try_parse_int('max_scan_interations', config, 'para_scan',
+                           'max_scan_interations')
+        self.try_parse_str('scan_loss_type', config, 'para_scan',
+                           'scan_loss_type')
         self.try_parse_str('para_scan_cfg', config, 'para_scan',
                            'para_scan_cfg')
         # Load [report] section
@@ -528,7 +705,8 @@ class job_executor(object):
         self.try_parse_int('verbose', config, 'report', 'verbose')
 
         if self.perform_para_scan:
-            self.get_config_scan()
+            pass
+            # self.get_config_scan() # TODO this method will be replaced in the future
 
         self.cfg_is_collected = True
 
@@ -571,6 +749,38 @@ class job_executor(object):
             print('*', para_name, ':', para_list)
         print("Total combinations/scans:", len(scan_list))
         return scan_list, scan_list_id
+
+    def get_scan_space(self):
+        """Get hyperparameter scan space."""
+        space = {}
+        config = ConfigParser()
+        valid_cfg_path = get_valid_cfg_path(self.para_scan_cfg)
+        config.read(valid_cfg_path)
+        # get available scan variables:
+        for para in SCANNED_PARAS:
+            para_pdf = self.try_parse_str(para + "_pdf", config,
+                                          'scanned_para', para + "_pdf")
+            para_setting = self.try_parse_list(
+                para, config, 'scanned_para', para)
+            if para_pdf is not None:
+                dim_name = para.split("scan_")[1]
+                if para_pdf == "choice":
+                    space[dim_name] = hp.choice(dim_name, para_setting)
+                elif para_pdf == "uniform":
+                    space[dim_name] = hp.uniform(
+                        dim_name, para_setting[0], para_setting[1])
+                elif para_pdf == "quniform":
+                    space[dim_name] = hp.quniform(
+                        dim_name, para_setting[0], para_setting[1], para_setting[2])
+                elif para_pdf == "loguniform":
+                    space[dim_name] = hp.loguniform(
+                        dim_name, np.log(para_setting[0]), np.log(para_setting[1]))
+                elif para_pdf == "qloguniform":
+                    space[dim_name] = hp.qloguniform(dim_name, np.log(
+                        para_setting[0]), np.log(para_setting[1]), para_setting[2])
+                else:
+                    raise ValueError("Unsupported scan parameter pdf type.")
+        self.space = space
 
     def generate_report(self, pdf_save_path=None):
         """Generate a brief report to show how is the model."""
@@ -793,33 +1003,43 @@ class job_executor(object):
 
     def try_parse_bool(self, parsed_val, config_parse, section, val_name):
         try:
-            setattr(self, parsed_val,
-                    config_parse.getboolean(section, val_name))
+            value = config_parse.getboolean(section, val_name)
+            setattr(self, parsed_val, value)
+            return value
         except:
             if not hasattr(self, parsed_val):
                 setattr(self, parsed_val, None)
+            return None
 
     def try_parse_float(self, parsed_val, config_parser, section, val_name):
         try:
-            setattr(self, parsed_val,
-                    config_parser.getfloat(section, val_name))
+            value = config_parser.getfloat(section, val_name)
+            setattr(self, parsed_val, value)
+            return value
         except:
             if not hasattr(self, parsed_val):
                 setattr(self, parsed_val, None)
+            return None
 
     def try_parse_int(self, parsed_val, config_parser, section, val_name):
         try:
-            setattr(self, parsed_val, config_parser.getint(section, val_name))
+            value = config_parser.getint(section, val_name)
+            setattr(self, parsed_val, value)
+            return value
         except:
             if not hasattr(self, parsed_val):
                 setattr(self, parsed_val, None)
+            return None
 
     def try_parse_str(self, parsed_val, config_parser, section, val_name):
         try:
-            setattr(self, parsed_val, config_parser.get(section, val_name))
+            value = config_parser.get(section, val_name)
+            setattr(self, parsed_val, value)
+            return value
         except:
             if not hasattr(self, parsed_val):
                 setattr(self, parsed_val, None)
+            return None
 
     def try_parse_list(self, parsed_val, config_parser, section, val_name):
         try:
@@ -827,9 +1047,11 @@ class job_executor(object):
             if not isinstance(value, list):
                 value = [value]
             setattr(self, parsed_val, value)
+            return value
         except:
             if not hasattr(self, parsed_val):
                 setattr(self, parsed_val, None)
+            return None
 
 
 def get_valid_cfg_path(path):
