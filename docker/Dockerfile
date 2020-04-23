@@ -31,7 +31,8 @@ RUN pip install eli5 \
 && pip install ConfigParser \
 && pip install reportlab \
 && pip install pandas \
-&& pip install seaborn
+&& pip install seaborn \
+&& pip install hyperopt
 
 # Start up
 RUN echo "pip install -e /work" >> /root/.bashrc \
