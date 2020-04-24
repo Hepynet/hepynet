@@ -211,6 +211,7 @@ def prepare_array(xs,
     feed_box["xb_train_original_mass"] = xb_train_original_mass
     feed_box["xb_test_original_mass"] = xb_test_original_mass
     # select features used for training
+    feed_box["selected_features"] = selected_features
     feed_box["x_train_selected"] = get_valid_feature(x_train)
     feed_box["x_test_selected"] = get_valid_feature(x_test)
     feed_box["xs_train_selected"] = get_valid_feature(xs_train)

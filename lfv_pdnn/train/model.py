@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-"""Model class for DNN training"""
+"""Model wrapper class for DNN training"""
+import copy
 import datetime
 import glob
 import json
@@ -29,7 +30,7 @@ import ROOT
 from HEPTools.plot_utils import plot_utils, th1_tools
 from lfv_pdnn.common import array_utils, common_utils
 from lfv_pdnn.data_io import get_arrays
-from lfv_pdnn.train import train_utils
+from lfv_pdnn.train import evaluate, train_utils
 
 
 # self-defined metrics functions
@@ -48,7 +49,7 @@ class Model_Base(object):
         Whether the model has been compiled.
         model_name: str
         Name of the model.
-        train_history: 
+        train_history:
         Training of keras model, include 'acc', 'loss', 'val_acc' and 'val_loss'.
 
     """
@@ -56,13 +57,11 @@ class Model_Base(object):
     def __init__(self, name):
         """Initialize model.
 
-        Args: 
+        Args:
         name: str
             Name of the model.
 
         """
-        self.has_data = False
-        self.is_mass_reset = False
         self.model_create_time = str(datetime.datetime.now())
         self.model_is_compiled = False
         self.model_is_loaded = False
@@ -79,8 +78,6 @@ class Model_Sequential_Base(Model_Base):
     Attributes:
         model_input_dim: int
         Number of input variables.
-        model_num_node: int
-        Number of nodes in each layer. 
         model_learn_rate: float
         model_decay: float
         model: keras model
@@ -134,96 +131,33 @@ class Model_Sequential_Base(Model_Base):
 
     def __init__(self,
                  name,
-                 input_dim,
-                 num_node=300,
-                 learn_rate=0.025,
-                 decay=1e-6,
-                 metrics=['plain_acc'],
-                 weighted_metrics=['accuracy'],
-                 selected_features=[],
+                 input_features,
+                 hypers,
                  save_tb_logs=False,
-                 tb_logs_path=None,
-                 use_early_stop=False,
-                 early_stop_paras={}):
+                 tb_logs_path=None):
         """Initialize model."""
         super().__init__(name)
         # Model parameters
         self.model_label = "mod_seq_base"
         self.model_note = "Basic sequential model."
-        self.model_input_dim = input_dim
-        self.model_num_node = num_node
-        self.model_learn_rate = learn_rate
-        self.model_decay = decay
+        self.model_input_dim = len(input_features)
+        self.model_hypers = copy.deepcopy(hypers)
         self.model = Sequential()
-        if 'plain_acc' in metrics:
-            metrics[metrics.index('plain_acc')] = plain_acc
-        if 'plain_acc' in weighted_metrics:
-            weighted_metrics[weighted_metrics.index('plain_acc')] = plain_acc
-        self.metrics = metrics
-        self.weighted_metrics = weighted_metrics
         # Arrays
         self.array_prepared = False
-        self.selected_features = selected_features
+        self.selected_features = input_features
         # Report
         self.save_tb_logs = save_tb_logs
         self.tb_logs_path = tb_logs_path
-        self.use_early_stop = use_early_stop
-        self.early_stop_paras = early_stop_paras
-        # Others
-        self.norm_average = None
-        self.norm_variance = None
-
-    def calculate_auc(self, xs, xb, shuffle_col=None, rm_last_two=False):
-        """Returns auc of given sig/bkg array."""
-        x_plot, y_plot, y_pred = self.process_array(xs,
-                                                    xb,
-                                                    shuffle_col=shuffle_col,
-                                                    rm_last_two=rm_last_two)
-        fpr_dm, tpr_dm, _ = roc_curve(y_plot,
-                                      y_pred,
-                                      sample_weight=x_plot[:, -1])
-        # Calculate auc and return
-        auc_value = auc(fpr_dm, tpr_dm)
-        return auc_value
 
     def compile(self):
-        """ Compile model, function to be changed in the future."""
-        # Add layers
-        # input
-        self.model.add(
-            Dense(self.model_num_node,
-                  kernel_initializer='uniform',
-                  input_dim=self.model_input_dim))
-        # hidden 1
-        # self.model.add(BatchNormalization())
-        self.model.add(
-            Dense(self.model_num_node,
-                  kernel_initializer="glorot_normal",
-                  activation="relu"))
-        # hidden 2
-        # self.model.add(BatchNormalization())
-        self.model.add(
-            Dense(self.model_num_node,
-                  kernel_initializer="glorot_normal",
-                  activation="relu"))
-        # hidden 3
-        # self.model.add(BatchNormalization())
-        self.model.add(
-            Dense(self.model_num_node,
-                  kernel_initializer="glorot_normal",
-                  activation="relu"))
-        # output
-        # self.model.add(BatchNormalization())
-        self.model.add(
-            Dense(1, kernel_initializer="glorot_uniform",
-                  activation="sigmoid"))
-        # Compile
-        self.model.compile(loss="binary_crossentropy",
-                           optimizer=SGD(lr=self.model_learn_rate,
-                                         decay=self.model_decay),
-                           metrics=self.metrics,
-                           weighted_metrics=self.weighted_metrics)
-        self.model_is_compiled = True
+        """ Compile model, function to be changed in the future.
+
+        Note:
+            Needs to be override in child class
+
+        """
+        pass
 
     def get_model(self):
         """Returns model."""
@@ -243,7 +177,7 @@ class Model_Sequential_Base(Model_Base):
         """Returns meta data of trainning performance
 
         Note:
-            This function should be called after show_performance and 
+            This function should be called after show_performance and
         plot_significance_scan being called, otherwise "-" will be used as
         content.
 
@@ -275,10 +209,10 @@ class Model_Sequential_Base(Model_Base):
         return performance_meta_dict
 
     def get_corrcoef(self) -> dict:
-        d_bkg = pd.DataFrame(data=self.xb_selected_original_mass,
+        d_bkg = pd.DataFrame(data=self.feedbox["xb_selected_original_mass"],
                              columns=list(self.selected_features))
         bkg_matrix = d_bkg.corr()
-        d_sig = pd.DataFrame(data=self.xs_selected_original_mass,
+        d_sig = pd.DataFrame(data=self.feedbox["xs_selected_original_mass"],
                              columns=list(self.selected_features))
         sig_matrix = d_sig.corr()
         corrcoef_matrix_dict = {}
@@ -335,1014 +269,19 @@ class Model_Sequential_Base(Model_Base):
         self.class_weight = common_utils.dict_key_strtoint(
             paras_dict['class_weight'])
         self.model_create_time = paras_dict['model_create_time']
-        self.model_decay = paras_dict['model_decay']
         self.model_input_dim = paras_dict['model_input_dim']
         self.model_is_compiled = paras_dict['model_is_compiled']
         self.model_is_saved = paras_dict['model_is_saved']
         self.model_is_trained = paras_dict['model_is_trained']
         self.model_label = paras_dict['model_label']
-        self.model_learn_rate = paras_dict['model_learn_rate']
+        self.model_hypers = paras_dict['model_hypers']
         self.model_name = paras_dict['model_name']
         self.model_note = paras_dict['model_note']
-        self.model_num_node = paras_dict['model_num_node']
         self.train_history_accuracy = paras_dict['train_history_accuracy']
         self.train_history_val_accuracy = paras_dict[
             'train_history_val_accuracy']
         self.train_history_loss = paras_dict['train_history_loss']
         self.train_history_val_loss = paras_dict['train_history_val_loss']
-
-    def make_bar_plot(self,
-                      ax,
-                      datas,
-                      labels,
-                      weights,
-                      bins,
-                      range,
-                      title=None,
-                      x_lable=None,
-                      y_lable=None,
-                      x_unit=None,
-                      x_scale=None,
-                      density=False,
-                      use_error=False,
-                      color="black",
-                      fmt=".k"):
-        """Plot with verticle bar, can be used for data display.
-
-            Note:
-            According to ROOT: 
-            "The error per bin will be computed as sqrt(sum of squares of weight) for each bin."
-
-        """
-        plt.ioff()
-        # Check input
-        data_1dim = np.array([])
-        weight_1dim = np.array([])
-        if type(datas) is list:
-            for data, weight in zip(datas, weights):
-                assert isinstance(data, np.ndarray), \
-                    "datas element should be numpy array."
-                assert isinstance(weight, np.ndarray), \
-                    "weights element should be numpy array."
-                assert data.shape == weight.shape, \
-                    "Input weights should be None or have same type as arrays."
-                data_1dim = np.concatenate((data_1dim, data))
-                weight_1dim = np.concatenate((weight_1dim, weight))
-        elif isinstance(datas, np.ndarray):
-            assert isinstance(datas, np.ndarray), \
-                "datas element should be numpy array."
-            assert isinstance(weights, np.ndarray), \
-                "weights element should be numpy array."
-            assert datas.shape == weights.shape, \
-                "Input weights should be None or have same type as arrays."
-            data_1dim = datas
-            weight_1dim = weights
-        else:
-            raise TypeError("Invalid arrays type.")
-
-        # Scale x axis
-        if x_scale is not None:
-            data_1dim = data_1dim * x_scale
-
-        # Make bar plot
-        # get bin error and edges
-        plot_ys, _ = np.histogram(data_1dim,
-                                  bins=bins,
-                                  range=range,
-                                  weights=weight_1dim,
-                                  density=density)
-        sum_weight_squares, bin_edges = np.histogram(data_1dim,
-                                                     bins=bins,
-                                                     range=range,
-                                                     weights=np.power(
-                                                         weight_1dim, 2))
-        if density:
-            error_scale = 1 / (np.sum(weight_1dim) *
-                               (range[1] - range[0]) / bins)
-            errors = np.sqrt(sum_weight_squares) * error_scale
-        else:
-            errors = np.sqrt(sum_weight_squares)
-        # Only plot ratio when bin is not 0.
-        bin_centers = np.array([])
-        bin_ys = np.array([])
-        bin_yerrs = np.array([])
-        for i, y1 in enumerate(plot_ys):
-            if y1 != 0:
-                ele_center = np.array(
-                    [0.5 * (bin_edges[i] + bin_edges[i + 1])])
-                bin_centers = np.concatenate((bin_centers, ele_center))
-                ele_y = np.array([y1])
-                bin_ys = np.concatenate((bin_ys, ele_y))
-                ele_yerr = np.array([errors[i]])
-                bin_yerrs = np.concatenate((bin_yerrs, ele_yerr))
-        # plot bar
-        bin_size = bin_edges[1] - bin_edges[0]
-        if use_error:
-            ax.errorbar(bin_centers,
-                        bin_ys,
-                        xerr=bin_size / 2.,
-                        yerr=bin_yerrs,
-                        fmt=fmt,
-                        label=labels,
-                        color=color,
-                        markerfacecolor=color,
-                        markeredgecolor=color)
-        else:
-            ax.errorbar(bin_centers,
-                        bin_ys,
-                        xerr=bin_size / 2.,
-                        yerr=None,
-                        fmt=fmt,
-                        label=labels,
-                        color=color,
-                        markerfacecolor=color,
-                        markeredgecolor=color)
-        # Config
-        if title is not None:
-            ax.set_title(title)
-        if x_lable is not None:
-            if x_unit is not None:
-                ax.set_xlabel(x_lable + '/' + x_unit)
-            else:
-                ax.set_xlabel(x_lable)
-        else:
-            if x_unit is not None:
-                ax.set_xlabel(x_unit)
-        if y_lable is not None:
-            ax.set_ylabel(y_lable)
-        if range is not None:
-            ax.axis(xmin=range[0], xmax=range[1])
-        ax.legend(loc="upper right")
-
-    def plot_accuracy(self, ax):
-        """Plots accuracy vs training epoch."""
-        print("Plotting accuracy curve.")
-        # Plot
-        ax.plot(self.train_history_accuracy)
-        ax.plot(self.train_history_val_accuracy)
-        # Config
-        ax.set_title('model accuracy')
-        ax.set_ylabel('accuracy')
-        #ax.set_ylim((0, 1))
-        ax.set_xlabel('epoch')
-        ax.legend(['train', 'val'], loc='lower left')
-        ax.grid()
-
-    def plot_auc_text(self, ax, titles, auc_values):
-        """Plots auc information on roc curve."""
-        auc_text = 'auc values:\n'
-        for (title, auc_value) in zip(titles, auc_values):
-            auc_text = auc_text + title + ": " + str(auc_value) + '\n'
-        auc_text = auc_text[:-1]
-        props = dict(boxstyle='round', facecolor='white', alpha=0.3)
-        ax.text(0.5,
-                0.6,
-                auc_text,
-                transform=ax.transAxes,
-                fontsize=10,
-                verticalalignment='top',
-                bbox=props)
-
-    def plot_correlation_matrix(self, ax, matrix_key="bkg"):
-        corr_matrix_dict = self.get_corrcoef()
-        # Get matrix
-        corr_matrix = corr_matrix_dict[matrix_key]
-        # Generate a mask for the upper triangle
-        mask = np.triu(np.ones_like(corr_matrix, dtype=np.bool))
-        # Generate a custom diverging colormap
-        cmap = sns.diverging_palette(220, 10, as_cmap=True)
-        # Draw the heatmap with the mask and correct aspect ratio
-        sns.heatmap(corr_matrix,
-                    mask=mask,
-                    cmap=cmap,
-                    vmax=.3,
-                    center=0,
-                    square=True,
-                    linewidths=.5,
-                    cbar_kws={"shrink": .5},
-                    ax=ax)
-
-    def plot_feature_importance(self, ax, log=True):
-        """Calculates importance of features and sort the feature.
-
-        Definition of feature importance used here can be found in:
-        https://christophm.github.io/interpretable-ml-book/feature-importance.html#feature-importance-data
-
-        """
-        print("Plotting feature importance.")
-        # Prepare
-        num_feature = len(self.selected_features)
-        selected_feature_names = np.array(self.selected_features)
-        feature_importance = np.zeros(num_feature)
-        xs = self.xs_test_original_mass
-        xb = self.xb_test_original_mass
-        base_auc = self.calculate_auc(xs, xb, rm_last_two=True)
-        print("base auc:", base_auc)
-        # Calculate importance
-        for num, feature_name in enumerate(selected_feature_names):
-            current_auc = self.calculate_auc(xs,
-                                             xb,
-                                             shuffle_col=num,
-                                             rm_last_two=True)
-            #current_auc = 1
-            feature_importance[num] = (1 - current_auc) / (1 - base_auc)
-            print(feature_name, ":", feature_importance[num])
-        # Sort
-        sort_list = np.flip(np.argsort(feature_importance))
-        sorted_importance = feature_importance[sort_list]
-        sorted_names = selected_feature_names[sort_list]
-        print("Feature importance rank:", sorted_names)
-        # Plot
-        if num_feature > 8:
-            num_show = 8
-        else:
-            num_show = num_feature
-        ax.bar(np.arange(num_show),
-               sorted_importance[:num_show],
-               align='center',
-               alpha=0.5,
-               log=log)
-        ax.axhline(1, ls='--', color='r')
-        ax.set_title("feature importance")
-        ax.set_xticks(np.arange(num_show))
-        ax.set_xticklabels(sorted_names[:num_show])
-
-    def plot_final_roc(self, ax):
-        """Plots roc curve for to check final training result on original samples.
-        (backgound sample mass not reset according to signal)
-
-        """
-        print("Plotting final roc curve.")
-        # Check
-        if not self.model_is_trained:
-            warnings.warn("Model is not trained yet.")
-        # Make plots
-        xs_plot = self.xs_reshape.copy()
-        xb_plot = self.xb_reshape.copy()
-        auc_value, _, _ = self.plot_roc(ax,
-                                        xs_plot,
-                                        xb_plot,
-                                        class_weight=None)
-        # Show auc value:
-        self.plot_auc_text(ax, ['non-mass-reset auc'], [auc_value])
-        # Extra plot config
-        ax.grid()
-
-    def plot_loss(self, ax):
-        """Plots loss vs training epoch."""
-        print("Plotting loss curve.")
-        # Plot
-        ax.plot(self.train_history_loss)
-        ax.plot(self.train_history_val_loss)
-        # Config
-        ax.set_title('model loss')
-        ax.set_xlabel('epoch')
-        ax.set_ylabel('loss')
-        ax.legend(['train', 'val'], loc='lower left')
-        ax.grid()
-
-    def plot_roc(self, ax, xs, xb, class_weight=None):
-        """Plots roc curve on given axes."""
-        # Get data
-        x_plot, y_plot, y_pred = self.process_array(xs,
-                                                    xb,
-                                                    rm_last_two=True)
-        fpr_dm, tpr_dm, _ = roc_curve(y_plot,
-                                      y_pred,
-                                      sample_weight=x_plot[:, -1])
-        # Make plots
-        ax.plot(fpr_dm, tpr_dm)
-        ax.set_title("roc curve")
-        ax.set_xlabel('fpr')
-        ax.set_ylabel('tpr')
-        ax.set_ylim(0.1, 1 - 1e-4)
-        ax.set_yscale('logit')
-        ax.yaxis.set_minor_formatter(NullFormatter())
-        # Calculate auc and return parameters
-        auc_value = auc(fpr_dm, tpr_dm)
-        return auc_value, fpr_dm, tpr_dm
-
-    def plot_overtrain_check(self, ax, bins=50, range=(-0.25, 1.25), log=True):
-        """Plots train/test scores distribution to check overtrain"""
-        print("Plotting train/test scores.")
-        # plot test scores
-        self.plot_scores(ax,
-                         self.xb_test_selected,
-                         self.xb_test[:, -1],
-                         self.xs_test_selected,
-                         self.xs_test[:, -1],
-                         apply_data=False,
-                         title="over training check",
-                         bkg_label="b-test",
-                         sig_label="s-test",
-                         bins=bins,
-                         range=range,
-                         density=True,
-                         log=log)
-        # plot train scores
-        self.make_bar_plot(ax,
-                           self.get_model().predict(self.xb_train_selected),
-                           "b-train",
-                           weights=np.reshape(self.xb_train[:, -1], (-1, 1)),
-                           bins=bins,
-                           range=range,
-                           density=True,
-                           use_error=True,
-                           color="darkblue",
-                           fmt=".")
-        self.make_bar_plot(ax,
-                           self.get_model().predict(self.xs_train_selected),
-                           "s-train",
-                           weights=np.reshape(self.xs_train[:, -1], (-1, 1)),
-                           bins=bins,
-                           range=range,
-                           density=True,
-                           use_error=True,
-                           color="maroon",
-                           fmt=".")
-
-    def plot_overtrain_check_original_mass(self,
-                                           ax,
-                                           bins=50,
-                                           range=(-0.25, 1.25),
-                                           log=True):
-        """Plots train/test scores distribution to check overtrain"""
-        print("Plotting train/test scores (original mass).")
-        # plot test scores
-        self.plot_scores(ax,
-                         self.xb_test_selected_original_mass,
-                         self.xb_test_original_mass[:, -1],
-                         self.xs_test_selected_original_mass,
-                         self.xs_test_original_mass[:, -1],
-                         apply_data=False,
-                         title="over training check",
-                         bkg_label="b-test",
-                         sig_label="s-test",
-                         bins=bins,
-                         range=range,
-                         density=True,
-                         log=log)
-        # plot train scores
-        self.make_bar_plot(
-            ax,
-            self.get_model().predict(self.xb_train_selected_original_mass),
-            "b-train",
-            weights=np.reshape(self.xb_train_original_mass[:, -1], (-1, 1)),
-            bins=bins,
-            range=range,
-            density=True,
-            use_error=True,
-            color="darkblue",
-            fmt=".")
-        self.make_bar_plot(
-            ax,
-            self.get_model().predict(self.xs_train_selected_original_mass),
-            "s-train",
-            weights=np.reshape(self.xs_train_original_mass[:, -1], (-1, 1)),
-            bins=bins,
-            range=range,
-            density=True,
-            use_error=True,
-            color="maroon",
-            fmt=".")
-
-    def plot_scores(self,
-                    ax,
-                    selected_bkg,
-                    bkg_weight,
-                    selected_sig,
-                    sig_weight,
-                    selected_data=None,
-                    data_weight=None,
-                    apply_data=False,
-                    title="scores",
-                    bkg_label="bkg",
-                    sig_label="sig",
-                    bins=50,
-                    range=(-0.25, 1.25),
-                    density=True,
-                    log=False):
-        """Plots score distribution for siganl and background."""
-        ax.hist(self.get_model().predict(selected_bkg),
-                weights=bkg_weight,
-                bins=bins,
-                range=range,
-                histtype='step',
-                label=bkg_label,
-                density=density,
-                log=log,
-                facecolor='blue',
-                edgecolor='darkblue',
-                alpha=0.5,
-                fill=True)
-        ax.hist(self.get_model().predict(selected_sig),
-                weights=sig_weight,
-                bins=bins,
-                range=range,
-                histtype='step',
-                label=sig_label,
-                density=density,
-                log=log,
-                facecolor='red',
-                edgecolor='maroon',
-                hatch='///',
-                alpha=1,
-                fill=False)
-        if apply_data:
-            self.make_bar_plot(ax,
-                               self.get_model().predict(selected_data),
-                               "data",
-                               weights=np.reshape(data_weight, (-1, 1)),
-                               bins=bins,
-                               range=range,
-                               density=density,
-                               use_error=False)
-        ax.set_title(title)
-        ax.legend(loc='lower left')
-        ax.set_xlabel("Output score")
-        ax.set_ylabel("arb. unit")
-        ax.grid()
-
-    def plot_scores_separate(self,
-                             ax,
-                             bkg_dict,
-                             bkg_plot_key_list,
-                             selected_features,
-                             sig_arr=None,
-                             sig_weights=None,
-                             apply_data=False,
-                             data_arr=None,
-                             data_weight=None,
-                             plot_title='all input scores',
-                             bins=50,
-                             range=(-0.25, 1.25),
-                             density=True,
-                             log=False):
-        """Plots training score distribution for different background.
-
-        Note:
-            bkg_plot_key_list can be used to adjust order of background sample 
-            stacking. For example, if bkg_plot_key_list = ['top', 'zll', 'diboson']
-            'top' will be put at bottom & 'zll' in the middle & 'diboson' on the top
-
-        """
-        print("Plotting scores with bkg separated.")
-        predict_arr_list = []
-        predict_arr_weight_list = []
-        # plot background
-        if (type(bkg_plot_key_list) is
-                not list) or len(bkg_plot_key_list) == 0:
-            # prepare plot key list sort with total weight by default
-            original_keys = list(bkg_dict.keys())
-            total_weight_list = []
-            for key in original_keys:
-                total_weight = np.sum((bkg_dict[key])[:, -1])
-                total_weight_list.append(total_weight)
-            sort_indexes = np.argsort(np.array(total_weight_list))
-            bkg_plot_key_list = [
-                original_keys[index] for index in sort_indexes
-            ]
-        for arr_key in bkg_plot_key_list:
-            bkg_arr_temp = bkg_dict[arr_key].copy()
-            bkg_arr_temp[:, 0:-2] = train_utils.norarray(
-                bkg_arr_temp[:, 0:-2],
-                average=self.norm_average,
-                variance=self.norm_variance)
-            selected_arr = train_utils.get_valid_feature(bkg_arr_temp)
-            predict_arr_list.append(
-                np.array(self.get_model().predict(selected_arr)))
-            predict_arr_weight_list.append(bkg_arr_temp[:, -1])
-        try:
-            ax.hist(np.transpose(predict_arr_list),
-                    bins=bins,
-                    range=range,
-                    weights=np.transpose(predict_arr_weight_list),
-                    histtype='bar',
-                    label=bkg_plot_key_list,
-                    density=density,
-                    stacked=True)
-        except:
-            ax.hist(predict_arr_list[0],
-                    bins=bins,
-                    range=range,
-                    weights=predict_arr_weight_list[0],
-                    histtype='bar',
-                    label=bkg_plot_key_list,
-                    density=density,
-                    stacked=True)
-        # plot signal
-        if sig_arr is None:
-            selected_arr = train_utils.get_valid_feature(self.xs_reshape)
-            predict_arr = self.get_model().predict(selected_arr)
-            predict_weight_arr = self.xs_reshape[:, -1]
-        else:
-            sig_arr_temp = sig_arr.copy()
-            sig_arr_temp[:, 0:-2] = train_utils.norarray(
-                sig_arr[:, 0:-2],
-                average=self.norm_average,
-                variance=self.norm_variance)
-            selected_arr = train_utils.get_valid_feature(sig_arr_temp)
-            predict_arr = np.array(self.get_model().predict(selected_arr))
-            predict_weight_arr = sig_arr_temp[:, -1]
-        ax.hist(predict_arr,
-                bins=bins,
-                range=range,
-                weights=predict_weight_arr,
-                histtype='step',
-                label='sig',
-                density=density)
-        # plot data
-        if apply_data:
-            if data_arr is None:
-                data_arr = self.xd_selected_original_mass.copy()
-                data_weight = self.xd[:, -1]
-            self.make_bar_plot(ax,
-                               self.get_model().predict(data_arr),
-                               "data",
-                               weights=np.reshape(data_weight, (-1, 1)),
-                               bins=bins,
-                               range=range,
-                               density=density,
-                               use_error=False)
-        ax.set_title(plot_title)
-        ax.legend(loc='upper right')
-        ax.set_xlabel("Output score")
-        ax.set_ylabel("arb. unit")
-        ax.grid()
-        if log is True:
-            ax.set_yscale('log')
-            ax.set_title(plot_title + "(log)")
-        else:
-            ax.set_title(plot_title + "(lin)")
-
-    def plot_scores_separate_root(self,
-                                  bkg_dict,
-                                  bkg_plot_key_list,
-                                  selected_features,
-                                  sig_arr=None,
-                                  apply_data=False,
-                                  apply_data_range=None,
-                                  data_arr=None,
-                                  plot_title='all input scores',
-                                  bins=50,
-                                  range=(-0.25, 1.25),
-                                  scale_sig=False,
-                                  density=True,
-                                  log_scale=False,
-                                  save_plot=False,
-                                  save_dir=None,
-                                  save_file_name=None):
-        """Plots training score distribution for different background with ROOT
-
-        Note:
-            bkg_plot_key_list can be used to adjust order of background sample 
-            stacking. For example, if bkg_plot_key_list = ['top', 'zll', 'diboson']
-            'top' will be put at bottom & 'zll' in the middle & 'diboson' on the top
-
-        """
-        print("Plotting scores with bkg separated with ROOT.")
-        plot_canvas = ROOT.TCanvas(plot_title, plot_title, 800, 800)
-        plot_pad_score = ROOT.TPad("pad1", "pad1", 0, 0.3, 1, 1.0)
-        plot_pad_score.SetBottomMargin(0)
-        plot_pad_score.SetGridx()
-        plot_pad_score.Draw()
-        plot_pad_score.cd()
-        hist_list = []
-        # plot background
-        if (type(bkg_plot_key_list) is
-                not list) or len(bkg_plot_key_list) == 0:
-            # prepare plot key list sort with total weight by default
-            original_keys = list(bkg_dict.keys())
-            total_weight_list = []
-            for key in original_keys:
-                total_weight = np.sum((bkg_dict[key])[:, -1])
-                total_weight_list.append(total_weight)
-            sort_indexes = np.argsort(np.array(total_weight_list))
-            bkg_plot_key_list = [
-                original_keys[index] for index in sort_indexes
-            ]
-        for arr_key in bkg_plot_key_list:
-            bkg_arr_temp = bkg_dict[arr_key].copy()
-            bkg_arr_temp[:, 0:-2] = train_utils.norarray(
-                bkg_arr_temp[:, 0:-2],
-                average=self.norm_average,
-                variance=self.norm_variance)
-            selected_arr = train_utils.get_valid_feature(bkg_arr_temp)
-            predict_arr = np.array(self.get_model().predict(selected_arr))
-            predict_weight_arr = bkg_arr_temp[:, -1]
-
-            th1_temp = th1_tools.TH1FTool(arr_key,
-                                          arr_key,
-                                          nbin=bins,
-                                          xlow=range[0],
-                                          xup=range[1])
-            th1_temp.fill_hist(predict_arr, predict_weight_arr)
-            hist_list.append(th1_temp)
-        hist_stacked_bkgs = th1_tools.THStackTool("bkg stack plot",
-                                                  plot_title,
-                                                  hist_list,
-                                                  canvas=plot_pad_score)
-        hist_stacked_bkgs.draw("pfc hist", log_scale=log_scale)
-        hist_stacked_bkgs.get_hstack().GetYaxis().SetTitle("events/bin")
-        hist_bkg_total = hist_stacked_bkgs.get_added_hists()
-        total_weight_bkg = hist_bkg_total.GetSumOfWeights()
-        # plot signal
-        if sig_arr is None:
-            selected_arr = train_utils.get_valid_feature(self.xs_reshape)
-            predict_arr = self.get_model().predict(selected_arr)
-            predict_weight_arr = self.xs_reshape[:, -1]
-        else:
-            sig_arr_temp = sig_arr.copy()
-            sig_arr_temp[:, 0:-2] = train_utils.norarray(
-                sig_arr[:, 0:-2],
-                average=self.norm_average,
-                variance=self.norm_variance)
-            selected_arr = train_utils.get_valid_feature(sig_arr_temp)
-            predict_arr = np.array(self.get_model().predict(selected_arr))
-            predict_weight_arr = sig_arr_temp[:, -1]
-        if scale_sig:
-            sig_title = "sig-scaled"
-        else:
-            sig_title = "sig"
-        hist_sig = th1_tools.TH1FTool("sig added",
-                                      sig_title,
-                                      nbin=bins,
-                                      xlow=range[0],
-                                      xup=range[1],
-                                      canvas=plot_pad_score)
-        hist_sig.fill_hist(predict_arr, predict_weight_arr)
-        total_weight_sig = hist_sig.get_hist().GetSumOfWeights()
-        if scale_sig:
-            total_weight = hist_stacked_bkgs.get_total_weights()
-            scale_factor = total_weight / hist_sig.get_hist().GetSumOfWeights()
-            hist_sig.get_hist().Scale(scale_factor)
-        hist_sig.update_config("hist", "SetLineColor", ROOT.kRed)
-        # set proper y range
-        maximum_y = max(plot_utils.get_highest_bin_value(hist_list),
-                        plot_utils.get_highest_bin_value(hist_sig))
-        hist_stacked_bkgs.get_hstack().SetMaximum(1.2 * maximum_y)
-        hist_stacked_bkgs.get_hstack().SetMinimum(0.1)
-        hist_stacked_bkgs.get_hstack().GetYaxis().SetLabelFont(43)
-        hist_stacked_bkgs.get_hstack().GetYaxis().SetLabelSize(15)
-        hist_sig.draw("same hist")
-        # plot data if required
-        total_weight_data = 0
-        if apply_data:
-            if data_arr is None:
-                selected_arr = self.xd_selected_original_mass.copy()
-                predict_arr = self.get_model().predict(selected_arr)
-                predict_weight_arr = self.xd[:, -1]
-            hist_data = th1_tools.TH1FTool("data added",
-                                           "data",
-                                           nbin=bins,
-                                           xlow=range[0],
-                                           xup=range[1],
-                                           canvas=plot_pad_score)
-            hist_data.fill_hist(predict_arr, predict_weight_arr)
-            hist_data.update_config("hist", "SetMarkerStyle", ROOT.kFullCircle)
-            hist_data.update_config("hist", "SetMarkerColor", ROOT.kBlack)
-            hist_data.update_config("hist", "SetMarkerSize", 0.8)
-            if apply_data_range is not None:
-                hist_data.get_hist().GetXaxis().SetRangeUser(
-                    apply_data_range[0], apply_data_range[1])
-            hist_data.draw("same e1", log_scale=log_scale)
-            total_weight_data = hist_data.get_hist().GetSumOfWeights()
-        else:
-            hist_data = hist_sig
-            total_weight_data = 0
-        hist_data.build_legend(0.4, 0.7, 0.6, 0.9)
-
-        # ratio plot
-        if apply_data:
-            plot_canvas.cd()
-            plot_pad_ratio = ROOT.TPad("pad2", "pad2", 0, 0.05, 1, 0.3)
-            plot_pad_ratio.SetTopMargin(0)
-            plot_pad_ratio.SetGridx()
-            plot_pad_ratio.Draw()
-            plot_pad_ratio.cd()
-            # plot bkg error bar
-            hist_bkg_err = hist_bkg_total.Clone()
-            hist_bkg_err.Divide(hist_bkg_err.Clone())
-            hist_bkg_err.SetDefaultSumw2()
-            hist_bkg_err.SetMinimum(0.5)
-            hist_bkg_err.SetMaximum(1.5)
-            hist_bkg_err.SetStats(0)
-            hist_bkg_err.SetTitle("")
-            hist_bkg_err.SetFillColor(ROOT.kGray)
-            hist_bkg_err.GetXaxis().SetTitle("DNN score")
-            hist_bkg_err.GetXaxis().SetTitleSize(20)
-            hist_bkg_err.GetXaxis().SetTitleFont(43)
-            hist_bkg_err.GetXaxis().SetTitleOffset(4.)
-            hist_bkg_err.GetXaxis().SetLabelFont(43)
-            hist_bkg_err.GetXaxis().SetLabelSize(15)
-            hist_bkg_err.GetYaxis().SetTitle("data/bkg")
-            hist_bkg_err.GetYaxis().SetNdivisions(505)
-            hist_bkg_err.GetYaxis().SetTitleSize(20)
-            hist_bkg_err.GetYaxis().SetTitleFont(43)
-            hist_bkg_err.GetYaxis().SetTitleOffset(1.55)
-            hist_bkg_err.GetYaxis().SetLabelFont(43)
-            hist_bkg_err.GetYaxis().SetLabelSize(15)
-            hist_bkg_err.Draw("e3")
-            # plot base line
-            base_line = ROOT.TF1("one", "1", 0, 1)
-            base_line.SetLineColor(ROOT.kRed)
-            base_line.Draw("same")
-            # plot ratio
-            hist_ratio = hist_data.get_hist().Clone()
-            hist_ratio.Divide(hist_bkg_total)
-            hist_ratio.Draw("same")
-
-        # show & save total weight info
-        self.total_weight_sig = total_weight_sig
-        print("sig total weight:", total_weight_sig)
-        self.total_weight_bkg = total_weight_bkg
-        print("bkg total weight:", total_weight_bkg)
-        self.total_weight_data = total_weight_data
-        print("data total weight:", total_weight_data)
-
-        # save plot
-        if save_plot:
-            plot_canvas.SaveAs(save_dir + "/" + save_file_name + ".png")
-
-    def plot_significance_scan(self, ax) -> None:
-        """Shows significance change with threshould.
-
-        Note:
-            significance is calculated by s/sqrt(b)
-        """
-        print("Plotting significance scan.")
-        sig_predictions = self.model.predict(self.xs_reshape_selected)
-        sig_predictions_weights = np.reshape(self.xs_reshape[:, -1], (-1, 1))
-        bkg_predictions = self.model.predict(self.xb_reshape_selected)
-        bkg_predictions_weights = np.reshape(self.xb_reshape[:, -1], (-1, 1))
-        # prepare threshoulds
-        bin_array = np.array(range(-1000, 1000))
-        threshoulds = 1. / (1. + 1. / np.exp(bin_array * 0.02))
-        # scan
-        significances = []
-        plot_threshoulds = []
-        sig_above_threshould = []
-        bkg_above_threshould = []
-        for dnn_cut in threshoulds:
-            sig_ids_passed = sig_predictions > dnn_cut
-            total_sig_weights_passed = np.sum(
-                sig_predictions_weights[sig_ids_passed])
-            bkg_ids_passed = bkg_predictions > dnn_cut
-            total_bkg_weights_passed = np.sum(
-                bkg_predictions_weights[bkg_ids_passed])
-            if total_bkg_weights_passed > 0 and total_sig_weights_passed > 0:
-                plot_threshoulds.append(dnn_cut)
-                current_significance = train_utils.calculate_asimove(
-                    total_sig_weights_passed, total_bkg_weights_passed)
-                #current_significance = total_sig_weights_passed / total_bkg_weights_passed
-                significances.append(current_significance)
-                sig_above_threshould.append(total_sig_weights_passed)
-                bkg_above_threshould.append(total_bkg_weights_passed)
-        total_sig_weight = np.sum(sig_predictions_weights)
-        total_bkg_weight = np.sum(bkg_predictions_weights)
-        significances_no_nan = np.nan_to_num(significances)
-        max_significance = np.amax(significances_no_nan)
-        index = np.argmax(significances_no_nan)
-        max_significance_threshould = plot_threshoulds[index]
-        max_significance_sig_total = sig_above_threshould[index]
-        max_significance_bkg_total = bkg_above_threshould[index]
-        # make plots
-        # plot original significance
-        original_significance = train_utils.calculate_asimove(
-            total_sig_weight, total_bkg_weight)
-        ax.axhline(y=original_significance, color="grey", linestyle="--")
-        # significance scan curve
-        ax.plot(plot_threshoulds, significances_no_nan,
-                color='r', label="asimov")
-        # signal/background events scan curve
-        ax2 = ax.twinx()
-        max_sig_events = sig_above_threshould[0]
-        max_bkg_events = bkg_above_threshould[0]
-        sig_events_above_threshould = np.array(
-            sig_above_threshould) / max_sig_events
-        bkg_events_above_threshould = np.array(
-            bkg_above_threshould) / max_bkg_events
-        ax2.plot(plot_threshoulds,
-                 sig_events_above_threshould,
-                 color="orange",
-                 label="sig")
-        ax2.plot(plot_threshoulds,
-                 bkg_events_above_threshould,
-                 color="blue",
-                 label="bkg")
-        ax2.set_ylabel('sig(bkg) ratio after cut')
-        # reference threshould
-        ax.axvline(x=max_significance_threshould,
-                   color='green',
-                   linestyle="-.")
-        # more infomation
-        content = "max asimov:" + str(
-            common_utils.get_significant_digits(max_significance, 6)
-        ) + "\nbest threshould:" + str(
-            common_utils.get_significant_digits(
-                max_significance_threshould, 6)) + "\nbase asimov:" + str(
-                    common_utils.get_significant_digits(
-                        original_significance,
-                        6)) + "\nsig events above threshould:" + str(
-                            common_utils.get_significant_digits(
-                                max_significance_sig_total,
-                                6)) + "\nbkg events above threshould:" + str(
-                                    common_utils.get_significant_digits(
-                                        max_significance_bkg_total, 6))
-        ax.text(0.05,
-                0.9,
-                content,
-                verticalalignment='top',
-                horizontalalignment='left',
-                transform=ax.transAxes,
-                color='green',
-                fontsize=12)
-        # set up plot
-        ax.set_title("significance scan")
-        ax.set_xscale("logit")
-        ax.set_xlabel('DNN score threshould')
-        ax.set_ylabel('asimov')
-        ax.set_ylim(bottom=0)
-        ax.locator_params(nbins=10, axis='x')
-        ax.yaxis.set_minor_formatter(NullFormatter())
-        ax.legend(loc='center left')
-        ax2.legend(loc='center right')
-        # ax2.set_yscale("log")
-        # collect meta data
-        self.original_significance = original_significance
-        self.max_significance = max_significance
-        self.max_significance_threshould = max_significance_threshould
-
-    def plot_train_test_roc(self, ax):
-        """Plots roc curve."""
-        print("Plotting train/test roc curve.")
-        # Check
-        if not self.model_is_trained:
-            warnings.warn("Model is not trained yet.")
-        # First plot roc for train dataset
-        auc_train, _, _ = self.plot_roc(ax, self.xs_train, self.xb_train)
-        # Then plot roc for test dataset
-        auc_test, _, _ = self.plot_roc(ax, self.xs_test, self.xb_test)
-        # Then plot roc for train dataset without reseting mass
-        auc_train_original, _, _ = self.plot_roc(ax,
-                                                 self.xs_train_original_mass,
-                                                 self.xb_train_original_mass)
-        # Lastly, plot roc for test dataset without reseting mass
-        auc_test_original, _, _ = self.plot_roc(ax, self.xs_test_original_mass,
-                                                self.xb_test_original_mass)
-        # Show auc value:
-        self.plot_auc_text(
-            ax, ['TV ', 'TE ', 'TVO', 'TEO'],
-            [auc_train, auc_test, auc_train_original, auc_test_original])
-        # Extra plot config
-        ax.legend([
-            'TV (train+val)', 'TE (test)', 'TVO (train+val original)',
-            'TEO (test original)'
-        ],
-            loc='lower right')
-        ax.grid()
-        # Collect meta data
-        self.auc_train = auc_train
-        self.auc_test = auc_test
-        self.auc_train_original = auc_train_original
-        self.auc_test_original = auc_test_original
-
-    def plot_test_scores(self,
-                         ax,
-                         title="test scores",
-                         bins=50,
-                         range=(-0.25, 1.25),
-                         apply_data=False,
-                         density=True,
-                         log=True):
-        """Plots training score distribution for siganl and background."""
-        print("Plotting test scores.")
-        if apply_data:
-            selected_data = self.xd_selected
-            data_weight = self.xd_norm[:, -1]
-        else:
-            selected_data = None
-            data_weight = None
-        self.plot_scores(ax,
-                         self.xb_test_selected,
-                         self.xb_test[:, -1],
-                         self.xs_test_selected,
-                         self.xs_test[:, -1],
-                         selected_data=selected_data,
-                         data_weight=data_weight,
-                         apply_data=apply_data,
-                         title=title,
-                         bins=bins,
-                         range=range,
-                         density=density,
-                         log=log)
-
-    def plot_test_scores_original_mass(self,
-                                       ax,
-                                       title="test scores (original mass)",
-                                       bins=50,
-                                       range=(-0.25, 1.25),
-                                       apply_data=False,
-                                       density=True,
-                                       log=True):
-        """Plots training score distribution for siganl and background."""
-        print("Plotting test scores with original mass.")
-        if apply_data:
-            selected_data = self.xd_selected_original_mass
-            data_weight = self.xd_norm[:, -1]
-        else:
-            selected_data = None
-            data_weight = None
-        self.plot_scores(ax,
-                         self.xb_test_selected_original_mass,
-                         self.xb_test_original_mass[:, -1],
-                         self.xs_test_selected_original_mass,
-                         self.xs_test_original_mass[:, -1],
-                         selected_data=selected_data,
-                         data_weight=data_weight,
-                         apply_data=apply_data,
-                         title=title,
-                         bins=bins,
-                         range=range,
-                         density=density,
-                         log=log)
-
-    def plot_train_scores(self,
-                          ax,
-                          title="train scores",
-                          bins=50,
-                          range=(-0.25, 1.25),
-                          apply_data=False,
-                          density=True,
-                          log=True):
-        """Plots training score distribution for siganl and background."""
-        print("Plotting train scores.")
-        if apply_data:
-            selected_data = self.xd_selected
-            data_weight = self.xd_norm[:, -1]
-        else:
-            selected_data = None
-            data_weight = None
-        self.plot_scores(ax,
-                         self.xb_train_selected,
-                         self.xb_train[:, -1],
-                         self.xs_train_selected,
-                         self.xs_train[:, -1],
-                         selected_data=selected_data,
-                         data_weight=data_weight,
-                         apply_data=apply_data,
-                         title=title,
-                         bins=bins,
-                         range=range,
-                         density=density,
-                         log=log)
-
-    def plot_train_scores_original_mass(self,
-                                        ax,
-                                        title="train scores (original mass)",
-                                        bins=50,
-                                        range=(-0.25, 1.25),
-                                        apply_data=False,
-                                        density=True,
-                                        log=True):
-        """Plots training score distribution for siganl and background."""
-        print("Plotting train scores with original mass.")
-        if apply_data:
-            selected_data = self.xd_selected_original_mass
-            data_weight = self.xd_norm[:, -1]
-        else:
-            selected_data = None
-            data_weight = None
-        self.plot_scores(ax,
-                         self.xb_train_selected_original_mass,
-                         self.xb_train_original_mass[:, -1],
-                         self.xs_train_selected_original_mass,
-                         self.xs_train_original_mass[:, -1],
-                         selected_data=selected_data,
-                         data_weight=data_weight,
-                         apply_data=apply_data,
-                         title=title,
-                         bins=bins,
-                         range=range,
-                         density=density,
-                         log=log)
-
-    def process_array(self, xs, xb, shuffle_col=None, rm_last_two=False):
-        """Process sig/bkg arrays in the same way for training arrays."""
-        # Get data
-        xs_proc = xs.copy()
-        xb_proc = xb.copy()
-        x_proc = np.concatenate((xs_proc, xb_proc))
-        if shuffle_col is not None:
-            x_proc = array_utils.reset_col(x_proc, x_proc, shuffle_col)
-        if rm_last_two:
-            x_proc_selected = train_utils.get_valid_feature(x_proc)
-        else:
-            x_proc_selected = x_proc
-        y_proc = np.concatenate(
-            (np.ones(xs_proc.shape[0]), np.zeros(xb_proc.shape[0])))
-        y_pred = self.get_model().predict(x_proc_selected)
-        return x_proc, y_proc, y_pred
 
     def save_model(self, save_dir=None, file_name=None):
         """Saves trained model.
@@ -1384,16 +323,14 @@ class Model_Sequential_Base(Model_Base):
         paras_dict = {}
         paras_dict['class_weight'] = self.class_weight
         paras_dict['model_create_time'] = self.model_create_time
-        paras_dict['model_decay'] = self.model_decay
         paras_dict['model_input_dim'] = self.model_input_dim
         paras_dict['model_is_compiled'] = self.model_is_compiled
         paras_dict['model_is_saved'] = self.model_is_saved
         paras_dict['model_is_trained'] = self.model_is_trained
         paras_dict['model_label'] = self.model_label
-        paras_dict['model_learn_rate'] = self.model_learn_rate
+        paras_dict['model_hypers'] = self.model_hypers
         paras_dict['model_name'] = self.model_name
         paras_dict['model_note'] = self.model_note
-        paras_dict['model_num_node'] = self.model_num_node
         paras_dict['train_history_accuracy'] = self.train_history_accuracy
         paras_dict[
             'train_history_val_accuracy'] = self.train_history_val_accuracy
@@ -1402,135 +339,10 @@ class Model_Sequential_Base(Model_Base):
         with open(save_path, 'w') as write_file:
             json.dump(paras_dict, write_file, indent=2)
 
-    def set_inputs(self, feed_box: dict, apply_data=False) -> None:
+    def set_inputs(self, feedbox: dict, apply_data=False) -> None:
         """Prepares array for training."""
-        self.xs_raw = feed_box["xs_raw"]
-        self.xb_raw = feed_box["xb_raw"]
-        # normalized arrays
-        self.norm_average = feed_box["norm_average"]
-        self.norm_variance = feed_box["norm_variance"]
-        self.xs_reshape = feed_box["xs_reshape"]
-        self.xb_reshape = feed_box["xb_reshape"]
-        # bkg array with mass reset
-        self.xb_reset_mass = feed_box["xb_reset_mass"]
-        self.is_mass_reset = feed_box["is_mass_reset"]
-        # reweighted arrays
-        self.xs_reweight = feed_box["xs_reweight"]
-        self.xb_reweight = feed_box["xb_reweight"]
-        self.xb_reweight_reset_mass = feed_box["xb_reweight_reset_mass"]
-        # train/test data set, split with ratio=test_rate
-        self.x_train = feed_box["x_train"]
-        self.x_test = feed_box["x_test"]
-        self.y_train = feed_box["y_train"]
-        self.y_test = feed_box["y_test"]
-        self.xs_train = feed_box["xs_train"]
-        self.xs_test = feed_box["xs_test"]
-        self.xb_train = feed_box["xb_train"]
-        self.xb_test = feed_box["xb_test"]
-        self.x_train_original_mass = feed_box["x_train_original_mass"]
-        self.x_test_original_mass = feed_box["x_test_original_mass"]
-        self.y_train_original_mass = feed_box["y_train_original_mass"]
-        self.y_test_original_mass = feed_box["y_test_original_mass"]
-        self.xs_train_original_mass = feed_box["xs_train_original_mass"]
-        self.xs_test_original_mass = feed_box["xs_test_original_mass"]
-        self.xb_train_original_mass = feed_box["xb_train_original_mass"]
-        self.xb_test_original_mass = feed_box["xb_test_original_mass"]
-        # select features
-        self.x_train_selected = feed_box["x_train_selected"]
-        self.x_test_selected = feed_box["x_test_selected"]
-        self.xs_train_selected = feed_box["xs_train_selected"]
-        self.xb_train_selected = feed_box["xb_train_selected"]
-        self.xs_test_selected = feed_box["xs_test_selected"]
-        self.xb_test_selected = feed_box["xb_test_selected"]
-        self.xs_selected = feed_box["xs_selected"]
-        self.xb_selected = feed_box["xb_selected"]
-        self.x_train_selected_original_mass = feed_box["x_train_selected_original_mass"]
-        self.x_test_selected_original_mass = feed_box["x_test_selected_original_mass"]
-        self.xs_train_selected_original_mass = feed_box["xs_train_selected_original_mass"]
-        self.xb_train_selected_original_mass = feed_box["xb_train_selected_original_mass"]
-        self.xs_test_selected_original_mass = feed_box["xs_test_selected_original_mass"]
-        self.xb_test_selected_original_mass = feed_box["xb_test_selected_original_mass"]
-        self.xs_selected_original_mass = feed_box["xs_selected_original_mass"]
-        self.xb_selected_original_mass = feed_box["xb_selected_original_mass"]
-        self.xs_reshape_selected = feed_box["xs_reshape_selected"]
-        self.xb_reshape_selected = feed_box["xb_reshape_selected"]
-        # data
-        if apply_data:
-            self.xd = feed_box["xd"]
-            self.xd_reset_mass = feed_box["xd_reset_mass"]
-            self.xd_norm = feed_box["xd_norm"]
-            self.xd_norm_reset_mass = feed_box["xd_norm_reset_mass"]
-            self.xd_selected = feed_box["xd_selected"]
-            self.xd_selected_original_mass = feed_box["xd_selected_original_mass"]
-        self.has_data = feed_box["has_data"]
-        self.array_prepared = feed_box["array_prepared"]
-
-    def show_input_distributions(self,
-                                 apply_data=False,
-                                 figsize=(8, 6),
-                                 style_cfg_path=None,
-                                 save_fig=False,
-                                 save_dir=None,
-                                 save_format="png"):
-        """Plots input distributions comparision plots for sig/bkg/data"""
-        print("Plotting input distributions.")
-        config = {}
-        if style_cfg_path is not None:
-            with open(style_cfg_path) as plot_config_file:
-                config = json.load(plot_config_file)
-
-        for feature_id, feature in enumerate(self.selected_features):
-            # prepare background histogram
-            hist_bkg = th1_tools.TH1FTool(feature + "_bkg",
-                                          "bkg",
-                                          nbin=100,
-                                          xlow=-20,
-                                          xup=20)
-            fill_array = np.reshape(self.xb_raw[:, feature_id], (-1, 1))
-            fill_weights = np.reshape(self.xb_raw[:, -1], (-1, 1))
-            hist_bkg.reinitial_hist_with_fill_array(fill_array)
-            hist_bkg.fill_hist(fill_array, fill_weights)
-            hist_bkg.set_config(config)
-            hist_bkg.update_config("hist", "SetLineColor", 4)
-            hist_bkg.update_config("hist", "SetFillStyle", 3001)
-            hist_bkg.update_config("hist", "SetFillColor", ROOT.kBlue)
-            hist_bkg.update_config('x_axis', 'SetTitle', feature)
-            hist_bkg.apply_config()
-            # hist_bkg.draw()
-            # hist_bkg.save(save_dir=save_dir,
-            #              save_file_name=feature + "_bkg",
-            #              save_format=save_format)
-            # prepare signal histogram
-            hist_sig = th1_tools.TH1FTool(feature + "_sig",
-                                          "sig",
-                                          nbin=100,
-                                          xlow=-20,
-                                          xup=20)
-            fill_array = np.reshape(self.xs_raw[:, feature_id], (-1, 1))
-            fill_weights = np.reshape(self.xs_raw[:, -1], (-1, 1))
-            hist_sig.reinitial_hist_with_fill_array(fill_array)
-            hist_sig.fill_hist(fill_array, fill_weights)
-            hist_sig.set_config(config)
-            hist_sig.update_config("hist", "SetLineColor", 2)
-            hist_sig.update_config("hist", "SetFillStyle", 3001)
-            hist_sig.update_config("hist", "SetFillColor", ROOT.kRed)
-            hist_sig.update_config('x_axis', 'SetTitle', feature)
-            hist_sig.apply_config()
-            # hist_sig.draw()
-            # hist_sig.save(save_dir=save_dir,
-            #              save_file_name=feature + "_sig",
-            #              save_format=save_format)
-            # prepare sig vs bkg comparison plots
-            hist_col = th1_tools.HistCollection([hist_bkg, hist_sig],
-                                                name=feature,
-                                                title="input var: " + feature)
-            hist_col.draw(config_str="hist",
-                          legend_title="legend",
-                          draw_norm=True,
-                          remove_empty_ends=True)
-            hist_col.save(save_dir=save_dir,
-                          save_file_name=feature,
-                          save_format=save_format)
+        self.feedbox = feedbox
+        self.array_prepared = feedbox["array_prepared"]
 
     def show_performance(self,
                          apply_data=False,
@@ -1539,7 +351,7 @@ class Model_Sequential_Base(Model_Base):
                          save_fig=False,
                          save_path=None,
                          job_type="train"):
-        """Shortly reports training result.
+        """Evaluates training result.
 
         Args:
             figsize: tuple
@@ -1549,15 +361,27 @@ class Model_Sequential_Base(Model_Base):
         # Check input
         assert isinstance(self, Model_Base)
         print("Model performance:")
+        # Check
+        if not self.model_is_trained:
+            warnings.warn("Model is not trained yet.")
         # Plots
         fig, ax = plt.subplots(nrows=3, ncols=2, figsize=figsize)
-        self.plot_accuracy(ax[0, 0])
-        self.plot_loss(ax[0, 1])
-        self.plot_train_test_roc(ax[1, 0])
-        self.plot_feature_importance(ax[1, 1])
-        if job_type == "train" and self.is_mass_reset == True:
-            self.plot_overtrain_check(ax[2, 0], bins=50, log=True)
-        self.plot_overtrain_check_original_mass(ax[2, 1], bins=50, log=True)
+        # evaluate.plot_accuracy(
+        #    ax[0, 0], self.train_history_accuracy, self.train_history_val_accuracy)
+        # evaluate.plot_loss(ax[0, 1], self.train_history_loss,
+        #                   self.train_history_val_loss)
+        auc_dict = evaluate.plot_train_test_roc(ax[1, 0], self)
+        # Collect meta data
+        self.auc_train = auc_dict["auc_train"]
+        self.auc_test = auc_dict["auc_test"]
+        self.auc_train_original = auc_dict["auc_train_original"]
+        self.auc_test_original = auc_dict["auc_test_original"]
+        #evaluate.plot_feature_importance(ax[1, 1], self)
+        if job_type == "train" and self.feedbox["is_mass_reset"] == True:
+            evaluate.plot_overtrain_check(
+                ax[2, 0], self, bins=50, log=True)
+        evaluate.plot_overtrain_check_original_mass(
+            ax[2, 1], self, bins=50, log=True)
         fig.tight_layout()
         if show_fig:
             plt.show()
@@ -1594,32 +418,31 @@ class Model_Sequential_Base(Model_Base):
             tb_callback = TensorBoard(log_dir=self.tb_logs_path,
                                       histogram_freq=1)
             train_callbacks.append(tb_callback)
-        if self.use_early_stop:
+        if self.model_hypers["use_early_stop"]:
             early_stop_callback = callbacks.EarlyStopping(
-                monitor=self.early_stop_paras["monitor"],
-                min_delta=self.early_stop_paras["min_delta"],
-                patience=self.early_stop_paras["patience"],
-                mode=self.early_stop_paras["mode"],
-                restore_best_weights=self.
-                early_stop_paras["restore_best_weights"])
+                monitor=self.model_hypers["early_stop_paras"]["monitor"],
+                min_delta=self.model_hypers["early_stop_paras"]["min_delta"],
+                patience=self.model_hypers["early_stop_paras"]["patience"],
+                mode=self.model_hypers["early_stop_paras"]["mode"],
+                restore_best_weights=self.model_hypers["early_stop_paras"]["restore_best_weights"])
             train_callbacks.append(early_stop_callback)
         self.train_history = self.get_model().fit(
-            self.x_train_selected,
-            self.y_train,
+            self.feedbox["x_train_selected"],
+            self.feedbox["y_train"],
             batch_size=batch_size,
             epochs=epochs,
             validation_split=val_split,
             class_weight=self.class_weight,
-            sample_weight=self.x_train[:, -1],
+            sample_weight=self.feedbox["x_train"][:, -1],
             callbacks=train_callbacks,
             verbose=verbose)
         print("Training finished.")
         # Quick evaluation
         print("Quick evaluation:")
-        score = self.get_model().evaluate(self.x_test_selected,
-                                          self.y_test,
+        score = self.get_model().evaluate(self.feedbox["x_test_selected"],
+                                          self.feedbox["y_test"],
                                           verbose=verbose,
-                                          sample_weight=self.x_test[:, -1])
+                                          sample_weight=self.feedbox["x_test"][:, -1])
         print('> test loss:', score[0])
         print('> test accuracy:', score[1])
         print(self.get_model().metrics_names)
@@ -1668,13 +491,13 @@ class Model_Sequential_Base(Model_Base):
         if self.array_prepared == False:
             raise ValueError("Training data is not ready.")
         # separate validation samples
-        num_val = math.ceil(len(self.y_train) * val_split)
-        x_tr = self.x_train_selected[:-num_val, :]
-        x_val = self.x_train_selected[-num_val:, :]
-        y_tr = self.y_train[:-num_val]
-        y_val = self.y_train[-num_val:]
-        wt_tr = self.x_train[:-num_val, -1]
-        wt_val = self.x_train[-num_val:, -1]
+        num_val = math.ceil(len(self.feedbox["y_train"]) * val_split)
+        x_tr = self.feedbox["x_train_selected"][:-num_val, :]
+        x_val = self.feedbox["x_train_selected"][-num_val:, :]
+        y_tr = self.feedbox["y_train"][:-num_val]
+        y_val = self.feedbox["y_train"][-num_val:]
+        wt_tr = self.feedbox["x_train"][:-num_val, -1]
+        wt_val = self.feedbox["x_train"][-num_val:, -1]
         val_tuple = (x_val, y_val, wt_val)
         self.x_tr = x_tr
         self.x_val = x_val
@@ -1685,14 +508,13 @@ class Model_Sequential_Base(Model_Base):
         # Train
         self.class_weight = {1: sig_class_weight, 0: bkg_class_weight}
         train_callbacks = []
-        if self.use_early_stop:
+        if self.model_hypers["use_early_stop"]:
             early_stop_callback = callbacks.EarlyStopping(
-                monitor=self.early_stop_paras["monitor"],
-                min_delta=self.early_stop_paras["min_delta"],
-                patience=self.early_stop_paras["patience"],
-                mode=self.early_stop_paras["mode"],
-                restore_best_weights=self.
-                early_stop_paras["restore_best_weights"])
+                monitor=self.model_hypers["early_stop_paras"]["monitor"],
+                min_delta=self.model_hypers["early_stop_paras"]["min_delta"],
+                patience=self.model_hypers["early_stop_paras"]["patience"],
+                mode=self.model_hypers["early_stop_paras"]["mode"],
+                restore_best_weights=self.model_hypers["early_stop_paras"]["restore_best_weights"])
             train_callbacks.append(early_stop_callback)
         self.train_history = self.get_model().fit(
             x_tr,
@@ -1709,259 +531,9 @@ class Model_Sequential_Base(Model_Base):
                                           y_val,
                                           verbose=verbose,
                                           sample_weight=wt_val)
-        return score[0]
-
-class Model_1002(Model_Sequential_Base):
-    """Sequential model optimized with old ntuple at Sep. 9th 2019.
-
-    Major modification based on 0913 model:
-        1. Optimized to train on full mass range. (Used to be on bkg samples with
-        cut to have similar mass range as signal.)
-        2. Use normalized data for training.
-
-    """
-
-    def __init__(self,
-                 name,
-                 input_dim,
-                 num_node=400,
-                 learn_rate=0.02,
-                 decay=1e-6,
-                 metrics=['plain_acc'],
-                 weighted_metrics=['accuracy'],
-                 selected_features=[],
-                 save_tb_logs=False,
-                 tb_logs_path=None,
-                 use_early_stop=False,
-                 early_stop_paras={}):
-        super().__init__(name,
-                         input_dim,
-                         num_node=num_node,
-                         learn_rate=learn_rate,
-                         decay=decay,
-                         metrics=metrics,
-                         weighted_metrics=weighted_metrics,
-                         selected_features=selected_features)
-        self.model_label = "mod1002"
-        self.model_note = "Sequential model optimized with old ntuple"\
-                          + " at Oct. 2rd 2019"\
-                          + " to deal with training with full bkg mass."
-        self.save_tb_logs = save_tb_logs
-        self.tb_logs_path = tb_logs_path
-        self.use_early_stop = use_early_stop
-        self.early_stop_paras = early_stop_paras
-
-    def compile(self):
-        """ Compile model, function to be changed in the future."""
-        # Add layers
-        # input
-        self.model.add(
-            Dense(self.model_num_node,
-                  kernel_initializer='uniform',
-                  input_dim=self.model_input_dim))
-
-        # hidden 1
-        # self.model.add(BatchNormalization())
-        self.model.add(
-            Dense(self.model_num_node,
-                  kernel_initializer="glorot_normal",
-                  activation="relu"))
-        # hidden 2
-        # self.model.add(BatchNormalization())
-        self.model.add(
-            Dense(self.model_num_node,
-                  kernel_initializer="glorot_normal",
-                  activation="relu"))
-        # hidden 3
-        # self.model.add(BatchNormalization())
-        self.model.add(
-            Dense(self.model_num_node,
-                  kernel_initializer="glorot_normal",
-                  activation="relu"))
-
-        # hidden 4
-        # self.model.add(BatchNormalization())
-        # self.model.add(Dense(self.model_num_node,
-        #                     kernel_initializer="glorot_normal",
-        #                     activation="relu"))
-        # hidden 5
-        # self.model.add(BatchNormalization())
-        # self.model.add(Dense(self.model_num_node,
-        #                     kernel_initializer="glorot_normal",
-        #                     activation="relu"))
-
-        # output
-        # self.model.add(BatchNormalization())
-        self.model.add(
-            Dense(1, kernel_initializer="glorot_uniform",
-                  activation="sigmoid"))
-        # Compile
-        self.model.compile(loss="binary_crossentropy",
-                           optimizer=SGD(lr=self.model_learn_rate,
-                                         decay=self.model_decay),
-                           metrics=self.metrics,
-                           weighted_metrics=self.weighted_metrics)
-        self.model_is_compiled = True
-
-    def train(
-        self,
-        batch_size=128,
-        epochs=20,
-        val_split=0.25,
-        sig_class_weight=1.,
-        bkg_class_weight=1.,
-        verbose=1,
-    ):
-        """Performs training."""
-        # Check
-        if self.model_is_compiled == False:
-            raise ValueError("DNN model is not yet compiled")
-        if self.array_prepared == False:
-            raise ValueError("Training data is not ready.")
-        # Train
-        print("-" * 40)
-        print("Training start. Using model:", self.model_name)
-        print("Model info:", self.model_note)
-        self.class_weight = {1: sig_class_weight, 0: bkg_class_weight}
-        train_callbacks = []
-        if self.save_tb_logs:
-            if self.tb_logs_path is None:
-                self.tb_logs_path = "temp_logs/{}".format(self.model_label)
-                warnings.warn("TensorBoard logs path not specified, \
-          set path to: {}".format(self.tb_logs_path))
-            tb_callback = TensorBoard(log_dir=self.tb_logs_path,
-                                      histogram_freq=1)
-            train_callbacks.append(tb_callback)
-        if self.use_early_stop:
-            early_stop_callback = callbacks.EarlyStopping(
-                monitor=self.early_stop_paras["monitor"],
-                min_delta=self.early_stop_paras["min_delta"],
-                patience=self.early_stop_paras["patience"],
-                mode=self.early_stop_paras["mode"],
-                restore_best_weights=self.
-                early_stop_paras["restore_best_weights"])
-            train_callbacks.append(early_stop_callback)
-        self.train_history = self.get_model().fit(
-            self.x_train_selected,
-            self.y_train,
-            batch_size=batch_size,
-            epochs=epochs,
-            validation_split=val_split,
-            class_weight=self.class_weight,
-            sample_weight=self.x_train[:, -1],
-            callbacks=train_callbacks,
-            verbose=verbose)
-        print("Training finished.")
-        # Quick evaluation
-        print("Quick evaluation:")
-        score = self.get_model().evaluate(self.x_test_selected,
-                                          self.y_test,
-                                          verbose=verbose,
-                                          sample_weight=self.x_test[:, -1])
-        print('> test loss:', score[0])
-        print('> test accuracy:', score[1])
-
-        # Save train history
-        # save accuracy history
-        self.train_history_accuracy = [
-            float(ele) for ele in self.train_history.history['accuracy']
-        ]
-        try:
-            self.train_history_accuracy = [
-                float(ele) for ele in self.train_history.history['acc']
-            ]
-            self.train_history_val_accuracy = [
-                float(ele) for ele in self.train_history.history['val_acc']
-            ]
-        except:  # updated for tensorflow2.0
-            self.train_history_accuracy = [
-                float(ele) for ele in self.train_history.history['accuracy']
-            ]
-            self.train_history_val_accuracy = [
-                float(ele)
-                for ele in self.train_history.history['val_accuracy']
-            ]
-        # save loss history/
-        self.train_history_loss = [
-            float(ele) for ele in self.train_history.history['loss']
-        ]
-        self.train_history_val_loss = [
-            float(ele) for ele in self.train_history.history['val_loss']
-        ]
-
+        # update status
         self.model_is_trained = True
-
-
-class Model_1016(Model_1002):
-    """Sequential model optimized with old ntuple at Sep. 9th 2019.
-
-    Major modification based on 1002 model:
-        1. Change structure to make quantity of nodes decrease with layer num.
-
-    """
-
-    def __init__(self,
-                 name,
-                 input_dim,
-                 num_node=400,
-                 learn_rate=0.02,
-                 decay=1e-6,
-                 dropout_rate=0.3,
-                 metrics=['plain_acc'],
-                 weighted_metrics=['accuracy'],
-                 selected_features=[],
-                 save_tb_logs=False,
-                 tb_logs_path=None,
-                 use_early_stop=False,
-                 early_stop_paras={}):
-        super().__init__(name,
-                         input_dim,
-                         num_node=num_node,
-                         learn_rate=learn_rate,
-                         decay=decay,
-                         metrics=metrics,
-                         weighted_metrics=weighted_metrics,
-                         selected_features=selected_features,
-                         save_tb_logs=save_tb_logs,
-                         tb_logs_path=tb_logs_path,
-                         use_early_stop=use_early_stop,
-                         early_stop_paras=early_stop_paras)
-        self.model_label = "mod1016"
-        self.model_note = "New model structure based on 1002's model." \
-            + "Created at Oct. 16th 2019 to deal with training with full bkg mass." \
-            + "Modified at Mar. 20th 2020 to add dropout layers."
-        self.dropout_rate = dropout_rate
-
-    def compile(self):
-        """ Compile model, function to be changed in the future."""
-        # Add layers
-        # input
-        self.model.add(
-            Dense(100,
-                  kernel_initializer='uniform',
-                  input_dim=self.model_input_dim))
-        self.model.add(Dropout(self.dropout_rate))
-        # hidden 1
-        self.model.add(
-            Dense(100, kernel_initializer="glorot_normal", activation="relu"))
-        self.model.add(Dropout(self.dropout_rate))
-        # hidden 2
-        self.model.add(
-            Dense(100, kernel_initializer="glorot_normal", activation="relu"))
-        self.model.add(Dropout(self.dropout_rate))
-        # output
-        self.model.add(
-            Dense(1, kernel_initializer="glorot_uniform",
-                  activation="sigmoid"))
-        # Compile
-        self.model.compile(loss="binary_crossentropy",
-                           optimizer=SGD(lr=self.model_learn_rate,
-                                         decay=self.model_decay,
-                                         momentum=0.5,
-                                         nesterov=True),
-                           metrics=self.metrics,
-                           weighted_metrics=self.weighted_metrics)
-        self.model_is_compiled = True
+        return score[0]
 
 
 class Model_Sequential_Flat(Model_Sequential_Base):
@@ -1974,63 +546,50 @@ class Model_Sequential_Flat(Model_Sequential_Base):
 
     def __init__(self,
                  name,
-                 input_dim,
-                 layers=3,
-                 nodes=400,
-                 dropout_rate=0.3,
-                 momentum=0.5,
-                 nesterov=False,
-                 learn_rate=0.02,
-                 decay=1e-6,
-                 metrics=['plain_acc'],
-                 weighted_metrics=['accuracy'],
-                 selected_features=[],
+                 input_features,
+                 hypers,
                  save_tb_logs=False,
-                 tb_logs_path=None,
-                 use_early_stop=False,
-                 early_stop_paras={}):
+                 tb_logs_path=None):
         super().__init__(name,
-                         input_dim,
-                         num_node=nodes,
-                         learn_rate=learn_rate,
-                         decay=decay,
-                         metrics=metrics,
-                         weighted_metrics=weighted_metrics,
-                         selected_features=selected_features,
-                         save_tb_logs=save_tb_logs,
-                         tb_logs_path=tb_logs_path,
-                         use_early_stop=use_early_stop,
-                         early_stop_paras=early_stop_paras)
+                         input_features,
+                         hypers,
+                         save_tb_logs=False,
+                         tb_logs_path=None)
 
         self.model_label = "mod_seq"
         self.model_note = "Sequential model with flexible layers and nodes."
-        self.model_layers = layers
-        self.model_nodes = nodes
-        self.model_dropout_rate = dropout_rate
-        self.model_momentum = momentum
-        self.model_nesterov = nesterov
-        assert layers > 0, "Model layer quantity should be positive"
+        assert self.model_hypers["layers"] > 0, "Model layer quantity should be positive"
 
     def compile(self):
         """ Compile model, function to be changed in the future."""
         # Add layers
         # input
-        for layer in range(self.model_layers):
+        for layer in range(self.model_hypers["layers"]):
             self.model.add(
-                Dense(self.model_nodes,
+                Dense(self.model_hypers["nodes"],
                       kernel_initializer='uniform',
                       input_dim=self.model_input_dim))
-            self.model.add(Dropout(self.model_dropout_rate))
+            self.model.add(Dropout(self.model_hypers["dropout_rate"]))
         # output
         self.model.add(
             Dense(1, kernel_initializer="glorot_uniform",
                   activation="sigmoid"))
         # Compile
+        # transfer self-defined metrics into real function
+        metrics = copy.deepcopy(self.model_hypers["metrics"])
+        weighted_metrics = copy.deepcopy(self.model_hypers["weighted_metrics"])
+        if "plain_acc" in metrics:
+            index = metrics.index('plain_acc')
+            metrics[index] = plain_acc
+        if "plain_acc" in weighted_metrics:
+            index = weighted_metrics.index('plain_acc')
+            weighted_metrics[index] = plain_acc
+        # compile model
         self.model.compile(loss="binary_crossentropy",
-                           optimizer=SGD(lr=self.model_learn_rate,
-                                         decay=self.model_decay,
-                                         momentum=self.model_momentum,
-                                         nesterov=self.model_nesterov),
-                           metrics=self.metrics,
-                           weighted_metrics=self.weighted_metrics)
+                           optimizer=SGD(lr=self.model_hypers["learn_rate"],
+                                         decay=self.model_hypers["decay"],
+                                         momentum=self.model_hypers["momentum"],
+                                         nesterov=self.model_hypers["nesterov"]),
+                           metrics=metrics,
+                           weighted_metrics=weighted_metrics)
         self.model_is_compiled = True
