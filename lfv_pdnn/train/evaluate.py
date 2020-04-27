@@ -186,7 +186,7 @@ def plot_input_distributions(
             name=feature,
             title="input var: " + feature)
         hist_col.draw(
-            config_str="hist",
+            draw_options="hist",
             legend_title="legend",
             draw_norm=True,
             remove_empty_ends=True)
@@ -569,8 +569,8 @@ def plot_scores_separate_root(model_wrapper,
                                               canvas=plot_pad_score)
     hist_stacked_bkgs.draw("pfc hist", log_scale=log_scale)
     hist_stacked_bkgs.get_hstack().GetYaxis().SetTitle("events/bin")
-    hist_bkg_total = hist_stacked_bkgs.get_added_hists()
-    total_weight_bkg = hist_bkg_total.GetSumOfWeights()
+    hist_bkg_total = hist_stacked_bkgs.get_added_hist()
+    total_weight_bkg = hist_bkg_total.get_hist().GetSumOfWeights()
     # plot signal
     if sig_arr is None:
         selected_arr = train_utils.get_valid_feature(
@@ -646,38 +646,14 @@ def plot_scores_separate_root(model_wrapper,
         plot_pad_ratio.SetTopMargin(0)
         plot_pad_ratio.SetGridx()
         plot_pad_ratio.Draw()
-        plot_pad_ratio.cd()
-        # plot bkg error bar
-        hist_bkg_err = hist_bkg_total.Clone()
-        hist_bkg_err.Divide(hist_bkg_err.Clone())
-        hist_bkg_err.SetDefaultSumw2()
-        hist_bkg_err.SetMinimum(0.5)
-        hist_bkg_err.SetMaximum(1.5)
-        hist_bkg_err.SetStats(0)
-        hist_bkg_err.SetTitle("")
-        hist_bkg_err.SetFillColor(ROOT.kGray)
-        hist_bkg_err.GetXaxis().SetTitle("DNN score")
-        hist_bkg_err.GetXaxis().SetTitleSize(20)
-        hist_bkg_err.GetXaxis().SetTitleFont(43)
-        hist_bkg_err.GetXaxis().SetTitleOffset(4.)
-        hist_bkg_err.GetXaxis().SetLabelFont(43)
-        hist_bkg_err.GetXaxis().SetLabelSize(15)
-        hist_bkg_err.GetYaxis().SetTitle("data/bkg")
-        hist_bkg_err.GetYaxis().SetNdivisions(505)
-        hist_bkg_err.GetYaxis().SetTitleSize(20)
-        hist_bkg_err.GetYaxis().SetTitleFont(43)
-        hist_bkg_err.GetYaxis().SetTitleOffset(1.55)
-        hist_bkg_err.GetYaxis().SetLabelFont(43)
-        hist_bkg_err.GetYaxis().SetLabelSize(15)
-        hist_bkg_err.Draw("e3")
-        # plot base line
-        base_line = ROOT.TF1("one", "1", 0, 1)
-        base_line.SetLineColor(ROOT.kRed)
-        base_line.Draw("same")
-        # plot ratio
-        hist_ratio = hist_data.get_hist().Clone()
-        hist_ratio.Divide(hist_bkg_total)
-        hist_ratio.Draw("same")
+        ratio_plot = th1_tools.RatioPlot(
+            hist_data,
+            hist_bkg_total,
+            x_title="DNN Score",
+            y_title="data/bkg",
+            canvas=plot_pad_ratio)
+        ratio_plot.draw()
+    
     # show & save total weight info
     model_wrapper.total_weight_sig = total_weight_sig
     print("sig total weight:", total_weight_sig)
