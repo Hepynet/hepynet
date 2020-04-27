@@ -105,21 +105,22 @@ def norarray_min_max(array, min, max, axis=None):
     output_array = output_array / ratio
 
 
-def prepare_array(xs,
-                  xb,
-                  selected_features,
-                  apply_data=False,
-                  xd=None,
-                  reshape_array=True,
-                  reset_mass=False,
-                  reset_mass_name=None,
-                  remove_negative_weight=False,
-                  sig_weight=1000,
-                  bkg_weight=1000,
-                  data_weight=1000,
-                  test_rate=0.2,
-                  rdm_seed=None,
-                  verbose=1):
+def prepare_array(
+        xs,
+        xb,
+        selected_features,
+        apply_data=False,
+        xd=None,
+        reshape_array=True,
+        reset_mass=False,
+        reset_mass_name=None,
+        remove_negative_weight=False,
+        sig_weight=1000,
+        bkg_weight=1000,
+        data_weight=1000,
+        test_rate=0.2,
+        rdm_seed=None,
+        verbose=1):
     """Prepares array for training."""
     feed_box = {}
     feed_box["xs_raw"] = xs
@@ -278,11 +279,12 @@ def prepare_array(xs,
     return feed_box
 
 
-def split_and_combine(xs,
-                      xb,
-                      test_rate=0.2,
-                      shuffle_combined_array=True,
-                      shuffle_seed=None):
+def split_and_combine(
+        xs,
+        xb,
+        test_rate=0.2,
+        shuffle_combined_array=True,
+        shuffle_seed=None):
     """Prepares array for training & validation
 
   Args:
@@ -334,13 +336,3 @@ def split_and_combine(xs,
         y_test = y_test[shuffle_index]
 
     return x_train, x_test, y_train, y_test, xs_train, xs_test, xb_train, xb_test
-
-
-def unison_shuffled_copies(*arr):
-    """
-  TODO: Old function, need to be removed later
-
-  """
-    assert all(len(a) for a in arr)
-    p = np.random.permutation(len(arr[0]))
-    return (a[p] for a in arr)

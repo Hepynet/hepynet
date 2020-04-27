@@ -33,7 +33,8 @@ def get_valid_cfg_path(path):
             share_dir = share_dir_temp
             break
     if share_dir is None:
-        raise ValueError('No valid path found, please check .ini file.')
+        raise ValueError(
+            'No valid path found for {}, please check .ini file.'.format(share_dir))
     if os.path.isfile(share_dir + '/train/' + path):
         return share_dir + '/train/' + path
     elif os.path.isfile(share_dir + '/' + path):
