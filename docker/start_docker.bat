@@ -3,6 +3,6 @@ ECHO %work_dir%
 
 docker run -it --rm ^
   -v %work_dir%:/work ^
-  -v D:\Data\lfv:/data ^
+  -v D:\Data:/data ^
   -p 8888:8888 ^
   lfv/pdnn:v1 ^
