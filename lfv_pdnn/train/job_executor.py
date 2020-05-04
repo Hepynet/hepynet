@@ -79,6 +79,9 @@ class job_executor(object):
         self.norm_array = True
         self.reset_feature = None
         self.reset_feature_name = None
+        self.cut_features = []
+        self.cut_values = []
+        self.cut_types = []
         # Initialize [model] section
         self.model_name = None
         self.model_class = None
@@ -254,7 +257,6 @@ class job_executor(object):
         if self.show_report or self.save_pdf_report:
             # Performance plots
             self.fig_performance_path = None
-            self.fig_non_mass_reset_path = None
             self.report_path = None
             # setup save parameters if reports need to be saved
             fig_save_path = None
@@ -292,7 +294,12 @@ class job_executor(object):
                 save_fig=self.save_pdf_report,
                 save_path=fig_save_path,
                 job_type=self.job_type)
-            plt.close(fig)  # release memory
+            # Make feature importance check
+            fig, ax = plt.subplots(figsize=(12, 9))
+            fig_save_path = save_dir + '/importance.png'
+            self.fig_feature_inportance_path = fig_save_path
+            evaluate.plot_feature_importance(ax, self.model_wrapper, max_feature=12)
+            fig.savefig(fig_save_path)
             # Make significance scan plot
             fig, ax = plt.subplots(figsize=(12, 9))
             ax.set_title("significance scan")
@@ -301,32 +308,7 @@ class job_executor(object):
                 fig_save_path = save_dir + '/significance_scan.png'
                 self.fig_significance_scan_path = fig_save_path
                 fig.savefig(fig_save_path)
-            plt.close(fig)  # release memory
             # Extra plots (use model on non-mass-reset arrays)
-            fig, ax = plt.subplots(ncols=2, figsize=(16, 4))
-            evaluate.plot_scores_separate(
-                ax[0],
-                self.model_wrapper,
-                self.plot_bkg_dict,
-                self.plot_bkg_list,
-                apply_data=self.apply_data,
-                plot_title="DNN scores",
-                bins=50,
-                range=(-0.25, 1.25),
-                density=self.plot_density,
-                log=False)
-            evaluate.plot_scores_separate(
-                ax[1],
-                self.model_wrapper,
-                self.plot_bkg_dict,
-                self.plot_bkg_list,
-                apply_data=self.apply_data,
-                plot_title="DNN scores",
-                bins=50,
-                range=(-0.25, 1.25),
-                density=self.plot_density,
-                log=True)
-            fig.tight_layout()
             evaluate.plot_scores_separate_root(
                 self.model_wrapper,
                 self.plot_bkg_dict,
@@ -359,10 +341,6 @@ class job_executor(object):
                 save_dir=save_dir,
                 save_file_name="DNN_scores_log")
             if self.save_pdf_report:
-                fig_save_path = save_dir + '/non-mass-reset_plots.png'
-                fig.savefig(fig_save_path)
-                plt.close(fig)  # release memory
-                self.fig_non_mass_reset_path = fig_save_path
                 self.fig_dnn_scores_lin_path = save_dir + "/DNN_scores_lin.png"
                 self.fig_dnn_scores_log_path = save_dir + "/DNN_scores_log.png"
                 pdf_save_path = save_dir + '/summary_report.pdf'
@@ -500,32 +478,22 @@ class job_executor(object):
                     "restore_best_weights"] = self.early_stop_restore_best_weights
             else:
                 self.early_stop_paras = {}
-            try:
-                self.model_wrapper = getattr(model, self.model_class)(
-                    self.model_name,
-                    self.input_dim,
-                    layers=self.layers,
-                    nodes=self.nodes,
-                    learn_rate=self.learn_rate,
-                    decay=self.learn_rate_decay,
-                    dropout_rate=0.5,
-                    metrics=self.train_metrics,
-                    weighted_metrics=self.train_metrics_weighted,
-                    selected_features=self.selected_features,
-                    use_early_stop=self.use_early_stop,
-                    early_stop_paras=self.early_stop_paras)
-            except:
-                self.model_wrapper = getattr(model, self.model_class)(
-                    self.model_name,
-                    self.input_dim,
-                    learn_rate=self.learn_rate,
-                    decay=self.learn_rate_decay,
-                    dropout_rate=0.5,
-                    metrics=self.train_metrics,
-                    weighted_metrics=self.train_metrics_weighted,
-                    selected_features=self.selected_features,
-                    use_early_stop=self.use_early_stop,
-                    early_stop_paras=self.early_stop_paras)
+            hypers = {}
+            hypers["layers"] = self.layers
+            hypers["nodes"] = self.nodes
+            hypers["learn_rate"] = self.learn_rate
+            hypers["decay"] = self.learn_rate_decay
+            hypers["dropout_rate"] = self.dropout_rate
+            hypers["metrics"] = self.train_metrics
+            hypers["weighted_metrics"] = self.train_metrics_weighted
+            hypers["use_early_stop"] = self.use_early_stop
+            hypers["early_stop_paras"] = self.early_stop_paras
+            hypers["momentum"] = self.momentum
+            hypers["nesterov"] = self.nesterov
+            self.model_wrapper = getattr(model, self.model_class)(
+                self.model_name,
+                self.selected_features,
+                hypers)
             # Set up training or loading model
             feedbox = train_utils.prepare_array(xs,
                                                 xb,
@@ -540,21 +508,21 @@ class job_executor(object):
                                                 bkg_weight=self.bkg_sumofweight,
                                                 data_weight=self.data_sumofweight,
                                                 test_rate=self.test_rate,
-                                                rdm_seed=None,
+                                                rdm_seed=940926,
                                                 verbose=0)
             self.model_wrapper.set_inputs(feedbox, apply_data=self.apply_data)
             self.model_wrapper.compile()
             final_loss = self.model_wrapper.tuning_train(batch_size=self.batch_size,
-                                                         epochs=self.epochs,
-                                                         val_split=self.val_split,
-                                                         sig_class_weight=self.sig_class_weight,
-                                                         bkg_class_weight=self.bkg_class_weight,
-                                                         verbose=0)
+                                                            epochs=self.epochs,
+                                                            val_split=self.val_split,
+                                                            sig_class_weight=self.sig_class_weight,
+                                                            bkg_class_weight=self.bkg_class_weight,
+                                                            verbose=0)
             # Calculate auc
             try:
                 fpr_dm, tpr_dm, _ = roc_curve(self.model_wrapper.y_val,
-                                              self.model_wrapper.get_model().predict(self.model_wrapper.x_val),
-                                              sample_weight=self.model_wrapper.wt_val)
+                                                self.model_wrapper.get_model().predict(self.model_wrapper.x_val),
+                                                sample_weight=self.model_wrapper.wt_val)
                 val_auc = auc(fpr_dm, tpr_dm)
             except:
                 val_auc = 0
@@ -640,6 +608,9 @@ class job_executor(object):
         self.try_parse_bool('reset_feature', config, 'array', 'reset_feature')
         self.try_parse_str('reset_feature_name', config, 'array',
                            'reset_feature_name')
+        self.try_parse_list('cut_features', config, 'array', 'cut_features')
+        self.try_parse_list('cut_values', config, 'array', 'cut_values')
+        self.try_parse_list('cut_types', config, 'array', 'cut_types')
         # Load [model] section
         self.try_parse_str('model_name', config, 'model', 'model_name')
         self.try_parse_str('model_class', config, 'model', 'model_class')
@@ -835,18 +806,18 @@ class job_executor(object):
         reports.append(Paragraph(ptext, styles["Justify"]))
         ptext = "channel                          : " + self.channel
         reports.append(Paragraph(ptext, styles["Justify"]))
-        ptext = "selected features id             : " + str(self.bkg_list)
+        ptext = "background list                  : " + str(self.bkg_list)
         reports.append(Paragraph(ptext, styles["Justify"]))
-        ptext = "selected features id             : " + str(self.sig_list)
+        ptext = "signal list                      : " + str(self.sig_list)
         reports.append(Paragraph(ptext, styles["Justify"]))
-        ptext = "selected features id             : " + str(self.data_list)
+        ptext = "data list                        : " + str(self.data_list)
         reports.append(Paragraph(ptext, styles["Justify"]))
-        ptext = "selected features id             : " + str(
+        ptext = "selected features                : " + str(
             self.selected_features)
         reports.append(Paragraph(ptext, styles["Justify"]))
-        ptext = "selected features id             : " + str(self.reset_feature)
+        ptext = "reset feature                    : " + str(self.reset_feature)
         reports.append(Paragraph(ptext, styles["Justify"]))
-        ptext = "selected features id             : " + str(
+        ptext = "reset feature name             : " + str(
             self.reset_feature_name)
         reports.append(Paragraph(ptext, styles["Justify"]))
         reports.append(Spacer(1, 12))
@@ -960,10 +931,12 @@ class job_executor(object):
         fig = self.fig_dnn_scores_log_path
         im2 = Image(fig, 3.2 * inch, 2.4 * inch)
         reports.append(Table([[im1, im2]]))
-        # significance scan
+        # significance scan and feature importance
         fig = self.fig_significance_scan_path
-        im = Image(fig, 3.2 * inch, 2.4 * inch)
-        reports.append(im)
+        im1 = Image(fig, 3.2 * inch, 2.4 * inch)
+        fig = self.fig_feature_inportance_path
+        im2 = Image(fig, 3.2 * inch, 2.4 * inch)
+        reports.append(Table([[im1, im2]]))
         # correlation matrix
         fig = self.fig_correlation_matrix_path
         im = Image(fig, 6.4 * inch, 3.2 * inch)
@@ -973,16 +946,33 @@ class job_executor(object):
 
     def load_arrays(self):
         """Get training arrays."""
-        self.bkg_dict = get_arrays.get_bkg(self.bkg_dict_path, self.campaign,
-                                           self.channel, self.bkg_list,
-                                           self.selected_features)
-        self.sig_dict = get_arrays.get_sig(self.sig_dict_path, self.campaign,
-                                           self.channel, self.sig_list,
-                                           self.selected_features)
-        self.data_dict = get_arrays.get_data(self.data_dict_path,
-                                             self.campaign, self.channel,
-                                             self.data_list,
-                                             self.selected_features)
+        self.bkg_dict = get_arrays.get_bkg(
+            self.bkg_dict_path,
+            self.campaign,
+            self.channel,
+            self.bkg_list,
+            self.selected_features,
+            cut_features=self.cut_features,
+            cut_values=self.cut_values,
+            cut_types=self.cut_types)
+        self.sig_dict = get_arrays.get_sig(
+            self.sig_dict_path,
+            self.campaign,
+            self.channel,
+            self.sig_list,
+            self.selected_features,
+            cut_features=self.cut_features,
+            cut_values=self.cut_values,
+            cut_types=self.cut_types)
+        self.data_dict = get_arrays.get_data(
+            self.data_dict_path,
+            self.campaign,
+            self.channel,
+            self.data_list,
+            self.selected_features,
+            cut_features=self.cut_features,
+            cut_values=self.cut_values,
+            cut_types=self.cut_types)
         self.array_is_loaded = True
         if self.show_report or self.save_pdf_report:
             self.plot_bkg_dict = {

@@ -78,7 +78,7 @@ def plot_correlation_matrix(ax, corr_matrix_dict, matrix_key="bkg"):
                 ax=ax)
 
 
-def plot_feature_importance(ax, model_wrapper, log=True):
+def plot_feature_importance(ax, model_wrapper, log=True, max_feature=8):
     """Calculates importance of features and sort the feature.
 
     Definition of feature importance used here can be found in:
@@ -108,8 +108,8 @@ def plot_feature_importance(ax, model_wrapper, log=True):
     sorted_names = selected_feature_names[sort_list]
     print("Feature importance rank:", sorted_names)
     # Plot
-    if num_feature > 8:
-        num_show = 8
+    if num_feature > max_feature:
+        num_show = max_feature
     else:
         num_show = num_feature
     ax.bar(np.arange(num_show),
@@ -307,7 +307,7 @@ def plot_loss(ax: plt.axes, loss_list: list, val_loss_list: list) -> None:
     ax.grid()
 
 
-def plot_roc(ax, xs, xb, model):
+def plot_roc(ax, xs, xb, model, yscal="logit", ylim=(0.1, 1-1e-4)):
     """Plots roc curve on given axes."""
     # Get data
     x_plot, y_plot, y_pred = process_array(xs, xb, model, rm_last_two=True)
@@ -317,8 +317,8 @@ def plot_roc(ax, xs, xb, model):
     ax.set_title("roc curve")
     ax.set_xlabel('fpr')
     ax.set_ylabel('tpr')
-    ax.set_ylim(0.1, 1 - 1e-4)
-    ax.set_yscale('logit')
+    ax.set_ylim(ylim[0], ylim[-1])
+    ax.set_yscale(yscal)
     ax.yaxis.set_minor_formatter(NullFormatter())
     # Calculate auc and return parameters
     auc_value = auc(fpr_dm, tpr_dm)
@@ -409,7 +409,7 @@ def plot_scores_separate(ax,
     print("Plotting scores with bkg separated.")
     predict_arr_list = []
     predict_arr_weight_list = []
-    model=model_wrapper.get_model()
+    model = model_wrapper.get_model()
     feedbox = model_wrapper.feedbox
     # plot background
     if (type(bkg_plot_key_list) is
@@ -524,7 +524,7 @@ def plot_scores_separate_root(model_wrapper,
 
     """
     print("Plotting scores with bkg separated with ROOT.")
-    model=model_wrapper.get_model()
+    model = model_wrapper.get_model()
     feedbox = model_wrapper.feedbox
     plot_canvas = ROOT.TCanvas(plot_title, plot_title, 800, 800)
     plot_pad_score = ROOT.TPad("pad1", "pad1", 0, 0.3, 1, 1.0)
@@ -653,7 +653,7 @@ def plot_scores_separate_root(model_wrapper,
             y_title="data/bkg",
             canvas=plot_pad_ratio)
         ratio_plot.draw()
-    
+
     # show & save total weight info
     model_wrapper.total_weight_sig = total_weight_sig
     print("sig total weight:", total_weight_sig)
@@ -781,10 +781,10 @@ def plot_significance_scan(ax, model_wrapper) -> None:
     model_wrapper.max_significance_threshould = max_significance_threshould
 
 
-def plot_train_test_roc(ax, model_wrapper):
+def plot_train_test_roc(ax, model_wrapper, yscal="logit", ylim=(0.1, 1-1e-4)):
     """Plots roc curve."""
     print("Plotting train/test roc curve.")
-    model=model_wrapper.get_model()
+    model = model_wrapper.get_model()
     feedbox = model_wrapper.feedbox
     # First plot roc for train dataset
     auc_train, _, _ = plot_roc(
@@ -793,12 +793,21 @@ def plot_train_test_roc(ax, model_wrapper):
     auc_test, _, _ = plot_roc(
         ax, feedbox["xs_test"], feedbox["xb_test"], model)
     # Then plot roc for train dataset without reseting mass
-    auc_train_original, _, _ = plot_roc(ax,
-                                        feedbox["xs_train_original_mass"],
-                                        feedbox["xb_train_original_mass"], model)
+    auc_train_original, _, _ = plot_roc(
+        ax,
+        feedbox["xs_train_original_mass"],
+        feedbox["xb_train_original_mass"],
+        model, 
+        yscal=yscal, 
+        ylim=ylim)
     # Lastly, plot roc for test dataset without reseting mass
-    auc_test_original, _, _ = plot_roc(ax, feedbox["xs_test_original_mass"],
-                                       feedbox["xb_test_original_mass"], model)
+    auc_test_original, _, _ = plot_roc(
+        ax,
+        feedbox["xs_test_original_mass"],
+        feedbox["xb_test_original_mass"],
+        model, 
+        yscal=yscal, 
+        ylim=ylim)
     # Show auc value:
     plot_auc_text(
         ax, ['TV ', 'TE ', 'TVO', 'TEO'],

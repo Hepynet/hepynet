@@ -370,13 +370,16 @@ class Model_Sequential_Base(Model_Base):
             ax[0, 0], self.train_history_accuracy, self.train_history_val_accuracy)
         evaluate.plot_loss(ax[0, 1], self.train_history_loss,
                            self.train_history_val_loss)
-        auc_dict = evaluate.plot_train_test_roc(ax[1, 0], self)
+        auc_dict = evaluate.plot_train_test_roc(
+            ax[1, 0], self, yscal="linear", ylim=(0, 1))
+        evaluate.plot_train_test_roc(
+            ax[1, 1], self, yscal="logit", ylim=(0.1, 1-1e-4))
         # Collect meta data
         self.auc_train = auc_dict["auc_train"]
         self.auc_test = auc_dict["auc_test"]
         self.auc_train_original = auc_dict["auc_train_original"]
         self.auc_test_original = auc_dict["auc_test_original"]
-        evaluate.plot_feature_importance(ax[1, 1], self)
+        #evaluate.plot_feature_importance(ax[1, 1], self)
         if job_type == "train" and self.feedbox["is_mass_reset"] == True:
             evaluate.plot_overtrain_check(
                 ax[2, 0], self, bins=50, log=True)
@@ -567,7 +570,7 @@ class Model_Sequential_Flat(Model_Sequential_Base):
         for layer in range(self.model_hypers["layers"]):
             self.model.add(
                 Dense(self.model_hypers["nodes"],
-                      kernel_initializer='uniform',
+                      kernel_initializer='glorot_uniform',
                       input_dim=self.model_input_dim))
             self.model.add(Dropout(self.model_hypers["dropout_rate"]))
         # output
