@@ -1,9 +1,10 @@
 # Don't track content of these folders
 
 # Temparary folders
+apply/*
 backups/*
 test/*
-run/results/*
+run/*
 lfv_pdnn.egg-info/*
 env_setup/*
 
@@ -12,10 +13,12 @@ env_setup/*
 *.bak
 *.ipynb_checkpoints*
 
-
 # Output data (local only)
 *.json
 *.h5
 
+# Don't save ini file unless dicided to do so
+*.ini
 
 # Packages #
+*.ipynb

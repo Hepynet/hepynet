@@ -29,11 +29,16 @@ RUN pip install jupyterlab \
 # Other required packages
 RUN pip install eli5 \
 && pip install ConfigParser \
-&& pip install reportlab
+&& pip install reportlab \
+&& pip install pandas \
+&& pip install seaborn \
+&& pip install hyperopt
 
 # Start up
 RUN echo "pip install -e /work" >> /root/.bashrc \
 && echo "alias ghome='cd /work'" >> /root/.bashrc \
 && echo "alias lhome='cd /data'" >> /root/.bashrc \
+&& echo "alias docker-jupyter='jupyter lab --notebook-dir=/work/run --ip 0.0.0.0 --no-browse'" >> /root/.bashrc \
 && echo "cd /work" >> /root/.bashrc
 
+EXPOSE 8888

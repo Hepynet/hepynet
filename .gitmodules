@@ -1,0 +1,3 @@
+[submodule "HEPTools"]
+	path = HEPTools
+	url = https://github.com/StarPrecursor/HEPTools.git

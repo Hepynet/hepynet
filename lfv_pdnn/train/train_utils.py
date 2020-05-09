@@ -9,127 +9,283 @@ manipulation, making plots, evaluation functions and so on.
 import os
 import sys
 import time
+from math import log, sqrt
 
-import numpy as np
 import matplotlib.pyplot as plt
-from math import sqrt
-from sklearn.metrics import classification_report, accuracy_score, auc
+import numpy as np
+from sklearn.metrics import accuracy_score, auc, classification_report
 
 from lfv_pdnn.common import array_utils
-from lfv_pdnn.common.common_utils import *
+
+
+def calculate_asimove(sig, bkg):
+    """Returns asimove significance"""
+    return sqrt(2 * ((sig + bkg) * log(1 + sig / bkg) - sig))
+
+
+def calculate_simple_significance(sig, bkg):
+    """Returns significance calculated by sig/bkg
+
+    Note:
+      Can be used only when bkg >> sig
+
+    """
+    return sig / bkg
 
 
 def get_mass_range(mass_array, weights, nsig=1):
-  """Gives a range of mean +- sigma
-  
+    """Gives a range of mean +- sigma
+
   Note:
     Only use for single peak distribution
 
   """
-  average = np.average(mass_array, weights=weights)
-  variance = np.average((mass_array-average)**2, weights=weights)
-  lower_limit = average - np.sqrt(variance) * nsig
-  upper_limit = average + np.sqrt(variance) * nsig
-  return lower_limit, upper_limit
+    average = np.average(mass_array, weights=weights)
+    variance = np.average((mass_array - average)**2, weights=weights)
+    lower_limit = average - np.sqrt(variance) * nsig
+    upper_limit = average + np.sqrt(variance) * nsig
+    return lower_limit, upper_limit
 
 
 def get_valid_feature(xtrain):
-  """Gets valid inputs.
-  
+    """Gets valid inputs.
+
   Note:
     indice -2 is for channel
     indice -1 is for weight
-  
+
   """
-  xtrain = xtrain[:,:-2]
-  return xtrain
+    xtrain = xtrain[:, :-2]
+    return xtrain
 
 
 def generate_shuffle_index(array_len, shuffle_seed=None):
-  """Generates array shuffle index.
-  
+    """Generates array shuffle index.
+
   To use a consist shuffle index to have different arrays shuffle in same way.
 
   """
-  shuffle_index = np.array(range(array_len))
-  if shuffle_seed is not None:
-    np.random.seed(shuffle_seed)
-  np.random.shuffle(shuffle_index)
-  return shuffle_index
+    shuffle_index = np.array(range(array_len))
+    if shuffle_seed is not None:
+        np.random.seed(shuffle_seed)
+    np.random.shuffle(shuffle_index)
+    return shuffle_index
+
 
 def get_mean_var(array, axis=None, weights=None):
-  """Calculate average and variance of an array."""
-  average = np.average(array, axis=axis, weights=weights)
-  variance = np.average((array-average)**2, axis=axis, weights=weights)
-  return average, variance + 0.000001
+    """Calculate average and variance of an array."""
+    average = np.average(array, axis=axis, weights=weights)
+    variance = np.average((array - average)**2, axis=axis, weights=weights)
+    return average, variance + 0.000001
 
 
 def norarray(array, average=None, variance=None, axis=None, weights=None):
-  """Normalizes input array for each feature.
-  
+    """Normalizes input array for each feature.
+
   Note:
     Do not normalize bkg and sig separately, bkg and sig should be normalized
     in the same way. (i.e. use same average and variance for normalization.)
 
   """
-  if (average is None) or (variance is None):
-    print("Warning! unspecified average or variance.")
-    average, variance = get_mean_var(array, axis=axis, weights=weights)
-  output_array = (array.copy() - average) / np.sqrt(variance)
-  return output_array
+    if (average is None) or (variance is None):
+        print("Warning! unspecified average or variance.")
+        average, variance = get_mean_var(array, axis=axis, weights=weights)
+    output_array = (array.copy() - average) / np.sqrt(variance)
+    return output_array
 
 
 def norarray_min_max(array, min, max, axis=None):
-  """Normalizes input array to (-1, +1)"""
-  middle = (min + max) / 2.0
-  output_array = array.copy() - middle
-  if max < min:
-    print("ERROR: max shouldn't be smaller than min.")
-    return None
-  ratio = (max - min) / 2.0
-  output_array = output_array / ratio
+    """Normalizes input array to (-1, +1)"""
+    middle = (min + max) / 2.0
+    output_array = array.copy() - middle
+    if max < min:
+        print("ERROR: max shouldn't be smaller than min.")
+        return None
+    ratio = (max - min) / 2.0
+    output_array = output_array / ratio
 
 
-def plot_different_mass(mass_scan_map, input_path, para_index, model = "zprime", bins = 50, range = (-10000, 10000), 
-                        density = True, xlabel="x axis", ylabel="y axis"):
-  """
-  TODO: function should be removed since it's too dedicated.
+def prepare_array(
+        xs,
+        xb,
+        selected_features,
+        apply_data=False,
+        xd=None,
+        reshape_array=True,
+        reset_mass=False,
+        reset_mass_name=None,
+        remove_negative_weight=False,
+        sig_weight=1000,
+        bkg_weight=1000,
+        data_weight=1000,
+        test_rate=0.2,
+        rdm_seed=None,
+        verbose=1):
+    """Prepares array for training."""
+    feed_box = {}
+    feed_box["xs_raw"] = xs
+    feed_box["xb_raw"] = xb
+    # normalize input variables if norm_array is True
+    if reshape_array:
+        means, variances = get_mean_var(xb[:, 0:-2],
+                                        axis=0,
+                                        weights=xb[:, -1])
+        feed_box["norm_average"] = means
+        feed_box["norm_variance"] = variances
+        xs_reshape = xs.copy()
+        xb_reshape = xb.copy()
+        xs_reshape[:, 0:-2] = norarray(xs_reshape[:, 0:-2],
+                                       average=means,
+                                       variance=variances)
+        xb_reshape[:, 0:-2] = norarray(xb_reshape[:, 0:-2],
+                                       average=means,
+                                       variance=variances)
+        feed_box["xs_reshape"] = xs_reshape
+        feed_box["xb_reshape"] = xb_reshape
+    else:
+        feed_box["xs_reshape"] = xs_reshape.copy()
+        feed_box["xb_reshape"] = xb_reshape.copy()
+    if rdm_seed is None:
+        rdm_seed = int(time.time())
+        feed_box["rdm_seed"] = rdm_seed
+    # get bkg array with mass reset
+    if reset_mass:
+        reset_mass_id = selected_features.index(reset_mass_name)
+        xb_reset_mass = array_utils.modify_array(
+            xb_reshape,
+            reset_mass=reset_mass,
+            reset_mass_array=xs_reshape,
+            reset_mass_id=reset_mass_id)
+        feed_box["xb_reset_mass"] = xb_reset_mass
+        feed_box["is_mass_reset"] = True
+    else:
+        xb_reset_mass = xb_reshape
+        feed_box["xb_reset_mass"] = xb_reshape
+        feed_box["is_mass_reset"] = False
+    # remove negative weights & normalize total weight
+    xs_reweight = array_utils.modify_array(
+        xs_reshape,
+        remove_negative_weight=remove_negative_weight,
+        norm=True,
+        sumofweight=sig_weight)
+    xb_reweight = array_utils.modify_array(
+        xb_reshape,
+        remove_negative_weight=remove_negative_weight,
+        norm=True,
+        sumofweight=bkg_weight)
+    xb_reweight_reset_mass = array_utils.modify_array(
+        xb_reset_mass,
+        remove_negative_weight=remove_negative_weight,
+        norm=True,
+        sumofweight=bkg_weight)
+    feed_box["xs_reweight"] = xs_reweight
+    feed_box["xb_reweight"] = xb_reweight
+    feed_box["xb_reweight_reset_mass"] = xb_reweight_reset_mass
+    # get train/test data set, split with ratio=test_rate
+    x_train, x_test, y_train, y_test, xs_train, xs_test, xb_train, xb_test\
+        = split_and_combine(xs_reweight,
+                            xb_reweight_reset_mass,
+                            test_rate=test_rate,
+                            shuffle_seed=rdm_seed)
+    feed_box["x_train"] = x_train
+    feed_box["x_test"] = x_test
+    feed_box["y_train"] = y_train
+    feed_box["y_test"] = y_test
+    feed_box["xs_train"] = xs_train
+    feed_box["xs_test"] = xs_test
+    feed_box["xb_train"] = xb_train
+    feed_box["xb_test"] = xb_test
+    x_train_original_mass, x_test_original_mass,\
+        y_train_original_mass, y_test_original_mass,\
+        xs_train_original_mass, xs_test_original_mass,\
+        xb_train_original_mass, xb_test_original_mass\
+        = split_and_combine(xs_reweight,
+                            xb_reweight,
+                            test_rate=test_rate,
+                            shuffle_seed=rdm_seed)
+    feed_box["x_train_original_mass"] = x_train_original_mass
+    feed_box["x_test_original_mass"] = x_test_original_mass
+    feed_box["y_train_original_mass"] = y_train_original_mass
+    feed_box["y_test_original_mass"] = y_test_original_mass
+    feed_box["xs_train_original_mass"] = xs_train_original_mass
+    feed_box["xs_test_original_mass"] = xs_test_original_mass
+    feed_box["xb_train_original_mass"] = xb_train_original_mass
+    feed_box["xb_test_original_mass"] = xb_test_original_mass
+    # select features used for training
+    feed_box["selected_features"] = selected_features
+    feed_box["x_train_selected"] = get_valid_feature(x_train)
+    feed_box["x_test_selected"] = get_valid_feature(x_test)
+    feed_box["xs_train_selected"] = get_valid_feature(xs_train)
+    feed_box["xb_train_selected"] = get_valid_feature(xb_train)
+    feed_box["xs_test_selected"] = get_valid_feature(xs_test)
+    feed_box["xb_test_selected"] = get_valid_feature(xb_test)
+    feed_box["xs_selected"] = get_valid_feature(xs_reweight)
+    feed_box["xb_selected"] = get_valid_feature(xb_reweight_reset_mass)
+    feed_box["x_train_selected_original_mass"] = get_valid_feature(
+        x_train_original_mass)
+    feed_box["x_test_selected_original_mass"] = get_valid_feature(
+        x_test_original_mass)
+    feed_box["xs_train_selected_original_mass"] = get_valid_feature(
+        xs_train_original_mass)
+    feed_box["xb_train_selected_original_mass"] = get_valid_feature(
+        xb_train_original_mass)
+    feed_box["xs_test_selected_original_mass"] = get_valid_feature(
+        xs_test_original_mass)
+    feed_box["xb_test_selected_original_mass"] = get_valid_feature(
+        xb_test_original_mass)
+    feed_box["xs_selected_original_mass"] = get_valid_feature(xs_reweight)
+    feed_box["xb_selected_original_mass"] = get_valid_feature(xb_reweight)
+    feed_box["xs_reshape_selected"] = get_valid_feature(xs_reshape)
+    feed_box["xb_reshape_selected"] = get_valid_feature(xb_reshape)
+    # prepare data to apply model when apply_data is True
+    if apply_data == True:
+        if reshape_array:
+            xd_reshape = xd.copy()
+            xd_reshape[:, 0:-2] = norarray(
+                xd_reshape[:, 0:-2],
+                average=means,
+                variance=variances)
+            feed_box["xd"] = xd_reshape
+        else:
+            feed_box["xd"] = xd
+        if reset_mass:
+            reset_mass_id = selected_features.index(reset_mass_name)
+            xd_reset_mass = array_utils.modify_array(
+                xd,
+                reset_mass=reset_mass,
+                reset_mass_array=xs_reshape,
+                reset_mass_id=reset_mass_id)
+        else:
+            xd_reset_mass = xd
+        feed_box["xd_reset_mass"] = xd_reset_mass
+        xd_norm = array_utils.modify_array(feed_box["xd"],
+                                           norm=True,
+                                           sumofweight=data_weight)
+        xd_norm_reset_mass = array_utils.modify_array(
+            xd_reset_mass, norm=True, sumofweight=data_weight)
+        xd_selected = get_valid_feature(xd_norm_reset_mass)
+        xd_selected_original_mass = get_valid_feature(xd_norm)
+        has_data = True
+        feed_box["xd_norm"] = xd_norm
+        feed_box["xd_norm_reset_mass"] = xd_norm_reset_mass
+        feed_box["xd_selected"] = xd_selected
+        feed_box["xd_selected_original_mass"] = xd_selected_original_mass
+        feed_box["has_data"] = has_data
+    feed_box["array_prepared"] = True
+    if verbose == 1:
+        print("Training array prepared.")
+        print("> signal shape:", feed_box["xs_selected"].shape)
+        print("> background shape:", feed_box["xb_selected"].shape)
+    return feed_box
 
-  """
-  for i, mass in enumerate(mass_scan_map):
-    # load signal
-    if model == "zprime":
-      xs_add = np.load(input_path + '/data_npy/emu/tree_{}00GeV.npy'.format(mass))
-      """ # only use emu channel currently
-      xs_temp = np.load(input_path + '/data_npy/etau/tree_{}00GeV.npy'.format(mass))
-      xs_add = np.concatenate((xs_add, xs_temp))
-      xs_temp = np.load(input_path + '/data_npy/mutau/tree_{}00GeV.npy'.format(mass))
-      xs_add = np.concatenate((xs_add, xs_temp))
-      """
-    elif model == "rpv":
-      xs_add = np.load(input_path + '/data_npy/emu/rpv_{}00GeV.npy'.format(mass))
-      """ # only use emu channel currently
-      xs_temp = np.load(input_path + '/data_npy/etau/rpv_{}00GeV.npy'.format(mass))
-      xs_add = np.concatenate((xs_add, xs_temp))
-      xs_temp = np.load(input_path + '/data_npy/mutau/rpv_{}00GeV.npy'.format(mass))
-      xs_add = np.concatenate((xs_add, xs_temp))
-      """
-    xs_emu = xs_add.copy()
-    # select emu channel and shuffle
-    xs_emu = array_utils.modify_array(xs_emu, select_channel = True, norm = True,
-      shuffle = True, shuffle_seed = 486)
 
-    # make plots
-    plt.hist(xs_emu[:, para_index], bins = bins, weights = xs_emu[:,-1], 
-             histtype='step', label='signal {}00GeV'.format(mass), range = range, density = density)
-  plt.legend(prop={'size': 10})
-  plt.xlabel(xlabel)
-  plt.ylabel(ylabel)
-  plt.show()
-
-
-def split_and_combine(xs, xb, test_rate=0.2, shuffle_combined_array=True, shuffle_seed=None):
-  """Prepares array for training & validation
+def split_and_combine(
+        xs,
+        xb,
+        test_rate=0.2,
+        shuffle_combined_array=True,
+        shuffle_seed=None):
+    """Prepares array for training & validation
 
   Args:
     xs: numpy array
@@ -144,7 +300,7 @@ def split_and_combine(xs, xb, test_rate=0.2, shuffle_combined_array=True, shuffl
       Seed for randomization process.
       Set to None to use current time as seed.
       Set to a specific value to get an unchanged shuffle result.
-  
+
   Returns:
     x_train/x_test/y_train/y_test: numpy array
       Array for training/testing.
@@ -152,76 +308,31 @@ def split_and_combine(xs, xb, test_rate=0.2, shuffle_combined_array=True, shuffl
     xs_test/xb_test: numpy array
       Array for scores plottind.
       Signal/bakcground separated.
-      
-  """
-  ys = np.ones(len(xs))
-  yb = np.zeros(len(xb))
-
-  xs_train, xs_test, ys_train, ys_test = array_utils.shuffle_and_split(
-    xs, ys, split_ratio=test_rate, shuffle_seed=shuffle_seed)
-  xb_train, xb_test, yb_train, yb_test = array_utils.shuffle_and_split(
-    xb, yb, split_ratio=test_rate, shuffle_seed=shuffle_seed)
-
-  x_train = np.concatenate((xs_train, xb_train))
-  y_train = np.concatenate((ys_train, yb_train))
-  x_test = np.concatenate((xs_test, xb_test))
-  y_test = np.concatenate((ys_test, yb_test))
-
-  if shuffle_combined_array:
-    # shuffle train dataset
-    shuffle_index = generate_shuffle_index(
-      len(y_train),
-      shuffle_seed=shuffle_seed
-      )
-    x_train = x_train[shuffle_index]
-    y_train = y_train[shuffle_index]
-    # shuffle test dataset
-    shuffle_index = generate_shuffle_index(
-      len(y_test),
-      shuffle_seed=shuffle_seed
-      )
-    x_test = x_test[shuffle_index]
-    y_test = y_test[shuffle_index]
-  
-  return x_train, x_test, y_train, y_test, xs_train, xs_test, xb_train, xb_test
-
-
-def unison_shuffled_copies(*arr):
-  """
-  TODO: Old function, need to be removed later
 
   """
-  assert all(len(a) for a in arr)
-  p = np.random.permutation(len(arr[0]))
-  return (a[p] for a in arr)
+    ys = np.ones(len(xs))
+    yb = np.zeros(len(xb))
 
+    xs_train, xs_test, ys_train, ys_test = array_utils.shuffle_and_split(
+        xs, ys, split_ratio=test_rate, shuffle_seed=shuffle_seed)
+    xb_train, xb_test, yb_train, yb_test = array_utils.shuffle_and_split(
+        xb, yb, split_ratio=test_rate, shuffle_seed=shuffle_seed)
 
-def calculate_significance(xs, xb, mass_point, mass_min, mass_max, model=None, 
-                           xs_model_input=None, xb_model_input=None, use_model_cut=False):
-  """
-  TODO: Old function, need to be removed later
+    x_train = np.concatenate((xs_train, xb_train))
+    y_train = np.concatenate((ys_train, yb_train))
+    x_test = np.concatenate((xs_test, xb_test))
+    y_test = np.concatenate((ys_test, yb_test))
 
-  """
-  # 1st value of each xs/xb's entry must be the mass
-  signal_quantity = 0.
-  background_quantity = 0.
-  if (model != None) and (len(xs_model_input) != 0) and (len(xb_model_input) != 0) and (use_model_cut == True):
-    signal_predict_result = model.predict(xs_model_input)
-    background_predict_result = model.predict(xb_model_input)
-    for n, (entry, predict_result) in enumerate(zip(xs, signal_predict_result)):
-      if entry[0] > mass_min and entry[0] < mass_max and predict_result > 0.5:
-        signal_quantity += entry[-1]
-    for n, (entry, predict_result) in enumerate(zip(xb, background_predict_result)):
-      if entry[0] > mass_min and entry[0] < mass_max and predict_result > 0.5:
-        background_quantity += entry[-1]
-  else:
-    for entry in xs:
-      if entry[0] > mass_min and entry[0] < mass_max:
-        signal_quantity += entry[-1]
-    for entry in xb:
-      if entry[0] > mass_min and entry[0] < mass_max:
-        background_quantity += entry[-1]
-          
-  print("for mass =", mass_point, "range = (", mass_min, mass_max, "):")
-  print("  signal quantity =", signal_quantity, "background quantity =", background_quantity)
-  print("  significance =", signal_quantity / sqrt(background_quantity))
+    if shuffle_combined_array:
+        # shuffle train dataset
+        shuffle_index = generate_shuffle_index(len(y_train),
+                                               shuffle_seed=shuffle_seed)
+        x_train = x_train[shuffle_index]
+        y_train = y_train[shuffle_index]
+        # shuffle test dataset
+        shuffle_index = generate_shuffle_index(len(y_test),
+                                               shuffle_seed=shuffle_seed)
+        x_test = x_test[shuffle_index]
+        y_test = y_test[shuffle_index]
+
+    return x_train, x_test, y_train, y_test, xs_train, xs_test, xb_train, xb_test
