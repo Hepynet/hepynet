@@ -110,7 +110,7 @@ class job_executor(object):
         self.save_model = None
         # Initialize [para_scan]
         self.perform_para_scan = None
-        self.max_scan_interations = None
+        self.max_scan_iterations = None
         self.scan_loss_type = None
         self.para_scan_cfg = None
         # Initialize [report] section
@@ -375,7 +375,7 @@ class job_executor(object):
         self.iteration = 0
         bayes_trials = Trials()
         best_set = fmin(fn=self.execute_tuning_job, space=space, algo=tpe.suggest,
-                        max_evals=self.max_scan_interations, trials=bayes_trials)
+                        max_evals=self.max_scan_iterations, trials=bayes_trials)
         self.best_hyper_set = best_set
         print('#' * 80)
         print("best hyperparameters set:")
@@ -651,8 +651,8 @@ class job_executor(object):
         # Load [para_scan]
         self.try_parse_bool('perform_para_scan', config, 'para_scan',
                             'perform_para_scan')
-        self.try_parse_int('max_scan_interations', config, 'para_scan',
-                           'max_scan_interations')
+        self.try_parse_int('max_scan_iterations', config, 'para_scan',
+                           'max_scan_iterations')
         self.try_parse_str('scan_loss_type', config, 'para_scan',
                            'scan_loss_type')
         self.try_parse_str('para_scan_cfg', config, 'para_scan',
