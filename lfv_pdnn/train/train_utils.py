@@ -20,7 +20,8 @@ from lfv_pdnn.common import array_utils
 
 def calculate_asimove(sig, bkg):
     """Returns asimove significance"""
-    return sqrt(2 * ((sig + bkg) * log(1 + sig / bkg) - sig))
+    #return sqrt(2 * ((sig + bkg) * log(1 + sig / bkg) - sig))
+    return sig/sqrt(bkg)
 
 
 def calculate_simple_significance(sig, bkg):
@@ -126,14 +127,15 @@ def prepare_array(
     feed_box["xs_raw"] = xs
     feed_box["xb_raw"] = xb
     # normalize input variables if norm_array is True
+    xs_reshape = xs.copy()
+    xb_reshape = xb.copy()
     if reshape_array:
         means, variances = get_mean_var(xb[:, 0:-2],
                                         axis=0,
                                         weights=xb[:, -1])
         feed_box["norm_average"] = means
         feed_box["norm_variance"] = variances
-        xs_reshape = xs.copy()
-        xb_reshape = xb.copy()
+        
         xs_reshape[:, 0:-2] = norarray(xs_reshape[:, 0:-2],
                                        average=means,
                                        variance=variances)

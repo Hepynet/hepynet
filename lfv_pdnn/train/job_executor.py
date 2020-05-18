@@ -175,9 +175,12 @@ class job_executor(object):
         xb = array_utils.modify_array(
             self.bkg_dict[self.bkg_key],
             select_channel=True)
-        xd = array_utils.modify_array(
-            self.data_dict[self.data_key],
-            select_channel=True)
+        if self.data_key is not None:
+            xd = array_utils.modify_array(
+                self.data_dict[self.data_key],
+                select_channel=True)
+        else:
+            xd = None
         for key in self.bkg_list:
             self.plot_bkg_dict[key] = array_utils.modify_array(
                 self.plot_bkg_dict[key],
@@ -298,7 +301,8 @@ class job_executor(object):
             fig, ax = plt.subplots(figsize=(12, 9))
             fig_save_path = save_dir + '/importance.png'
             self.fig_feature_inportance_path = fig_save_path
-            evaluate.plot_feature_importance(ax, self.model_wrapper, max_feature=12)
+            evaluate.plot_feature_importance(
+                ax, self.model_wrapper, max_feature=12)
             fig.savefig(fig_save_path)
             # Make significance scan plot
             fig, ax = plt.subplots(figsize=(12, 9))
@@ -513,16 +517,16 @@ class job_executor(object):
             self.model_wrapper.set_inputs(feedbox, apply_data=self.apply_data)
             self.model_wrapper.compile()
             final_loss = self.model_wrapper.tuning_train(batch_size=self.batch_size,
-                                                            epochs=self.epochs,
-                                                            val_split=self.val_split,
-                                                            sig_class_weight=self.sig_class_weight,
-                                                            bkg_class_weight=self.bkg_class_weight,
-                                                            verbose=0)
+                                                         epochs=self.epochs,
+                                                         val_split=self.val_split,
+                                                         sig_class_weight=self.sig_class_weight,
+                                                         bkg_class_weight=self.bkg_class_weight,
+                                                         verbose=0)
             # Calculate auc
             try:
                 fpr_dm, tpr_dm, _ = roc_curve(self.model_wrapper.y_val,
-                                                self.model_wrapper.get_model().predict(self.model_wrapper.x_val),
-                                                sample_weight=self.model_wrapper.wt_val)
+                                              self.model_wrapper.get_model().predict(self.model_wrapper.x_val),
+                                              sample_weight=self.model_wrapper.wt_val)
                 val_auc = auc(fpr_dm, tpr_dm)
             except:
                 val_auc = 0
@@ -835,9 +839,10 @@ class job_executor(object):
         ptext = "sig total weight                 : " + str(
             self.sig_sumofweight)
         reports.append(Paragraph(ptext, styles["Justify"]))
-        ptext = "data arrays path                 : " + self.data_dict_path
+        ptext = "data arrays path                 : " + \
+            str(self.data_dict_path)
         reports.append(Paragraph(ptext, styles["Justify"]))
-        ptext = "data arrays used                 : " + self.data_key
+        ptext = "data arrays used                 : " + str(self.data_key)
         reports.append(Paragraph(ptext, styles["Justify"]))
         ptext = "data total weight                : " + str(
             self.data_sumofweight)
