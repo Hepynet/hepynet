@@ -42,7 +42,7 @@ def dict_key_strtoint(json_data):
 def display_dict(input_dict):
     """Print dict in a readable way."""
     for key in list(input_dict.keys()):
-        print('*', key, ':', input_dict[key])
+        print("*", key, ":", input_dict[key])
 
 
 def get_file_list(directory, search_pattern, out_name_identifier="None"):
@@ -60,8 +60,7 @@ def get_file_list(directory, search_pattern, out_name_identifier="None"):
     A list of file absolute path & file name 
   """
     # Get absolute path
-    absolute_file_list = glob.glob(directory + "/" + search_pattern,
-                                   recursive=True)
+    absolute_file_list = glob.glob(directory + "/" + search_pattern, recursive=True)
     absolute_file_list.sort()
     if len(absolute_file_list) == 0:
         warnings.warn("Empty file list, please check input.")
@@ -73,7 +72,7 @@ def get_file_list(directory, search_pattern, out_name_identifier="None"):
             file_name_list[0] = out_name_identifier
         else:  # add number for multiple files that match the pattern
             for id, ele in enumerate(file_name_list):
-                file_name_list[id] = (out_name_identifier + '.{}').format(id)
+                file_name_list[id] = (out_name_identifier + ".{}").format(id)
     # check duplicated name in file_name_list
     for name in file_name_list:
         num_same_name = 0
@@ -95,8 +94,8 @@ def get_newest_file_version(path_pattern, n_digit=2, ver_num=None):
     # return file path if ver_num is given
     if ver_num is not None:
         return {
-            'ver_num': ver_num,
-            'path': path_pattern.format(str(ver_num).zfill(n_digit))
+            "ver_num": ver_num,
+            "path": path_pattern.format(str(ver_num).zfill(n_digit)),
         }
     # otherwise try to find ver_num
     max_version = int(math.pow(10, n_digit) - 1)
@@ -106,23 +105,27 @@ def get_newest_file_version(path_pattern, n_digit=2, ver_num=None):
         ver_num += 1
         path = path_pattern.format(str(ver_num).zfill(n_digit))
     if ver_num > max_version:
-        warnings.warn("Too much model version detected at same date. \
-      Will only keep maximum {} different versions.".format(max_version))
+        warnings.warn(
+            "Too much model version detected at same date. \
+      Will only keep maximum {} different versions.".format(
+                max_version
+            )
+        )
         warnings.warn("Version {} will be overwrite!".format(max_version))
         ver_num = max_version
     return {
-        'ver_num': ver_num,
-        'path': path_pattern.format(str(ver_num).zfill(n_digit))
+        "ver_num": ver_num,
+        "path": path_pattern.format(str(ver_num).zfill(n_digit)),
     }
 
 
 def get_significant_digits(number, n_digits):
     if round(number) == number:
         m = len(str(number)) - 1 - n_digits
-        if number / (10**m) == 0.0:
+        if number / (10 ** m) == 0.0:
             return number
         else:
-            return float(int(number) / (10**m) * (10**m))
+            return float(int(number) / (10 ** m) * (10 ** m))
     if len(str(number)) > n_digits + 1:
         return round(number, n_digits - len(str(int(number))))
     else:
@@ -157,7 +160,7 @@ def read_dict_from_json(json_input):
     pass
 
 
-def read_dict_from_txt(file_path, key_type='str', value_type='str'):
+def read_dict_from_txt(file_path, key_type="str", value_type="str"):
     """Reads dict type data from text file
   
   Args:
@@ -177,11 +180,11 @@ def read_dict_from_txt(file_path, key_type='str', value_type='str'):
         for line in lines:
             key_error = False
             value_error = False
-            content1, content2 = line.strip().split(',', 1)
+            content1, content2 = line.strip().split(",", 1)
             # get key
-            if key_type == 'str':
+            if key_type == "str":
                 key = content1.strip()
-            elif key_type == 'float':
+            elif key_type == "float":
                 try:
                     key = eval(content1)
                 except ZeroDivisionError:
@@ -195,9 +198,9 @@ def read_dict_from_txt(file_path, key_type='str', value_type='str'):
             else:
                 warnings.warn("Unrecognized key type.")
             # get value
-            if value_type == 'str':
+            if value_type == "str":
                 value = content2.strip()
-            elif value_type == 'float':
+            elif value_type == "float":
                 try:
                     value = eval(content2)
                 except ZeroDivisionError:

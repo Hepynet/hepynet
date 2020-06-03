@@ -26,26 +26,27 @@ def clean_array(array, weight_id, remove_negative=False, verbose=False):
     new = []
     if remove_negative == True:
         for d in array:
-            if d[weight_id] <= 0.:  # remove zero or negative weight row
+            if d[weight_id] <= 0.0:  # remove zero or negative weight row
                 continue
             new.append(d)
     else:
         for d in array:
-            if d[weight_id] == 0.:  # only remove zero weight row
+            if d[weight_id] == 0.0:  # only remove zero weight row
                 continue
             new.append(d)
 
     # Output
     out = np.array(new)
     if verbose:
-        print("shape before", array.shape, 'shape after', out.shape)
+        print("shape before", array.shape, "shape after", out.shape)
     return out
 
 
 def get_cut_index(array, cut_values, cut_types):
     """Parses cuts arguments and returns cuts indexes."""
     assert len(cut_values) == len(
-        cut_types), "cut_values and cut_types should have same lenth."
+        cut_types
+    ), "cut_values and cut_types should have same lenth."
     pass_index = None
     for cut_value, cut_type in zip(cut_values, cut_types):
         temp_index = get_cut_index_value(array, cut_value, cut_type)
@@ -55,6 +56,7 @@ def get_cut_index(array, cut_values, cut_types):
             pass_index = np.intersect1d(pass_index, temp_index)
     print(pass_index)
     return pass_index
+
 
 def get_cut_index_value(array, cut_value, cut_type):
     """Returns cut indexes based on cut_value and cut_type.
@@ -83,20 +85,22 @@ def get_cut_index_value(array, cut_value, cut_type):
     return pass_index.flatten()
 
 
-def modify_array(input_array,
-                 remove_negative_weight=False,
-                 select_channel=False,
-                 select_mass=False,
-                 mass_id=None,
-                 mass_min=None,
-                 mass_max=None,
-                 reset_mass=False,
-                 reset_mass_array=None,
-                 reset_mass_id=None,
-                 norm=False,
-                 sumofweight=1000,
-                 shuffle=False,
-                 shuffle_seed=None):
+def modify_array(
+    input_array,
+    remove_negative_weight=False,
+    select_channel=False,
+    select_mass=False,
+    mass_id=None,
+    mass_min=None,
+    mass_max=None,
+    reset_mass=False,
+    reset_mass_array=None,
+    reset_mass_id=None,
+    norm=False,
+    sumofweight=1000,
+    shuffle=False,
+    shuffle_seed=None,
+):
     """Modifies numpy array with given setup.
 
     Args:
@@ -155,10 +159,7 @@ def modify_array(input_array,
         else:
             print("missing parameters, skipping mass selection...")
     # clean array
-    new = clean_array(new,
-                      -1,
-                      remove_negative=remove_negative_weight,
-                      verbose=False)
+    new = clean_array(new, -1, remove_negative=remove_negative_weight, verbose=False)
     # reset mass
     if reset_mass == True:
         if not common_utils.has_none([reset_mass_array, reset_mass_id]):
@@ -177,16 +178,12 @@ def modify_array(input_array,
     new, x2, y1, y2 = train_test_split(new, np.zeros(len(new)), test_size=0.01, ########################
                                        random_state=shuffle_seed, shuffle=True)
     """
-        new, _, _, _ = shuffle_and_split(new,
-                                         np.zeros(len(new)),
-                                         split_ratio=0.,
-                                         shuffle_seed=shuffle_seed)
+        new, _, _, _ = shuffle_and_split(
+            new, np.zeros(len(new)), split_ratio=0.0, shuffle_seed=shuffle_seed
+        )
 
     # clean array
-    new = clean_array(new,
-                      -1,
-                      remove_negative=remove_negative_weight,
-                      verbose=False)
+    new = clean_array(new, -1, remove_negative=remove_negative_weight, verbose=False)
     # return result
     return new
 
@@ -249,15 +246,15 @@ def reset_col(reset_array, ref_array, col=0, shuffle_seed=None):
     new = reset_array.copy()
     total_events = len(new)
     sump = sum(ref_array[:, -1])
-    reset_list = np.random.choice(ref_array[:, col],
-                                  size=total_events,
-                                  p=1 / sump * ref_array[:, -1])
+    reset_list = np.random.choice(
+        ref_array[:, col], size=total_events, p=1 / sump * ref_array[:, -1]
+    )
     for count, entry in enumerate(new):
         entry[col] = reset_list[count]
     return new
 
 
-def shuffle_and_split(x, y, split_ratio=0., shuffle_seed=None):
+def shuffle_and_split(x, y, split_ratio=0.0, shuffle_seed=None):
     """Self defined function to replace train_test_split in sklearn to allow
     more flexibility.
     """
@@ -267,12 +264,11 @@ def shuffle_and_split(x, y, split_ratio=0., shuffle_seed=None):
     array_len = len(y)
     np.random.seed(shuffle_seed)
     # get index for the first part of the splited array
-    first_part_index = np.random.choice(range(array_len),
-                                        int(array_len * 1. * split_ratio),
-                                        replace=False)
+    first_part_index = np.random.choice(
+        range(array_len), int(array_len * 1.0 * split_ratio), replace=False
+    )
     # get index for last part of the splited array
-    last_part_index = np.setdiff1d(np.array(range(array_len)),
-                                   first_part_index)
+    last_part_index = np.setdiff1d(np.array(range(array_len)), first_part_index)
     first_part_x = x[first_part_index]
     first_part_y = y[first_part_index]
     last_part_x = x[last_part_index]

@@ -35,7 +35,7 @@ from lfv_pdnn.train import evaluate, train_utils
 
 # self-defined metrics functions
 def plain_acc(y_true, y_pred):
-    return K.mean(K.less(K.abs(y_pred * 1. - y_true * 1.), 0.5))
+    return K.mean(K.less(K.abs(y_pred * 1.0 - y_true * 1.0), 0.5))
     # return 1-K.mean(K.abs(y_pred-y_true))
 
 
@@ -129,12 +129,9 @@ class Model_Sequential_Base(Model_Base):
 
     """
 
-    def __init__(self,
-                 name,
-                 input_features,
-                 hypers,
-                 save_tb_logs=False,
-                 tb_logs_path=None):
+    def __init__(
+        self, name, input_features, hypers, save_tb_logs=False, tb_logs_path=None
+    ):
         """Initialize model."""
         super().__init__(name)
         # Model parameters
@@ -146,6 +143,7 @@ class Model_Sequential_Base(Model_Base):
         # Arrays
         self.array_prepared = False
         self.selected_features = input_features
+        self.model_meta = {}
         # Report
         self.save_tb_logs = save_tb_logs
         self.tb_logs_path = tb_logs_path
@@ -185,11 +183,11 @@ class Model_Sequential_Base(Model_Base):
         performance_meta_dict = {}
         # try collect sifinifance scan result
         try:
-            performance_meta_dict[
-                "original_significance"] = self.original_significance
+            performance_meta_dict["original_significance"] = self.original_significance
             performance_meta_dict["max_significance"] = self.max_significance
             performance_meta_dict[
-                "max_significance_threshould"] = self.max_significance_threshould
+                "max_significance_threshould"
+            ] = self.max_significance_threshould
         except:
             performance_meta_dict["original_significance"] = "-"
             performance_meta_dict["max_significance"] = "-"
@@ -198,8 +196,7 @@ class Model_Sequential_Base(Model_Base):
         try:
             performance_meta_dict["auc_train"] = self.auc_train
             performance_meta_dict["auc_test"] = self.auc_test
-            performance_meta_dict[
-                "auc_train_original"] = self.auc_train_original
+            performance_meta_dict["auc_train_original"] = self.auc_train_original
             performance_meta_dict["auc_test_original"] = self.auc_test_original
         except:
             performance_meta_dict["auc_train"] = "-"
@@ -209,35 +206,46 @@ class Model_Sequential_Base(Model_Base):
         return performance_meta_dict
 
     def get_corrcoef(self) -> dict:
-        d_bkg = pd.DataFrame(data=self.feedbox["xb_selected_original_mass"],
-                             columns=list(self.selected_features))
+        d_bkg = pd.DataFrame(
+            data=self.feedbox["xb_selected_original_mass"],
+            columns=list(self.selected_features),
+        )
         bkg_matrix = d_bkg.corr()
-        d_sig = pd.DataFrame(data=self.feedbox["xs_selected_original_mass"],
-                             columns=list(self.selected_features))
+        d_sig = pd.DataFrame(
+            data=self.feedbox["xs_selected_original_mass"],
+            columns=list(self.selected_features),
+        )
         sig_matrix = d_sig.corr()
         corrcoef_matrix_dict = {}
         corrcoef_matrix_dict["bkg"] = bkg_matrix
         corrcoef_matrix_dict["sig"] = sig_matrix
         return corrcoef_matrix_dict
 
-    def load_model(self,
-                   dir,
-                   model_name,
-                   job_name='*',
-                   model_class='*',
-                   date='*',
-                   version='*'):
+    def load_model(
+        self, dir, model_name, job_name="*", model_class="*", date="*", version="*"
+    ):
         """Loads saved model."""
         # Search possible files
-        search_pattern = dir + '/' + model_name + '*.h5'
+        search_pattern = dir + "/" + model_name + "*.h5"
         model_path_list = glob.glob(search_pattern)
-        search_pattern = dir + '/' + date + '_' + job_name + '_' + version \
-            + '/models/' + model_name + '_' + version + '*.h5'
+        search_pattern = (
+            dir
+            + "/"
+            + date
+            + "_"
+            + job_name
+            + "_"
+            + version
+            + "/models/"
+            + model_name
+            + "_"
+            + version
+            + "*.h5"
+        )
         model_path_list += glob.glob(search_pattern)
         # Choose the newest one
         if len(model_path_list) < 1:
-            raise FileNotFoundError(
-                "Model file that matched the pattern not found.")
+            raise FileNotFoundError("Model file that matched the pattern not found.")
         model_path = model_path_list[-1]
         if len(model_path_list) > 1:
             print(
@@ -246,10 +254,9 @@ class Model_Sequential_Base(Model_Base):
             print("Loading the last matched model path:", model_path)
         else:
             print("Loading model at:", model_path)
-        self.model = keras.models.load_model(model_path,
-                                             custom_objects={
-                                                 'plain_acc': plain_acc
-                                             })  # it's important to specify
+        self.model = keras.models.load_model(
+            model_path, custom_objects={"plain_acc": plain_acc}
+        )  # it's important to specify
         # custom objects
         self.model_is_loaded = True
         # Load parameters
@@ -263,25 +270,24 @@ class Model_Sequential_Base(Model_Base):
 
     def load_model_parameters(self, paras_path):
         """Retrieves model parameters from json file."""
-        with open(paras_path, 'r') as paras_file:
+        with open(paras_path, "r") as paras_file:
             paras_dict = json.load(paras_file)
-        # sorted by aphabet
-        self.class_weight = common_utils.dict_key_strtoint(
-            paras_dict['class_weight'])
-        self.model_create_time = paras_dict['model_create_time']
-        self.model_input_dim = paras_dict['model_input_dim']
-        self.model_is_compiled = paras_dict['model_is_compiled']
-        self.model_is_saved = paras_dict['model_is_saved']
-        self.model_is_trained = paras_dict['model_is_trained']
-        self.model_label = paras_dict['model_label']
-        self.model_hypers = paras_dict['model_hypers']
-        self.model_name = paras_dict['model_name']
-        self.model_note = paras_dict['model_note']
-        self.train_history_accuracy = paras_dict['train_history_accuracy']
-        self.train_history_val_accuracy = paras_dict[
-            'train_history_val_accuracy']
-        self.train_history_loss = paras_dict['train_history_loss']
-        self.train_history_val_loss = paras_dict['train_history_val_loss']
+        # sorted by alphabet
+        self.class_weight = common_utils.dict_key_strtoint(paras_dict["class_weight"])
+        self.model_create_time = paras_dict["model_create_time"]
+        self.model_input_dim = paras_dict["model_input_dim"]
+        self.model_is_compiled = paras_dict["model_is_compiled"]
+        self.model_is_saved = paras_dict["model_is_saved"]
+        self.model_is_trained = paras_dict["model_is_trained"]
+        self.model_label = paras_dict["model_label"]
+        self.model_hypers = paras_dict["model_hypers"]
+        self.model_meta = paras_dict["model_meta"]
+        self.model_name = paras_dict["model_name"]
+        self.model_note = paras_dict["model_note"]
+        self.train_history_accuracy = paras_dict["train_history_accuracy"]
+        self.train_history_val_accuracy = paras_dict["train_history_val_accuracy"]
+        self.train_history_loss = paras_dict["train_history_loss"]
+        self.train_history_val_loss = paras_dict["train_history_val_loss"]
 
     def save_model(self, save_dir=None, file_name=None):
         """Saves trained model.
@@ -296,12 +302,11 @@ class Model_Sequential_Base(Model_Base):
             save_dir = "./models"
         if file_name is None:
             datestr = datetime.date.today().strftime("%Y-%m-%d")
-            file_name = self.model_name + '_' + self.model_label + '_' + datestr
+            file_name = self.model_name + "_" + self.model_label + "_" + datestr
         # Check path
-        path_pattern = save_dir + '/' + file_name + '_v{}.h5'
-        save_path = common_utils.get_newest_file_version(path_pattern)['path']
-        version_id = common_utils.get_newest_file_version(
-            path_pattern)['ver_num']
+        path_pattern = save_dir + "/" + file_name + "_v{}.h5"
+        save_path = common_utils.get_newest_file_version(path_pattern)["path"]
+        version_id = common_utils.get_newest_file_version(path_pattern)["ver_num"]
         if not os.path.exists(os.path.dirname(save_path)):
             os.makedirs(os.path.dirname(save_path))
 
@@ -310,9 +315,10 @@ class Model_Sequential_Base(Model_Base):
         self.model_save_path = save_path
         print("model:", self.model_name, "has been saved to:", save_path)
         # update path for json
-        path_pattern = save_dir + '/' + file_name + '_v{}_paras.json'
+        path_pattern = save_dir + "/" + file_name + "_v{}_paras.json"
         save_path = common_utils.get_newest_file_version(
-            path_pattern, ver_num=version_id)['path']
+            path_pattern, ver_num=version_id
+        )["path"]
         self.save_model_paras(save_path)
         print("model parameters has been saved to:", save_path)
         self.model_is_saved = True
@@ -321,36 +327,40 @@ class Model_Sequential_Base(Model_Base):
         """Save model parameters to json file."""
         # sorted by aphabet
         paras_dict = {}
-        paras_dict['class_weight'] = self.class_weight
-        paras_dict['model_create_time'] = self.model_create_time
-        paras_dict['model_input_dim'] = self.model_input_dim
-        paras_dict['model_is_compiled'] = self.model_is_compiled
-        paras_dict['model_is_saved'] = self.model_is_saved
-        paras_dict['model_is_trained'] = self.model_is_trained
-        paras_dict['model_label'] = self.model_label
-        paras_dict['model_hypers'] = self.model_hypers
-        paras_dict['model_name'] = self.model_name
-        paras_dict['model_note'] = self.model_note
-        paras_dict['train_history_accuracy'] = self.train_history_accuracy
-        paras_dict[
-            'train_history_val_accuracy'] = self.train_history_val_accuracy
-        paras_dict['train_history_loss'] = self.train_history_loss
-        paras_dict['train_history_val_loss'] = self.train_history_val_loss
-        with open(save_path, 'w') as write_file:
+        paras_dict["class_weight"] = self.class_weight
+        paras_dict["model_create_time"] = self.model_create_time
+        paras_dict["model_input_dim"] = self.model_input_dim
+        paras_dict["model_is_compiled"] = self.model_is_compiled
+        paras_dict["model_is_saved"] = self.model_is_saved
+        paras_dict["model_is_trained"] = self.model_is_trained
+        paras_dict["model_label"] = self.model_label
+        paras_dict["model_hypers"] = self.model_hypers
+        paras_dict["model_meta"] = self.model_meta
+        paras_dict["model_name"] = self.model_name
+        paras_dict["model_note"] = self.model_note
+        paras_dict["train_history_accuracy"] = self.train_history_accuracy
+        paras_dict["train_history_val_accuracy"] = self.train_history_val_accuracy
+        paras_dict["train_history_loss"] = self.train_history_loss
+        paras_dict["train_history_val_loss"] = self.train_history_val_loss
+        with open(save_path, "w") as write_file:
             json.dump(paras_dict, write_file, indent=2)
 
     def set_inputs(self, feedbox: dict, apply_data=False) -> None:
         """Prepares array for training."""
         self.feedbox = feedbox
         self.array_prepared = feedbox["array_prepared"]
+        self.model_meta["norm_average"] = feedbox["norm_average"].tolist()
+        self.model_meta["norm_variance"] = feedbox["norm_variance"].tolist()
 
-    def show_performance(self,
-                         apply_data=False,
-                         figsize=(16, 18),
-                         show_fig=True,
-                         save_fig=False,
-                         save_path=None,
-                         job_type="train"):
+    def show_performance(
+        self,
+        apply_data=False,
+        figsize=(16, 18),
+        show_fig=True,
+        save_fig=False,
+        save_path=None,
+        job_type="train",
+    ):
         """Evaluates training result.
 
         Args:
@@ -367,24 +377,26 @@ class Model_Sequential_Base(Model_Base):
         # Plots
         fig, ax = plt.subplots(nrows=3, ncols=2, figsize=figsize)
         evaluate.plot_accuracy(
-            ax[0, 0], self.train_history_accuracy, self.train_history_val_accuracy)
-        evaluate.plot_loss(ax[0, 1], self.train_history_loss,
-                           self.train_history_val_loss)
+            ax[0, 0], self.train_history_accuracy, self.train_history_val_accuracy
+        )
+        evaluate.plot_loss(
+            ax[0, 1], self.train_history_loss, self.train_history_val_loss
+        )
         auc_dict = evaluate.plot_train_test_roc(
-            ax[1, 0], self, yscal="linear", ylim=(0, 1))
+            ax[1, 0], self, yscal="linear", ylim=(0, 1)
+        )
         evaluate.plot_train_test_roc(
-            ax[1, 1], self, yscal="logit", ylim=(0.1, 1-1e-4))
+            ax[1, 1], self, yscal="logit", ylim=(0.1, 1 - 1e-4)
+        )
         # Collect meta data
         self.auc_train = auc_dict["auc_train"]
         self.auc_test = auc_dict["auc_test"]
         self.auc_train_original = auc_dict["auc_train_original"]
         self.auc_test_original = auc_dict["auc_test_original"]
-        #evaluate.plot_feature_importance(ax[1, 1], self)
+        # evaluate.plot_feature_importance(ax[1, 1], self)
         if job_type == "train" and self.feedbox["is_mass_reset"] == True:
-            evaluate.plot_overtrain_check(
-                ax[2, 0], self, bins=50, log=True)
-        evaluate.plot_overtrain_check_original_mass(
-            ax[2, 1], self, bins=50, log=True)
+            evaluate.plot_overtrain_check(ax[2, 0], self, bins=50, log=True)
+        evaluate.plot_overtrain_check_original_mass(ax[2, 1], self, bins=50, log=True)
         fig.tight_layout()
         if show_fig:
             plt.show()
@@ -394,13 +406,14 @@ class Model_Sequential_Base(Model_Base):
             fig.savefig(save_path)
 
     def train(
-            self,
-            batch_size=128,
-            epochs=20,
-            val_split=0.25,
-            sig_class_weight=1.,
-            bkg_class_weight=1.,
-            verbose=1):
+        self,
+        batch_size=128,
+        epochs=20,
+        val_split=0.25,
+        sig_class_weight=1.0,
+        bkg_class_weight=1.0,
+        verbose=1,
+    ):
         """Performs training."""
         # Check
         if self.model_is_compiled == False:
@@ -416,10 +429,13 @@ class Model_Sequential_Base(Model_Base):
         if self.save_tb_logs:
             if self.tb_logs_path is None:
                 self.tb_logs_path = "temp_logs/{}".format(self.model_label)
-                warnings.warn("TensorBoard logs path not specified, \
-          set path to: {}".format(self.tb_logs_path))
-            tb_callback = TensorBoard(log_dir=self.tb_logs_path,
-                                      histogram_freq=1)
+                warnings.warn(
+                    "TensorBoard logs path not specified, \
+          set path to: {}".format(
+                        self.tb_logs_path
+                    )
+                )
+            tb_callback = TensorBoard(log_dir=self.tb_logs_path, histogram_freq=1)
             train_callbacks.append(tb_callback)
         if self.model_hypers["use_early_stop"]:
             early_stop_callback = callbacks.EarlyStopping(
@@ -427,8 +443,16 @@ class Model_Sequential_Base(Model_Base):
                 min_delta=self.model_hypers["early_stop_paras"]["min_delta"],
                 patience=self.model_hypers["early_stop_paras"]["patience"],
                 mode=self.model_hypers["early_stop_paras"]["mode"],
-                restore_best_weights=self.model_hypers["early_stop_paras"]["restore_best_weights"])
+                restore_best_weights=self.model_hypers["early_stop_paras"][
+                    "restore_best_weights"
+                ],
+            )
             train_callbacks.append(early_stop_callback)
+        # check input
+        if np.isnan(np.sum(self.feedbox["x_train_selected"])):
+            exit(1)
+        if np.isnan(np.sum(self.feedbox["y_train"])):
+            exit(1)
         self.train_history = self.get_model().fit(
             self.feedbox["x_train_selected"],
             self.feedbox["y_train"],
@@ -438,55 +462,59 @@ class Model_Sequential_Base(Model_Base):
             class_weight=self.class_weight,
             sample_weight=self.feedbox["x_train"][:, -1],
             callbacks=train_callbacks,
-            verbose=verbose)
+            verbose=verbose,
+        )
         print("Training finished.")
         # Quick evaluation
         print("Quick evaluation:")
-        score = self.get_model().evaluate(self.feedbox["x_test_selected"],
-                                          self.feedbox["y_test"],
-                                          verbose=verbose,
-                                          sample_weight=self.feedbox["x_test"][:, -1])
-        print('> test loss:', score[0])
-        print('> test accuracy:', score[1])
+        score = self.get_model().evaluate(
+            self.feedbox["x_test_selected"],
+            self.feedbox["y_test"],
+            verbose=verbose,
+            sample_weight=self.feedbox["x_test"][:, -1],
+        )
+        print("> test loss:", score[0])
+        print("> test accuracy:", score[1])
         print(self.get_model().metrics_names)
         print(score)
         # Save train history
         # save accuracy history
         self.train_history_accuracy = [
-            float(ele) for ele in self.train_history.history['accuracy']
+            float(ele) for ele in self.train_history.history["accuracy"]
         ]
         try:
             self.train_history_accuracy = [
-                float(ele) for ele in self.train_history.history['acc']
+                float(ele) for ele in self.train_history.history["acc"]
             ]
             self.train_history_val_accuracy = [
-                float(ele) for ele in self.train_history.history['val_acc']
+                float(ele) for ele in self.train_history.history["val_acc"]
             ]
         except:  # updated for tensorflow2.0
             self.train_history_accuracy = [
-                float(ele) for ele in self.train_history.history['accuracy']
+                float(ele) for ele in self.train_history.history["accuracy"]
             ]
             self.train_history_val_accuracy = [
-                float(ele)
-                for ele in self.train_history.history['val_accuracy']
+                float(ele) for ele in self.train_history.history["val_accuracy"]
             ]
         # save loss history/
         self.train_history_loss = [
-            float(ele) for ele in self.train_history.history['loss']
+            float(ele) for ele in self.train_history.history["loss"]
         ]
         self.train_history_val_loss = [
-            float(ele) for ele in self.train_history.history['val_loss']
+            float(ele) for ele in self.train_history.history["val_loss"]
         ]
         # update status
         self.model_is_trained = True
 
-    def tuning_train(self,
-                     batch_size=128,
-                     epochs=20,
-                     val_split=0.25,
-                     sig_class_weight=1.,
-                     bkg_class_weight=1.,
-                     verbose=1):
+    def tuning_train(
+        self,
+        batch_size=128,
+        epochs=20,
+        val_split=0.25,
+        sig_class_weight=1.0,
+        bkg_class_weight=1.0,
+        verbose=1,
+    ):
         """Performs quick training for hyperparameters tuning."""
         # Check
         if self.model_is_compiled == False:
@@ -517,7 +545,10 @@ class Model_Sequential_Base(Model_Base):
                 min_delta=self.model_hypers["early_stop_paras"]["min_delta"],
                 patience=self.model_hypers["early_stop_paras"]["patience"],
                 mode=self.model_hypers["early_stop_paras"]["mode"],
-                restore_best_weights=self.model_hypers["early_stop_paras"]["restore_best_weights"])
+                restore_best_weights=self.model_hypers["early_stop_paras"][
+                    "restore_best_weights"
+                ],
+            )
             train_callbacks.append(early_stop_callback)
         self.train_history = self.get_model().fit(
             x_tr,
@@ -528,12 +559,12 @@ class Model_Sequential_Base(Model_Base):
             class_weight=self.class_weight,
             sample_weight=wt_tr,
             callbacks=train_callbacks,
-            verbose=verbose)
+            verbose=verbose,
+        )
         # Final evaluation
-        score = self.get_model().evaluate(x_val,
-                                          y_val,
-                                          verbose=verbose,
-                                          sample_weight=wt_val)
+        score = self.get_model().evaluate(
+            x_val, y_val, verbose=verbose, sample_weight=wt_val
+        )
         # update status
         self.model_is_trained = True
         return score[0]
@@ -547,52 +578,67 @@ class Model_Sequential_Flat(Model_Sequential_Base):
 
     """
 
-    def __init__(self,
-                 name,
-                 input_features,
-                 hypers,
-                 save_tb_logs=False,
-                 tb_logs_path=None):
-        super().__init__(name,
-                         input_features,
-                         hypers,
-                         save_tb_logs=False,
-                         tb_logs_path=None)
+    def __init__(
+        self, name, input_features, hypers, save_tb_logs=False, tb_logs_path=None
+    ):
+        super().__init__(
+            name, input_features, hypers, save_tb_logs=False, tb_logs_path=None
+        )
 
         self.model_label = "mod_seq"
         self.model_note = "Sequential model with flexible layers and nodes."
-        assert self.model_hypers["layers"] > 0, "Model layer quantity should be positive"
+        assert (
+            self.model_hypers["layers"] > 0
+        ), "Model layer quantity should be positive"
 
     def compile(self):
         """ Compile model, function to be changed in the future."""
         # Add layers
         # input
         for layer in range(self.model_hypers["layers"]):
-            self.model.add(
-                Dense(self.model_hypers["nodes"],
-                      kernel_initializer='glorot_uniform',
-                      input_dim=self.model_input_dim))
-            self.model.add(Dropout(self.model_hypers["dropout_rate"]))
+            if layer == 0:
+                self.model.add(
+                    Dense(
+                        self.model_hypers["nodes"],
+                        kernel_initializer="glorot_uniform",
+                        activation="relu",
+                        input_dim=self.model_input_dim,
+                    )
+                )
+            else:
+                self.model.add(
+                    Dense(
+                        self.model_hypers["nodes"],
+                        kernel_initializer="glorot_uniform",
+                        activation="relu",
+                    )
+                )
+            if self.model_hypers["dropout_rate"] != 0:
+                self.model.add(Dropout(self.model_hypers["dropout_rate"]))
         # output
         self.model.add(
-            Dense(1, kernel_initializer="glorot_uniform",
-                  activation="sigmoid"))
+            Dense(1, kernel_initializer="glorot_uniform", activation="sigmoid")
+        )
         # Compile
         # transfer self-defined metrics into real function
         metrics = copy.deepcopy(self.model_hypers["metrics"])
         weighted_metrics = copy.deepcopy(self.model_hypers["weighted_metrics"])
         if "plain_acc" in metrics:
-            index = metrics.index('plain_acc')
+            index = metrics.index("plain_acc")
             metrics[index] = plain_acc
         if "plain_acc" in weighted_metrics:
-            index = weighted_metrics.index('plain_acc')
+            index = weighted_metrics.index("plain_acc")
             weighted_metrics[index] = plain_acc
         # compile model
-        self.model.compile(loss="binary_crossentropy",
-                           optimizer=SGD(lr=self.model_hypers["learn_rate"],
-                                         decay=self.model_hypers["decay"],
-                                         momentum=self.model_hypers["momentum"],
-                                         nesterov=self.model_hypers["nesterov"]),
-                           metrics=metrics,
-                           weighted_metrics=weighted_metrics)
+        self.model.compile(
+            loss="binary_crossentropy",
+            optimizer=SGD(
+                lr=self.model_hypers["learn_rate"],
+                decay=self.model_hypers["decay"],
+                momentum=self.model_hypers["momentum"],
+                nesterov=self.model_hypers["nesterov"],
+            ),
+            metrics=metrics,
+            weighted_metrics=weighted_metrics,
+        )
         self.model_is_compiled = True

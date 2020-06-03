@@ -28,19 +28,20 @@ def get_valid_cfg_path(path):
             pass
     share_dir = None
     for temp in main_dirs:
-        share_dir_temp = temp + '/share'
+        share_dir_temp = temp + "/share"
         if os.path.isdir(share_dir_temp):
             share_dir = share_dir_temp
             break
     if share_dir is None:
         raise ValueError(
-            'No valid path found for {}, please check .ini file.'.format(share_dir))
-    if os.path.isfile(share_dir + '/train/' + path):
-        return share_dir + '/train/' + path
-    elif os.path.isfile(share_dir + '/' + path):
-        return share_dir + '/' + path
+            "No valid path found for {}, please check .ini file.".format(share_dir)
+        )
+    if os.path.isfile(share_dir + "/train/" + path):
+        return share_dir + "/train/" + path
+    elif os.path.isfile(share_dir + "/" + path):
+        return share_dir + "/" + path
     else:
-        raise ValueError('No valid path found, please check .ini file.')
+        raise ValueError("No valid path found, please check .ini file.")
 
 
 def make_table(data, save_dir, num_para=1):
@@ -55,7 +56,7 @@ def make_table(data, save_dir, num_para=1):
     """
     # save csv format
     save_path = save_dir + "/scan_meta_report.csv"
-    with open(save_path, 'w', newline='') as myfile:
+    with open(save_path, "w", newline="") as myfile:
         wr = csv.writer(myfile, quoting=csv.QUOTE_ALL)
         for single_list in data:
             wr.writerow(single_list)
