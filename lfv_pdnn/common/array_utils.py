@@ -46,7 +46,7 @@ def get_cut_index(array, cut_values, cut_types):
     """Parses cuts arguments and returns cuts indexes."""
     assert len(cut_values) == len(
         cut_types
-    ), "cut_values and cut_types should have same lenth."
+    ), "cut_values and cut_types should have same length."
     pass_index = None
     for cut_value, cut_type in zip(cut_values, cut_types):
         temp_index = get_cut_index_value(array, cut_value, cut_type)
@@ -54,7 +54,6 @@ def get_cut_index(array, cut_values, cut_types):
             pass_index = temp_index
         else:
             pass_index = np.intersect1d(pass_index, temp_index)
-    print(pass_index)
     return pass_index
 
 

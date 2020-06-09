@@ -6,6 +6,7 @@ manipulation, making plots, evaluation functions and so on.
 
 """
 
+import glob
 import os
 import sys
 import time
@@ -65,6 +66,26 @@ def get_mass_range(mass_array, weights, nsig=1):
     lower_limit = average - np.sqrt(variance) * nsig
     upper_limit = average + np.sqrt(variance) * nsig
     return lower_limit, upper_limit
+
+
+def get_model_epoch_path_list(
+    load_dir, model_name, job_name="*", date="*", version="*"
+):
+    # Search possible files
+    search_pattern = load_dir + "/" + date + "_" + job_name + "_" + version + "/models"
+    model_dir_list = glob.glob(search_pattern)
+    # Choose the newest one
+    if len(model_dir_list) < 1:
+        raise FileNotFoundError("Model file that matched the pattern not found.")
+    model_dir = model_dir_list[-1]
+    if len(model_dir_list) > 1:
+        print("More than one valid model file found, try to specify more infomation.")
+        print("Loading the last matched model path:", model_dir)
+    else:
+        print("Loading model at:", model_dir)
+    search_pattern = model_dir + "/" + model_name + "_epoch*.h5"
+    model_path_list = glob.glob(search_pattern)
+    return model_path_list
 
 
 def get_valid_feature(xtrain):

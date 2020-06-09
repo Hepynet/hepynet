@@ -3,6 +3,7 @@ import csv
 import datetime
 import itertools
 import json
+import math
 import os
 import platform
 import re
@@ -142,6 +143,7 @@ class job_executor(object):
         self.save_pdf_report = None
         self.save_tb_logs = None
         self.verbose = None
+        self.check_model_epoch = None
         self.cfg_is_collected = False
         # [scanned_para] section
         for para_name in SCANNED_PARAS:
@@ -243,10 +245,7 @@ class job_executor(object):
         # Set up training or loading model
         if self.job_type == "apply":
             self.model_wrapper.load_model(
-                self.load_dir,
-                self.model_name,
-                job_name=self.load_job_name,
-                model_class=self.model_class,
+                self.load_dir, self.model_name, job_name=self.load_job_name,
             )
             # need to get feedbox after model loaded to get model meta
             feedbox = train_utils.prepare_array(
@@ -296,8 +295,16 @@ class job_executor(object):
                 sig_class_weight=self.sig_class_weight,
                 bkg_class_weight=self.bkg_class_weight,
                 verbose=self.verbose,
+                save_dir=self.save_sub_dir + "/models",
             )
         # Logs
+
+        if self.save_model and (self.job_type == "train"):
+            mod_save_path = self.save_sub_dir + "/models"
+            model_save_name = self.model_name
+            self.model_wrapper.save_model(
+                save_dir=mod_save_path, file_name=model_save_name
+            )
         if self.show_report or self.save_pdf_report:
             # Performance plots
             self.fig_performance_path = None
@@ -315,7 +322,16 @@ class job_executor(object):
                 figsize=(8, 6),
                 style_cfg_path=self.kine_cfg,
                 save_fig=True,
-                save_dir=self.save_sub_dir + "/kinematics",
+                save_dir=self.save_sub_dir + "/kinematics/raw",
+            )
+            evaluate.plot_input_distributions(
+                self.model_wrapper,
+                apply_data=False,
+                figsize=(8, 6),
+                style_cfg_path=self.kine_cfg,
+                save_fig=True,
+                save_dir=self.save_sub_dir + "/kinematics/processed",
+                show_reshaped=True,
             )
             # Make correlation plot
             fig, ax = plt.subplots(ncols=2, figsize=(16, 8))
@@ -331,81 +347,120 @@ class job_executor(object):
                 fig_save_path = save_dir + "/correlation_matrix.png"
                 self.fig_correlation_matrix_path = fig_save_path
                 fig.savefig(fig_save_path)
-            # Make performance plots
-            fig_save_path = save_dir + "/performance.png"
-            self.fig_performance_path = fig_save_path
-            self.model_wrapper.show_performance(
-                apply_data=False,  # don't apply data in training performance
-                show_fig=self.show_report,
-                save_fig=self.save_pdf_report,
-                save_path=fig_save_path,
-                job_type=self.job_type,
-            )
-            # Make feature importance check
-            if self.book_importance_study:
-                fig, ax = plt.subplots(figsize=(12, 9))
-                fig_save_path = save_dir + "/importance.png"
-                self.fig_feature_importance_path = fig_save_path
-                evaluate.plot_feature_importance(ax, self.model_wrapper, max_feature=12)
-                fig.savefig(fig_save_path)
-            # Make significance scan plot
-            fig, ax = plt.subplots(figsize=(12, 9))
-            ax.set_title("significance scan")
-            evaluate.plot_significance_scan(
-                ax,
-                self.model_wrapper,
-                save_dir=save_dir,
-                significance_algo=self.significance_algo,
-            )
-            if self.save_pdf_report:
-                fig_save_path = save_dir + "/significance_scan.png"
-                self.fig_significance_scan_path = fig_save_path
-                fig.savefig(fig_save_path)
-            # Extra plots (use model on non-mass-reset arrays)
-            evaluate.plot_scores_separate_root(
-                self.model_wrapper,
-                self.plot_bkg_dict,
-                self.plot_bkg_list,
-                apply_data=self.apply_data,
-                apply_data_range=self.apply_data_range,
-                plot_title="DNN scores (lin)",
-                bins=50,
-                range=(0, 1),
-                scale_sig=True,
-                density=self.plot_density,
-                log_scale=False,
-                save_plot=True,
-                save_dir=save_dir,
-                save_file_name="DNN_scores_lin",
-            )
-            evaluate.plot_scores_separate_root(
-                self.model_wrapper,
-                self.plot_bkg_dict,
-                self.plot_bkg_list,
-                apply_data=self.apply_data,
-                apply_data_range=self.apply_data_range,
-                plot_title="DNN scores (log)",
-                bins=50,
-                range=(0, 1),
-                scale_sig=True,
-                density=self.plot_density,
-                log_scale=True,
-                save_plot=True,
-                save_dir=save_dir,
-                save_file_name="DNN_scores_log",
-            )
-            if self.save_pdf_report:
-                self.fig_dnn_scores_lin_path = save_dir + "/DNN_scores_lin.png"
-                self.fig_dnn_scores_log_path = save_dir + "/DNN_scores_log.png"
-                pdf_save_path = save_dir + "/summary_report.pdf"
-                self.generate_report(pdf_save_path=pdf_save_path)
-                self.report_path = pdf_save_path
-        if self.save_model and (self.job_type == "train"):
-            mod_save_path = self.save_sub_dir + "/models"
-            model_save_name = self.model_name
-            self.model_wrapper.save_model(
-                save_dir=mod_save_path, file_name=model_save_name
-            )
+
+            model_path_list = ["_final"]
+            if self.check_model_epoch:
+                if self.job_type == "apply":
+                    model_dir = self.load_dir
+                    job_name = self.load_job_name
+                else:
+                    model_dir = self.save_dir
+                    job_name = self.job_name
+                model_path_list += train_utils.get_model_epoch_path_list(
+                    model_dir, self.model_name, job_name=job_name,
+                )
+            max_epoch = 10
+            total_models = len(model_path_list)
+            epoch_interval = 1
+            if total_models > max_epoch:
+                epoch_interval = math.ceil(total_models / max_epoch)
+                if epoch_interval > 5:
+                    epoch_interval = 5
+            for model_num, model_path in enumerate(model_path_list):
+                if model_num % epoch_interval == 0 or model_num == 1:
+                    print(">>>> Checking model:", model_path)
+                    identifier = "final"
+                    if model_path != "_final":
+                        identifier = "epoch{:02d}".format(model_num)
+                        self.model_wrapper.load_model_with_path(model_path)
+                    # Make performance plots
+                    fig_save_path = save_dir + "/performance_" + identifier + ".png"
+                    self.fig_performance_path = fig_save_path
+                    self.model_wrapper.show_performance(
+                        apply_data=False,  # don't apply data in training performance
+                        show_fig=self.show_report,
+                        save_fig=self.save_pdf_report,
+                        save_path=fig_save_path,
+                        job_type=self.job_type,
+                    )
+                    # Make feature importance check
+                    if self.book_importance_study:
+                        fig, ax = plt.subplots(figsize=(12, 9))
+                        fig_save_path = save_dir + "/importance_" + identifier + ".png"
+                        self.fig_feature_importance_path = fig_save_path
+                        evaluate.plot_feature_importance(
+                            ax, self.model_wrapper, max_feature=12
+                        )
+                        fig.savefig(fig_save_path)
+                    # Make significance scan plot
+                    fig, ax = plt.subplots(figsize=(12, 9))
+                    ax.set_title("significance scan")
+                    evaluate.plot_significance_scan(
+                        ax,
+                        self.model_wrapper,
+                        save_dir=save_dir,
+                        significance_algo=self.significance_algo,
+                        suffix="_" + identifier,
+                    )
+                    if self.save_pdf_report:
+                        fig_save_path = (
+                            save_dir + "/significance_scan_" + identifier + ".png"
+                        )
+                        self.fig_significance_scan_path = fig_save_path
+                        fig.savefig(fig_save_path)
+                    # Extra plots (use model on non-mass-reset arrays)
+                    evaluate.plot_scores_separate_root(
+                        self.model_wrapper,
+                        self.plot_bkg_dict,
+                        self.plot_bkg_list,
+                        apply_data=self.apply_data,
+                        apply_data_range=self.apply_data_range,
+                        plot_title="DNN scores (lin)",
+                        bins=50,
+                        range=(0, 1),
+                        scale_sig=True,
+                        density=self.plot_density,
+                        log_scale=False,
+                        save_plot=True,
+                        save_dir=save_dir,
+                        save_file_name="DNN_scores_lin_" + identifier,
+                    )
+                    evaluate.plot_scores_separate_root(
+                        self.model_wrapper,
+                        self.plot_bkg_dict,
+                        self.plot_bkg_list,
+                        apply_data=self.apply_data,
+                        apply_data_range=self.apply_data_range,
+                        plot_title="DNN scores (log)",
+                        bins=50,
+                        range=(0, 1),
+                        scale_sig=True,
+                        density=self.plot_density,
+                        log_scale=True,
+                        save_plot=True,
+                        save_dir=save_dir,
+                        save_file_name="DNN_scores_log_" + identifier,
+                    )
+            # show kinemetics at different dnn cut
+            for dnn_cut in [0.5, 0.8, 0.85, 0.90, 0.95, 0.99]:
+                evaluate.plot_input_distributions(
+                    self.model_wrapper,
+                    apply_data=False,
+                    figsize=(8, 6),
+                    style_cfg_path=self.kine_cfg,
+                    save_fig=True,
+                    save_dir=self.save_sub_dir
+                    + "/kinematics/cut_p{}".format(dnn_cut * 100),
+                    dnn_cut=dnn_cut,
+                    compare_cut_sb_separated=True,
+                )
+        if self.save_pdf_report:
+            self.fig_dnn_scores_lin_path = save_dir + "/DNN_scores_lin_final.png"
+            self.fig_dnn_scores_log_path = save_dir + "/DNN_scores_log_final.png"
+            pdf_save_path = save_dir + "/summary_report.pdf"
+            self.generate_report(pdf_save_path=pdf_save_path)
+            self.report_path = pdf_save_path
+
         # post procedure
         plt.close("all")
         job_end_time = time.perf_counter()
@@ -743,6 +798,7 @@ class job_executor(object):
         self.try_parse_bool("save_pdf_report", config, "report", "save_pdf_report")
         self.try_parse_bool("save_tb_logs", config, "report", "save_tb_logs")
         self.try_parse_int("verbose", config, "report", "verbose")
+        self.try_parse_bool("check_model_epoch", config, "report", "check_model_epoch")
 
         if self.perform_para_scan:
             pass

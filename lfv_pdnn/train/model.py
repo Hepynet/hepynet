@@ -17,7 +17,7 @@ import pandas as pd
 import seaborn as sns
 from eli5.sklearn import PermutationImportance
 from keras import backend as K
-from keras.callbacks import TensorBoard, callbacks
+from keras.callbacks import TensorBoard, callbacks, ModelCheckpoint
 from keras.layers import Concatenate, Dense, Dropout, Input, Layer
 from keras.layers.normalization import BatchNormalization
 from keras.models import Model, Sequential
@@ -221,51 +221,54 @@ class Model_Sequential_Base(Model_Base):
         corrcoef_matrix_dict["sig"] = sig_matrix
         return corrcoef_matrix_dict
 
-    def load_model(
-        self, dir, model_name, job_name="*", model_class="*", date="*", version="*"
-    ):
+    def load_model(self, load_dir, model_name, job_name="*", date="*", version="*"):
         """Loads saved model."""
         # Search possible files
-        search_pattern = dir + "/" + model_name + "*.h5"
-        model_path_list = glob.glob(search_pattern)
         search_pattern = (
-            dir
-            + "/"
-            + date
-            + "_"
-            + job_name
-            + "_"
-            + version
-            + "/models/"
-            + model_name
-            + "_"
-            + version
-            + "*.h5"
+            load_dir + "/" + date + "_" + job_name + "_" + version + "/models"
         )
-        model_path_list += glob.glob(search_pattern)
+        model_dir_list = glob.glob(search_pattern)
         # Choose the newest one
-        if len(model_path_list) < 1:
+        if len(model_dir_list) < 1:
             raise FileNotFoundError("Model file that matched the pattern not found.")
-        model_path = model_path_list[-1]
-        if len(model_path_list) > 1:
+        model_dir = model_dir_list[-1]
+        if len(model_dir_list) > 1:
             print(
                 "More than one valid model file found, try to specify more infomation."
             )
-            print("Loading the last matched model path:", model_path)
+            print("Loading the last matched model path:", model_dir)
         else:
-            print("Loading model at:", model_path)
+            print("Loading model at:", model_dir)
         self.model = keras.models.load_model(
-            model_path, custom_objects={"plain_acc": plain_acc}
+            model_dir + "/" + model_name + ".h5",
+            custom_objects={"plain_acc": plain_acc},
         )  # it's important to specify
         # custom objects
         self.model_is_loaded = True
         # Load parameters
-        # try:
-        paras_path = os.path.splitext(model_path)[0] + "_paras.json"
-        self.load_model_parameters(paras_path)
-        self.model_paras_is_loaded = True
-        # except:
-        #  warnings.warn("Model parameters not successfully loaded.")
+        try:
+            paras_path = model_dir + "/" + model_name + "_paras.json"
+            self.load_model_parameters(paras_path)
+            self.model_paras_is_loaded = True
+        except:
+            warnings.warn("Model parameters not successfully loaded.")
+        print("Model loaded.")
+
+    def load_model_with_path(self, model_path, paras_path=None):
+        """Loads model with given path
+        
+        Note:
+            Should load model parameters manually.
+        """
+        self.model = keras.models.load_model(
+            model_path, custom_objects={"plain_acc": plain_acc},
+        )  # it's important to specify
+        if paras_path is not None:
+            try:
+                self.load_model_parameters(paras_path)
+                self.model_paras_is_loaded = True
+            except:
+                warnings.warn("Model parameters not successfully loaded.")
         print("Model loaded.")
 
     def load_model_parameters(self, paras_path):
@@ -304,28 +307,22 @@ class Model_Sequential_Base(Model_Base):
             datestr = datetime.date.today().strftime("%Y-%m-%d")
             file_name = self.model_name + "_" + self.model_label + "_" + datestr
         # Check path
-        path_pattern = save_dir + "/" + file_name + "_v{}.h5"
-        save_path = common_utils.get_newest_file_version(path_pattern)["path"]
-        version_id = common_utils.get_newest_file_version(path_pattern)["ver_num"]
+        save_path = save_dir + "/" + file_name + ".h5"
         if not os.path.exists(os.path.dirname(save_path)):
             os.makedirs(os.path.dirname(save_path))
-
         # Save
         self.model.save(save_path)
         self.model_save_path = save_path
         print("model:", self.model_name, "has been saved to:", save_path)
         # update path for json
-        path_pattern = save_dir + "/" + file_name + "_v{}_paras.json"
-        save_path = common_utils.get_newest_file_version(
-            path_pattern, ver_num=version_id
-        )["path"]
+        save_path = save_dir + "/" + file_name + "_paras.json"
         self.save_model_paras(save_path)
         print("model parameters has been saved to:", save_path)
         self.model_is_saved = True
 
     def save_model_paras(self, save_path):
         """Save model parameters to json file."""
-        # sorted by aphabet
+        # sorted by alphabet
         paras_dict = {}
         paras_dict["class_weight"] = self.class_weight
         paras_dict["model_create_time"] = self.model_create_time
@@ -413,6 +410,8 @@ class Model_Sequential_Base(Model_Base):
         sig_class_weight=1.0,
         bkg_class_weight=1.0,
         verbose=1,
+        save_dir=None,
+        file_name=None,
     ):
         """Performs training."""
         # Check
@@ -430,8 +429,7 @@ class Model_Sequential_Base(Model_Base):
             if self.tb_logs_path is None:
                 self.tb_logs_path = "temp_logs/{}".format(self.model_label)
                 warnings.warn(
-                    "TensorBoard logs path not specified, \
-          set path to: {}".format(
+                    "TensorBoard logs path not specified, set path to: {}".format(
                         self.tb_logs_path
                     )
                 )
@@ -448,6 +446,19 @@ class Model_Sequential_Base(Model_Base):
                 ],
             )
             train_callbacks.append(early_stop_callback)
+        # set up check point to save model in each epoch
+        if save_dir is None:
+            save_dir = "./models"
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir)
+        if file_name is None:
+            datestr = datetime.date.today().strftime("%Y-%m-%d")
+            file_name = self.model_name
+        path_pattern = save_dir + "/" + file_name + "_epoch{epoch:03d}.h5"
+        checkpoint = ModelCheckpoint(
+            path_pattern, monitor="val_loss", verbose=1, period=1
+        )
+        train_callbacks.append(checkpoint)
         # check input
         if np.isnan(np.sum(self.feedbox["x_train_selected"])):
             exit(1)

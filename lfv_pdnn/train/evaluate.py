@@ -133,6 +133,9 @@ def plot_input_distributions(
     apply_data=False,
     figsize=(8, 6),
     style_cfg_path=None,
+    show_reshaped=False,
+    dnn_cut=None,
+    compare_cut_sb_separated=False,
     save_fig=False,
     save_dir=None,
     save_format="png",
@@ -144,51 +147,148 @@ def plot_input_distributions(
         with open(style_cfg_path) as plot_config_file:
             config = json.load(plot_config_file)
 
+    if show_reshaped:
+        bkg_array = model_wrapper.feedbox["xb_reshape"]
+        sig_array = model_wrapper.feedbox["xs_reshape"]
+    else:
+        bkg_array = model_wrapper.feedbox["xb_raw"]
+        sig_array = model_wrapper.feedbox["xs_raw"]
+    bkg_fill_weights = np.reshape(bkg_array[:, -1], (-1, 1))
+    sig_fill_weights = np.reshape(sig_array[:, -1], (-1, 1))
+    # get fill weights with dnn cut
+    if dnn_cut is not None:
+        assert dnn_cut >= 0 and dnn_cut <= 1, "dnn_cut out or range."
+        model_meta = model_wrapper.model_meta
+        # prepare signal
+        sig_arr_temp = sig_array.copy()
+        sig_arr_temp[:, 0:-2] = train_utils.norarray(
+            sig_arr_temp[:, 0:-2],
+            average=np.array(model_meta["norm_average"]),
+            variance=np.array(model_meta["norm_variance"]),
+        )
+        sig_selected_arr = train_utils.get_valid_feature(sig_arr_temp)
+        sig_predictions = model_wrapper.get_model().predict(sig_selected_arr)
+        sig_cut_index = array_utils.get_cut_index(sig_predictions, [dnn_cut], ["<"])
+        sig_fill_weights_dnn = sig_fill_weights.copy()
+        sig_fill_weights_dnn[sig_cut_index] = 0
+        # prepare background
+        bkg_arr_temp = bkg_array.copy()
+        bkg_arr_temp[:, 0:-2] = train_utils.norarray(
+            bkg_arr_temp[:, 0:-2],
+            average=np.array(model_meta["norm_average"]),
+            variance=np.array(model_meta["norm_variance"]),
+        )
+        bkg_selected_arr = train_utils.get_valid_feature(bkg_arr_temp)
+        bkg_predictions = model_wrapper.get_model().predict(bkg_selected_arr)
+        bkg_cut_index = array_utils.get_cut_index(bkg_predictions, [dnn_cut], ["<"])
+        bkg_fill_weights_dnn = bkg_fill_weights.copy()
+        bkg_fill_weights_dnn[bkg_cut_index] = 0
+    # prepare thresholds
     for feature_id, feature in enumerate(model_wrapper.selected_features):
+        bkg_fill_array = np.reshape(bkg_array[:, feature_id], (-1, 1))
+        sig_fill_array = np.reshape(sig_array[:, feature_id], (-1, 1))
         # prepare background histogram
         hist_bkg = th1_tools.TH1FTool(
             feature + "_bkg", "bkg", nbin=100, xlow=-20, xup=20
         )
-        fill_array = np.reshape(model_wrapper.feedbox["xb_raw"][:, feature_id], (-1, 1))
-        fill_weights = np.reshape(model_wrapper.feedbox["xb_raw"][:, -1], (-1, 1))
-        hist_bkg.reinitial_hist_with_fill_array(fill_array)
-        hist_bkg.fill_hist(fill_array, fill_weights)
+        hist_bkg.reinitial_hist_with_fill_array(bkg_fill_array)
+        hist_bkg.fill_hist(bkg_fill_array, bkg_fill_weights)
         hist_bkg.set_config(config)
         hist_bkg.update_config("hist", "SetLineColor", 4)
-        hist_bkg.update_config("hist", "SetFillStyle", 3001)
+        hist_bkg.update_config("hist", "SetFillStyle", 3354)
         hist_bkg.update_config("hist", "SetFillColor", ROOT.kBlue)
         hist_bkg.update_config("x_axis", "SetTitle", feature)
         hist_bkg.apply_config()
-        # hist_bkg.draw()
-        # hist_bkg.save(save_dir=save_dir,
-        #              save_file_name=feature + "_bkg",
-        #              save_format=save_format)
         # prepare signal histogram
         hist_sig = th1_tools.TH1FTool(
             feature + "_sig", "sig", nbin=100, xlow=-20, xup=20
         )
-        fill_array = np.reshape(model_wrapper.feedbox["xs_raw"][:, feature_id], (-1, 1))
-        fill_weights = np.reshape(model_wrapper.feedbox["xs_raw"][:, -1], (-1, 1))
-        hist_sig.reinitial_hist_with_fill_array(fill_array)
-        hist_sig.fill_hist(fill_array, fill_weights)
+        hist_sig.reinitial_hist_with_fill_array(sig_fill_array)
+        hist_sig.fill_hist(sig_fill_array, sig_fill_weights)
         hist_sig.set_config(config)
         hist_sig.update_config("hist", "SetLineColor", 2)
-        hist_sig.update_config("hist", "SetFillStyle", 3001)
+        hist_sig.update_config("hist", "SetFillStyle", 3354)
         hist_sig.update_config("hist", "SetFillColor", ROOT.kRed)
         hist_sig.update_config("x_axis", "SetTitle", feature)
         hist_sig.apply_config()
-        hist_col = th1_tools.HistCollection(
-            [hist_bkg, hist_sig], name=feature, title="input var: " + feature
-        )
-        hist_col.draw(
-            draw_options="hist",
-            legend_title="legend",
-            draw_norm=True,
-            remove_empty_ends=True,
-        )
-        hist_col.save(
-            save_dir=save_dir, save_file_name=feature, save_format=save_format
-        )
+        # prepare bkg/sig histograms with dnn cut
+        if dnn_cut is not None:
+            hist_bkg_dnn = th1_tools.TH1FTool(
+                feature + "_bkg_cut_dnn", "bkg_cut_dnn", nbin=100, xlow=-20, xup=20
+            )
+            hist_bkg_dnn.reinitial_hist_with_fill_array(bkg_fill_array)
+            hist_bkg_dnn.fill_hist(bkg_fill_array, bkg_fill_weights_dnn)
+            hist_bkg_dnn.set_config(config)
+            hist_bkg_dnn.update_config("hist", "SetLineColor", 4)
+            hist_bkg_dnn.update_config("hist", "SetFillStyle", 3001)
+            hist_bkg_dnn.update_config("hist", "SetFillColor", ROOT.kBlue)
+            hist_bkg_dnn.update_config("x_axis", "SetTitle", feature)
+            hist_bkg_dnn.apply_config()
+            hist_sig_dnn = th1_tools.TH1FTool(
+                feature + "_sig_cut_dnn", "sig_cut_dnn", nbin=100, xlow=-20, xup=20
+            )
+            hist_sig_dnn.reinitial_hist_with_fill_array(sig_fill_array)
+            hist_sig_dnn.fill_hist(sig_fill_array, sig_fill_weights_dnn)
+            hist_sig_dnn.set_config(config)
+            hist_sig_dnn.update_config("hist", "SetLineColor", 2)
+            hist_sig_dnn.update_config("hist", "SetFillStyle", 3001)
+            hist_sig_dnn.update_config("hist", "SetFillColor", ROOT.kRed)
+            hist_sig_dnn.update_config("x_axis", "SetTitle", feature)
+            hist_sig_dnn.apply_config()
+        # combined histograms
+        if not compare_cut_sb_separated:
+            if dnn_cut is not None:
+                hist_col = th1_tools.HistCollection(
+                    [hist_bkg_dnn, hist_sig_dnn],
+                    name=feature,
+                    title="input var: " + feature,
+                )
+            else:
+                hist_col = th1_tools.HistCollection(
+                    [hist_bkg, hist_sig], name=feature, title="input var: " + feature
+                )
+            hist_col.draw(
+                draw_options="hist",
+                legend_title="legend",
+                draw_norm=False,
+                remove_empty_ends=True,
+            )
+            hist_col.save(
+                save_dir=save_dir, save_file_name=feature, save_format=save_format
+            )
+        else:
+            hist_col_bkg = th1_tools.HistCollection(
+                [hist_bkg, hist_bkg_dnn],
+                name=feature + "_bkg",
+                title="input var: " + feature,
+            )
+            hist_col_bkg.draw(
+                draw_options="hist",
+                legend_title="legend",
+                draw_norm=False,
+                remove_empty_ends=True,
+            )
+            hist_col_bkg.save(
+                save_dir=save_dir,
+                save_file_name=feature + "_bkg",
+                save_format=save_format,
+            )
+            hist_col_sig = th1_tools.HistCollection(
+                [hist_sig, hist_sig_dnn],
+                name=feature + "_sig",
+                title="input var: " + feature,
+            )
+            hist_col_sig.draw(
+                draw_options="hist",
+                legend_title="legend",
+                draw_norm=False,
+                remove_empty_ends=True,
+            )
+            hist_col_sig.save(
+                save_dir=save_dir,
+                save_file_name=feature + "_sig",
+                save_format=save_format,
+            )
 
 
 def plot_overtrain_check(ax, model_wrapper, bins=50, range=(-0.25, 1.25), log=True):
@@ -569,13 +669,13 @@ def plot_scores_separate_root(
         selected_arr = train_utils.get_valid_feature(bkg_arr_temp)
         predict_arr = np.array(model.predict(selected_arr))
         predict_weight_arr = bkg_arr_temp[:, -1]
-
         th1_temp = th1_tools.TH1FTool(
             arr_key, arr_key, nbin=bins, xlow=range[0], xup=range[1]
         )
         th1_temp.fill_hist(predict_arr, predict_weight_arr)
         hist_list.append(th1_temp)
     #### debug ####
+    """
     total_example = 0
     for i, score in enumerate(predict_arr):
         if score > 0.9 and total_example < 10:
@@ -583,6 +683,7 @@ def plot_scores_separate_root(
             print("#### sig-like arrays:")
             for j, feature in enumerate(model_wrapper.selected_features):
                 print(feature, ":", bkg_arr_temp[i][j])
+    """
     hist_stacked_bkgs = th1_tools.THStackTool(
         "bkg stack plot", plot_title, hist_list, canvas=plot_pad_score
     )
@@ -692,7 +793,7 @@ def plot_scores_separate_root(
 
 
 def plot_significance_scan(
-    ax, model_wrapper, save_dir=".", significance_algo="asimov"
+    ax, model_wrapper, save_dir=".", significance_algo="asimov", suffix=""
 ) -> None:
     """Shows significance change with threshold.
 
@@ -722,7 +823,7 @@ def plot_significance_scan(
     bkg_selected_arr = train_utils.get_valid_feature(bkg_arr_temp)
     bkg_predictions = model_wrapper.get_model().predict(bkg_selected_arr)
     bkg_predictions_weights = np.reshape(feedbox["xb_reshape"][:, -1], (-1, 1))
-    # prepare threshoulds
+    # prepare thresholds
     bin_array = np.array(range(-1000, 1000))
     threshoulds = 1.0 / (1.0 + 1.0 / np.exp(bin_array * 0.02))
     # scan
@@ -821,7 +922,7 @@ def plot_significance_scan(
     model_wrapper.max_significance_threshould = max_significance_threshould
     # make extra cut table 0.1, 0.2 ... 0.8, 0.9
     # make table for different DNN cut scores
-    save_path = save_dir + "/scan_DNN_cut.csv"
+    save_path = save_dir + "/scan_DNN_cut" + suffix + ".csv"
     with open(save_path, "w", newline="") as file:
         writer = csv.writer(file)
         row_list = [
@@ -857,7 +958,7 @@ def plot_significance_scan(
         )
         writer.writerows(row_list)
     # make table for different sig efficiency
-    save_path = save_dir + "/scan_sig_eff.csv"
+    save_path = save_dir + "/scan_sig_eff" + suffix + ".csv"
     with open(save_path, "w", newline="") as file:
         writer = csv.writer(file)
         row_list = [
@@ -896,7 +997,7 @@ def plot_significance_scan(
         )
         writer.writerows(row_list)
     # make table for different bkg efficiency
-    save_path = save_dir + "/scan_bkg_eff.csv"
+    save_path = save_dir + "/scan_bkg_eff" + suffix + ".csv"
     with open(save_path, "w", newline="") as file:
         writer = csv.writer(file)
         row_list = [
