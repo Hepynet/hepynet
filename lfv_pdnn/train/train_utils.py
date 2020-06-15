@@ -27,10 +27,11 @@ def calculate_asimov(sig, bkg):
 def calculate_significance(sig, bkg, sig_total=1, bkg_total=1, algo="asimov"):
     """Returns asimov significance"""
     # check input
-    assert sig > 0 and bkg > 0, "sig and bkg should be positive."
-    assert (
-        sig_total > 0 and bkg_total > 0
-    ), "sig_total and bkg_total should be positive."
+    if sig <= 0 or bkg <= 0 or sig_total <= 0 or bkg_total <= 0:
+        warnings.warn(
+            "non-positive value found during significance calculation, using default value 0."
+        )
+        return 0
     if "_rel" in algo:
         if sig_total == 1 or bkg_total == 1:
             warnings.warn(

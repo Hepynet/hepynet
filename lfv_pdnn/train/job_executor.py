@@ -140,6 +140,8 @@ class job_executor(object):
         self.book_importance_study = False
         self.book_cut_kine_study = False
         self.dnn_cut_list = []
+        self.book_significance_scan = False
+        self.book_2d_significance_scan = False
         self.significance_algo = False
         self.significance_cut_ranges_dn = []
         self.significance_cut_ranges_up = []
@@ -310,13 +312,16 @@ class job_executor(object):
             self.model_wrapper.save_model(
                 save_dir=mod_save_path, file_name=model_save_name
             )
+        if self.job_type == "train":
+            # model load directory should be same as save directory for "train" type jobs
+            self.load_dir = self.save_dir
+            self.load_job_name = self.job_name
         if self.show_report or self.save_pdf_report:
             # Performance plots
             self.fig_performance_path = None
             self.report_path = None
             # setup save parameters if reports need to be saved
             fig_save_path = None
-            save_dir = None
             save_dir = self.save_sub_dir + "/reports/"
             if not os.path.exists(save_dir):
                 os.makedirs(save_dir)
@@ -397,22 +402,7 @@ class job_executor(object):
                             ax, self.model_wrapper, max_feature=12
                         )
                         fig.savefig(fig_save_path)
-                    # Make significance scan plot
-                    fig, ax = plt.subplots(figsize=(12, 9))
-                    ax.set_title("significance scan")
-                    evaluate.plot_significance_scan(
-                        ax,
-                        self.model_wrapper,
-                        save_dir=save_dir,
-                        significance_algo=self.significance_algo,
-                        suffix="_" + identifier,
-                    )
-                    if self.save_pdf_report:
-                        fig_save_path = (
-                            save_dir + "/significance_scan_" + identifier + ".png"
-                        )
-                        self.fig_significance_scan_path = fig_save_path
-                        fig.savefig(fig_save_path)
+
                     # Extra plots (use model on non-mass-reset arrays)
                     evaluate.plot_scores_separate_root(
                         self.model_wrapper,
@@ -463,44 +453,64 @@ class job_executor(object):
                                 compare_cut_sb_separated=True,
                                 plot_density=False,
                             )
-
-                    temp_model_wrapper = self.model_wrapper
-                    scan_model_wrapper = getattr(model, self.model_class)(
-                        self.model_name, self.selected_features, hypers,
-                    )
-                    if model_path != "_final":
-                        scan_model_wrapper.load_model_with_path(model_path)
-                    else:
-                        scan_model_wrapper.load_model(
-                            self.load_dir, self.model_name, job_name=self.load_job_name,
+                    # Make significance scan plot
+                    if self.book_significance_scan:
+                        fig, ax = plt.subplots(figsize=(12, 9))
+                        ax.set_title("significance scan")
+                        evaluate.plot_significance_scan(
+                            ax,
+                            self.model_wrapper,
+                            save_dir=save_dir,
+                            significance_algo=self.significance_algo,
+                            suffix="_" + identifier,
                         )
-                    scan_model_wrapper.set_inputs(temp_model_wrapper.feedbox)
-                    self.model_wrapper = scan_model_wrapper
-
-                    save_dir = self.save_sub_dir + "/reports/"
-                    if not os.path.exists(save_dir):
-                        os.makedirs(save_dir)
-                    cut_ranges_dn = self.significance_cut_ranges_dn
-                    cut_ranges_up = self.significance_cut_ranges_up
-                    # 2D density
-                    evaluate.plot_2d_density(
-                        self,
-                        save_plot=True,
-                        save_dir=save_dir,
-                        save_file_name="2D_density_" + identifier,
-                    )
-                    # 2D significance scan
-
-                    evaluate.plot_2d_significance_scan(
-                        self,
-                        save_plot=True,
-                        save_dir=save_dir,
-                        save_file_name="2D_scan_significance_" + identifier,
-                        cut_ranges_dn=cut_ranges_dn,
-                        cut_ranges_up=cut_ranges_up,
-                    )
-
-                    self.model_wrapper = temp_model_wrapper
+                        if self.save_pdf_report:
+                            fig_save_path = (
+                                save_dir + "/significance_scan_" + identifier + ".png"
+                            )
+                            self.fig_significance_scan_path = fig_save_path
+                            fig.savefig(fig_save_path)
+                    # 2d significance scan
+                    if self.book_2d_significance_scan:
+                        # save original model wrapper
+                        temp_model_wrapper = self.model_wrapper
+                        # set up model wrapper for significance scan
+                        scan_model_wrapper = getattr(model, self.model_class)(
+                            self.model_name, self.selected_features, hypers,
+                        )
+                        if model_path != "_final":
+                            scan_model_wrapper.load_model_with_path(model_path)
+                        else:
+                            scan_model_wrapper.load_model(
+                                self.load_dir,
+                                self.model_name,
+                                job_name=self.load_job_name,
+                            )
+                        scan_model_wrapper.set_inputs(temp_model_wrapper.feedbox)
+                        self.model_wrapper = scan_model_wrapper
+                        save_dir = self.save_sub_dir + "/reports/"
+                        if not os.path.exists(save_dir):
+                            os.makedirs(save_dir)
+                        cut_ranges_dn = self.significance_cut_ranges_dn
+                        cut_ranges_up = self.significance_cut_ranges_up
+                        # 2D density
+                        evaluate.plot_2d_density(
+                            self,
+                            save_plot=True,
+                            save_dir=save_dir,
+                            save_file_name="2D_density_" + identifier,
+                        )
+                        # 2D significance scan
+                        evaluate.plot_2d_significance_scan(
+                            self,
+                            save_plot=True,
+                            save_dir=save_dir,
+                            save_file_name="2D_scan_significance_" + identifier,
+                            cut_ranges_dn=cut_ranges_dn,
+                            cut_ranges_up=cut_ranges_up,
+                        )
+                        # restore original model wrapper
+                        self.model_wrapper = temp_model_wrapper
 
         if self.save_pdf_report:
             self.fig_dnn_scores_lin_path = save_dir + "/DNN_scores_lin_final.png"
@@ -847,6 +857,12 @@ class job_executor(object):
             "book_cut_kine_study", config, "report", "book_cut_kine_study"
         )
         self.try_parse_list("dnn_cut_list", config, "report", "dnn_cut_list")
+        self.try_parse_bool(
+            "book_significance_scan", config, "report", "book_significance_scan"
+        )
+        self.try_parse_bool(
+            "book_2d_significance_scan", config, "report", "book_2d_significance_scan"
+        )
         self.try_parse_str("significance_algo", config, "report", "significance_algo")
         self.try_parse_list(
             "significance_cut_ranges_dn", config, "report", "significance_cut_ranges_dn"
@@ -1123,15 +1139,13 @@ class job_executor(object):
         reports.append(Table([[im1, im2]]))
         # significance scan and feature importance
         if self.book_importance_study:
-            fig = self.fig_significance_scan_path
-            im1 = Image(fig, 3.2 * inch, 2.4 * inch)
             fig = self.fig_feature_importance_path
-            im2 = Image(fig, 3.2 * inch, 2.4 * inch)
-            reports.append(Table([[im1, im2]]))
-        else:
+            im = Image(fig, 3.2 * inch, 2.4 * inch)
+            reports.append(im)
+        if self.book_significance_scan:
             fig = self.fig_significance_scan_path
-            im1 = Image(fig, 3.2 * inch, 2.4 * inch)
-            reports.append(im1)
+            im = Image(fig, 3.2 * inch, 2.4 * inch)
+            reports.append(im)
         # correlation matrix
         fig = self.fig_correlation_matrix_path
         im = Image(fig, 6.4 * inch, 3.2 * inch)
