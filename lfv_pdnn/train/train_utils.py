@@ -128,11 +128,14 @@ def norarray(array, average=None, variance=None, axis=None, weights=None):
         in the same way. (i.e. use same average and variance for normalization.)
 
     """
-    if (average is None) or (variance is None):
-        print("Warning! unspecified average or variance.")
-        average, variance = get_mean_var(array, axis=axis, weights=weights)
-    output_array = (array.copy() - average) / np.sqrt(variance)
-    return output_array
+    if len(array) == 0:
+        return array
+    else:
+        if (average is None) or (variance is None):
+            print("Warning! unspecified average or variance.")
+            average, variance = get_mean_var(array, axis=axis, weights=weights)
+        output_array = (array.copy() - average) / np.sqrt(variance)
+        return output_array
 
 
 def norarray_min_max(array, min, max, axis=None):
@@ -156,6 +159,9 @@ def prepare_array(
     reset_mass=False,
     reset_mass_name=None,
     remove_negative_weight=False,
+    cut_features=[],
+    cut_values=[],
+    cut_types=[],
     sig_weight=1000,
     bkg_weight=1000,
     data_weight=1000,
@@ -166,17 +172,54 @@ def prepare_array(
 ):
     """Prepares array for training."""
     feed_box = {}
+    # cut array
+    if len(cut_features) > 0:
+        # Get indexes that pass cuts
+        assert len(cut_features) == len(cut_values) and len(cut_features) == len(
+            cut_types
+        ), "cut_features and cut_values and cut_types should have same length."
+        xs_pass_index = None
+        xb_pass_index = None
+        for (cut_feature, cut_value, cut_type) in zip(
+            cut_features, cut_values, cut_types
+        ):
+            cut_feature_id = selected_features.index(cut_feature)
+            # update signal cut index
+            temp_index = array_utils.get_cut_index_value(
+                xs[:, cut_feature_id], cut_value, cut_type
+            )
+            if xs_pass_index is None:
+                xs_pass_index = temp_index
+            else:
+                xs_pass_index = np.intersect1d(xs_pass_index, temp_index)
+            # update background cut index
+            temp_index = array_utils.get_cut_index_value(
+                xb[:, cut_feature_id], cut_value, cut_type
+            )
+            if xb_pass_index is None:
+                xb_pass_index = temp_index
+            else:
+                xb_pass_index = np.intersect1d(xb_pass_index, temp_index)
+        xs = xs[xs_pass_index.flatten(), :]
+        xb = xb[xb_pass_index.flatten(), :]
+    # record raw array
     feed_box["xs_raw"] = xs
     feed_box["xb_raw"] = xb
     # normalize input variables if norm_array is True
     xs_reshape = xs.copy()
     xb_reshape = xb.copy()
+    # remove negative weights for variance calculation
+    if remove_negative_weight:
+        xb_pos_weihgt = array_utils.modify_array(xb, remove_negative_weight=True,)
+    # reshape
     if reshape_array:
         if model_meta is not None:
             means = np.array(model_meta["norm_average"])
             variances = np.array(model_meta["norm_variance"])
         else:
-            means, variances = get_mean_var(xb[:, 0:-2], axis=0, weights=xb[:, -1])
+            means, variances = get_mean_var(
+                xb_pos_weihgt[:, 0:-2], axis=0, weights=xb_pos_weihgt[:, -1]
+            )
         feed_box["norm_average"] = means
         feed_box["norm_variance"] = variances
 

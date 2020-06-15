@@ -138,7 +138,11 @@ class job_executor(object):
         self.apply_data = False
         self.apply_data_range = []
         self.book_importance_study = False
+        self.book_cut_kine_study = False
+        self.dnn_cut_list = []
         self.significance_algo = False
+        self.significance_cut_ranges_dn = []
+        self.significance_cut_ranges_up = []
         self.show_report = None
         self.save_pdf_report = None
         self.save_tb_logs = None
@@ -198,12 +202,14 @@ class job_executor(object):
             )
         else:
             xd = None
+        """
         for key in self.bkg_list:
             self.plot_bkg_dict[key] = array_utils.modify_array(
-                self.plot_bkg_dict[key],
+                self.bkg_dict[key],
                 select_channel=True,
                 remove_negative_weight=False,
-            )  # Use negtive weight when applying model
+            )  # Use negative weight when applying model
+        """
         if self.save_tb_logs:
             save_dir = self.save_sub_dir + "/tb_logs"
             if not os.path.exists(save_dir):
@@ -298,7 +304,6 @@ class job_executor(object):
                 save_dir=self.save_sub_dir + "/models",
             )
         # Logs
-
         if self.save_model and (self.job_type == "train"):
             mod_save_path = self.save_sub_dir + "/models"
             model_save_name = self.model_name
@@ -441,19 +446,62 @@ class job_executor(object):
                         save_dir=save_dir,
                         save_file_name="DNN_scores_log_" + identifier,
                     )
-            # show kinemetics at different dnn cut
-            for dnn_cut in [0.5, 0.8, 0.85, 0.90, 0.95, 0.99]:
-                evaluate.plot_input_distributions(
-                    self.model_wrapper,
-                    apply_data=False,
-                    figsize=(8, 6),
-                    style_cfg_path=self.kine_cfg,
-                    save_fig=True,
-                    save_dir=self.save_sub_dir
-                    + "/kinematics/cut_p{}".format(dnn_cut * 100),
-                    dnn_cut=dnn_cut,
-                    compare_cut_sb_separated=True,
-                )
+                    # show kinemetics at different dnn cut
+                    if self.book_cut_kine_study:
+                        for dnn_cut in self.dnn_cut_list:
+                            evaluate.plot_input_distributions(
+                                self.model_wrapper,
+                                apply_data=False,
+                                figsize=(8, 6),
+                                style_cfg_path=self.kine_cfg,
+                                save_fig=True,
+                                save_dir=self.save_sub_dir
+                                + "/kinematics/model_{}_cut_p{}".format(
+                                    identifier, dnn_cut * 100
+                                ),
+                                dnn_cut=dnn_cut,
+                                compare_cut_sb_separated=True,
+                                plot_density=False,
+                            )
+
+                    temp_model_wrapper = self.model_wrapper
+                    scan_model_wrapper = getattr(model, self.model_class)(
+                        self.model_name, self.selected_features, hypers,
+                    )
+                    if model_path != "_final":
+                        scan_model_wrapper.load_model_with_path(model_path)
+                    else:
+                        scan_model_wrapper.load_model(
+                            self.load_dir, self.model_name, job_name=self.load_job_name,
+                        )
+                    scan_model_wrapper.set_inputs(temp_model_wrapper.feedbox)
+                    self.model_wrapper = scan_model_wrapper
+
+                    save_dir = self.save_sub_dir + "/reports/"
+                    if not os.path.exists(save_dir):
+                        os.makedirs(save_dir)
+                    cut_ranges_dn = self.significance_cut_ranges_dn
+                    cut_ranges_up = self.significance_cut_ranges_up
+                    # 2D density
+                    evaluate.plot_2d_density(
+                        self,
+                        save_plot=True,
+                        save_dir=save_dir,
+                        save_file_name="2D_density_" + identifier,
+                    )
+                    # 2D significance scan
+
+                    evaluate.plot_2d_significance_scan(
+                        self,
+                        save_plot=True,
+                        save_dir=save_dir,
+                        save_file_name="2D_scan_significance_" + identifier,
+                        cut_ranges_dn=cut_ranges_dn,
+                        cut_ranges_up=cut_ranges_up,
+                    )
+
+                    self.model_wrapper = temp_model_wrapper
+
         if self.save_pdf_report:
             self.fig_dnn_scores_lin_path = save_dir + "/DNN_scores_lin_final.png"
             self.fig_dnn_scores_log_path = save_dir + "/DNN_scores_log_final.png"
@@ -585,12 +633,14 @@ class job_executor(object):
             xd = array_utils.modify_array(
                 self.data_dict[self.data_key], select_channel=True
             )
+            """
             for key in self.bkg_list:
                 self.plot_bkg_dict[key] = array_utils.modify_array(
                     self.plot_bkg_dict[key],
                     select_channel=True,
                     remove_negative_weight=False,
                 )  # Use negtive weight when applying model
+            """
             if self.use_early_stop:
                 self.early_stop_paras = {}
                 self.early_stop_paras["monitor"] = self.early_stop_monitor
@@ -793,7 +843,17 @@ class job_executor(object):
         self.try_parse_bool(
             "book_importance_study", config, "report", "book_importance_study"
         )
+        self.try_parse_bool(
+            "book_cut_kine_study", config, "report", "book_cut_kine_study"
+        )
+        self.try_parse_list("dnn_cut_list", config, "report", "dnn_cut_list")
         self.try_parse_str("significance_algo", config, "report", "significance_algo")
+        self.try_parse_list(
+            "significance_cut_ranges_dn", config, "report", "significance_cut_ranges_dn"
+        )
+        self.try_parse_list(
+            "significance_cut_ranges_up", config, "report", "significance_cut_ranges_up"
+        )
         self.try_parse_bool("show_report", config, "report", "show_report")
         self.try_parse_bool("save_pdf_report", config, "report", "save_pdf_report")
         self.try_parse_bool("save_tb_logs", config, "report", "save_tb_logs")

@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 """Functions for making plots"""
 
+import copy
 import csv
 import json
+import math
 import warnings
 
 import matplotlib.pyplot as plt
@@ -26,6 +28,74 @@ def calculate_auc(xs, xb, model, shuffle_col=None, rm_last_two=False):
     # Calculate auc and return
     auc_value = auc(fpr_dm, tpr_dm)
     return auc_value
+
+
+def get_significances(model_wrapper, significance_algo="asimov"):
+    """Gets significances scan arrays.
+    
+    Return:
+        Tuple of 4 arrays: (
+            threshold array,
+            significances,
+            sig_total_weight_above_threshold,
+            bkg_total_weight_above_threshold,
+            )
+    
+    """
+    feedbox = model_wrapper.feedbox
+    model_meta = model_wrapper.model_meta
+    # prepare signal
+    sig_arr_temp = feedbox["xs_raw"].copy()
+    sig_arr_temp[:, 0:-2] = train_utils.norarray(
+        sig_arr_temp[:, 0:-2],
+        average=np.array(model_meta["norm_average"]),
+        variance=np.array(model_meta["norm_variance"]),
+    )
+    sig_selected_arr = train_utils.get_valid_feature(sig_arr_temp)
+    sig_predictions = model_wrapper.get_model().predict(sig_selected_arr)
+    sig_predictions_weights = np.reshape(feedbox["xs_reshape"][:, -1], (-1, 1))
+    # prepare background
+    bkg_arr_temp = feedbox["xb_raw"].copy()
+    bkg_arr_temp[:, 0:-2] = train_utils.norarray(
+        bkg_arr_temp[:, 0:-2],
+        average=np.array(model_meta["norm_average"]),
+        variance=np.array(model_meta["norm_variance"]),
+    )
+    bkg_selected_arr = train_utils.get_valid_feature(bkg_arr_temp)
+    bkg_predictions = model_wrapper.get_model().predict(bkg_selected_arr)
+    bkg_predictions_weights = np.reshape(feedbox["xb_reshape"][:, -1], (-1, 1))
+    # prepare thresholds
+    bin_array = np.array(range(-1000, 1000))
+    thresholds = 1.0 / (1.0 + 1.0 / np.exp(bin_array * 0.02))
+    thresholds = np.insert(thresholds, 0, 0)
+    # scan
+    significances = []
+    plot_thresholds = []
+    sig_above_threshold = []
+    bkg_above_threshold = []
+    total_sig_weight = np.sum(sig_predictions_weights)
+    total_bkg_weight = np.sum(bkg_predictions_weights)
+    for dnn_cut in thresholds:
+        sig_ids_passed = sig_predictions > dnn_cut
+        total_sig_weights_passed = np.sum(sig_predictions_weights[sig_ids_passed])
+        bkg_ids_passed = bkg_predictions > dnn_cut
+        total_bkg_weights_passed = np.sum(bkg_predictions_weights[bkg_ids_passed])
+        if total_bkg_weights_passed > 0 and total_sig_weights_passed > 0:
+            plot_thresholds.append(dnn_cut)
+            current_significance = train_utils.calculate_significance(
+                total_sig_weights_passed,
+                total_bkg_weights_passed,
+                sig_total=total_sig_weight,
+                bkg_total=total_bkg_weight,
+                algo=significance_algo,
+            )
+            # current_significance = total_sig_weights_passed / total_bkg_weights_passed
+            significances.append(current_significance)
+            sig_above_threshold.append(total_sig_weights_passed)
+            bkg_above_threshold.append(total_bkg_weights_passed)
+    total_sig_weight = np.sum(sig_predictions_weights)
+    total_bkg_weight = np.sum(bkg_predictions_weights)
+    return (plot_thresholds, significances, sig_above_threshold, bkg_above_threshold)
 
 
 def plot_accuracy(ax: plt.axes, accuracy_list: list, val_accuracy_list: list) -> None:
@@ -136,6 +206,7 @@ def plot_input_distributions(
     show_reshaped=False,
     dnn_cut=None,
     compare_cut_sb_separated=False,
+    plot_density=True,
     save_fig=False,
     save_dir=None,
     save_format="png",
@@ -155,6 +226,9 @@ def plot_input_distributions(
         sig_array = model_wrapper.feedbox["xs_raw"]
     bkg_fill_weights = np.reshape(bkg_array[:, -1], (-1, 1))
     sig_fill_weights = np.reshape(sig_array[:, -1], (-1, 1))
+    if plot_density:
+        bkg_fill_weights = bkg_fill_weights / np.sum(bkg_fill_weights)
+        sig_fill_weights = sig_fill_weights / np.sum(sig_fill_weights)
     # get fill weights with dnn cut
     if dnn_cut is not None:
         assert dnn_cut >= 0 and dnn_cut <= 1, "dnn_cut out or range."
@@ -183,6 +257,10 @@ def plot_input_distributions(
         bkg_cut_index = array_utils.get_cut_index(bkg_predictions, [dnn_cut], ["<"])
         bkg_fill_weights_dnn = bkg_fill_weights.copy()
         bkg_fill_weights_dnn[bkg_cut_index] = 0
+        # normalize weights for density plots
+        if plot_density:
+            bkg_fill_weights_dnn = bkg_fill_weights_dnn / np.sum(bkg_fill_weights_dnn)
+            sig_fill_weights_dnn = sig_fill_weights_dnn / np.sum(sig_fill_weights_dnn)
     # prepare thresholds
     for feature_id, feature in enumerate(model_wrapper.selected_features):
         bkg_fill_array = np.reshape(bkg_array[:, feature_id], (-1, 1))
@@ -655,20 +733,27 @@ def plot_scores_separate_root(
         original_keys = list(bkg_dict.keys())
         total_weight_list = []
         for key in original_keys:
-            total_weight = np.sum((bkg_dict[key])[:, -1])
+            if len(bkg_dict[key]) == 0:
+                total_weight = 0
+            else:
+                total_weight = np.sum((bkg_dict[key])[:, -1])
             total_weight_list.append(total_weight)
         sort_indexes = np.argsort(np.array(total_weight_list))
         bkg_plot_key_list = [original_keys[index] for index in sort_indexes]
     for arr_key in bkg_plot_key_list:
         bkg_arr_temp = bkg_dict[arr_key].copy()
-        bkg_arr_temp[:, 0:-2] = train_utils.norarray(
-            bkg_arr_temp[:, 0:-2],
-            average=np.array(model_meta["norm_average"]),
-            variance=np.array(model_meta["norm_variance"]),
-        )
-        selected_arr = train_utils.get_valid_feature(bkg_arr_temp)
-        predict_arr = np.array(model.predict(selected_arr))
-        predict_weight_arr = bkg_arr_temp[:, -1]
+        if len(bkg_arr_temp) != 0:
+            bkg_arr_temp[:, 0:-2] = train_utils.norarray(
+                bkg_arr_temp[:, 0:-2],
+                average=np.array(model_meta["norm_average"]),
+                variance=np.array(model_meta["norm_variance"]),
+            )
+            selected_arr = train_utils.get_valid_feature(bkg_arr_temp)
+            predict_arr = np.array(model.predict(selected_arr))
+            predict_weight_arr = bkg_arr_temp[:, -1]
+        else:
+            predict_arr = np.array([])
+            predict_weight_arr = np.array([])
         th1_temp = th1_tools.TH1FTool(
             arr_key, arr_key, nbin=bins, xlow=range[0], xup=range[1]
         )
@@ -687,6 +772,7 @@ def plot_scores_separate_root(
     hist_stacked_bkgs = th1_tools.THStackTool(
         "bkg stack plot", plot_title, hist_list, canvas=plot_pad_score
     )
+    hist_stacked_bkgs.set_palette("kPastel")
     hist_stacked_bkgs.draw("pfc hist", log_scale=log_scale)
     hist_stacked_bkgs.get_hstack().GetYaxis().SetTitle("events/bin")
     hist_bkg_total = hist_stacked_bkgs.get_added_hist()
@@ -801,64 +887,22 @@ def plot_significance_scan(
         significance is calculated by s/sqrt(b)
     """
     print("Plotting significance scan.")
-    feedbox = model_wrapper.feedbox
-    model_meta = model_wrapper.model_meta
-    # prepare signal
-    sig_arr_temp = feedbox["xs_raw"].copy()
-    sig_arr_temp[:, 0:-2] = train_utils.norarray(
-        sig_arr_temp[:, 0:-2],
-        average=np.array(model_meta["norm_average"]),
-        variance=np.array(model_meta["norm_variance"]),
-    )
-    sig_selected_arr = train_utils.get_valid_feature(sig_arr_temp)
-    sig_predictions = model_wrapper.get_model().predict(sig_selected_arr)
-    sig_predictions_weights = np.reshape(feedbox["xs_reshape"][:, -1], (-1, 1))
-    # prepare background
-    bkg_arr_temp = feedbox["xb_raw"].copy()
-    bkg_arr_temp[:, 0:-2] = train_utils.norarray(
-        bkg_arr_temp[:, 0:-2],
-        average=np.array(model_meta["norm_average"]),
-        variance=np.array(model_meta["norm_variance"]),
-    )
-    bkg_selected_arr = train_utils.get_valid_feature(bkg_arr_temp)
-    bkg_predictions = model_wrapper.get_model().predict(bkg_selected_arr)
-    bkg_predictions_weights = np.reshape(feedbox["xb_reshape"][:, -1], (-1, 1))
-    # prepare thresholds
-    bin_array = np.array(range(-1000, 1000))
-    threshoulds = 1.0 / (1.0 + 1.0 / np.exp(bin_array * 0.02))
-    # scan
-    significances = []
-    plot_threshoulds = []
-    sig_above_threshould = []
-    bkg_above_threshould = []
-    total_sig_weight = np.sum(sig_predictions_weights)
-    total_bkg_weight = np.sum(bkg_predictions_weights)
-    for dnn_cut in threshoulds:
-        sig_ids_passed = sig_predictions > dnn_cut
-        total_sig_weights_passed = np.sum(sig_predictions_weights[sig_ids_passed])
-        bkg_ids_passed = bkg_predictions > dnn_cut
-        total_bkg_weights_passed = np.sum(bkg_predictions_weights[bkg_ids_passed])
-        if total_bkg_weights_passed > 0 and total_sig_weights_passed > 0:
-            plot_threshoulds.append(dnn_cut)
-            current_significance = train_utils.calculate_significance(
-                total_sig_weights_passed,
-                total_bkg_weights_passed,
-                sig_total=total_sig_weight,
-                bkg_total=total_bkg_weight,
-                algo=significance_algo,
-            )
-            # current_significance = total_sig_weights_passed / total_bkg_weights_passed
-            significances.append(current_significance)
-            sig_above_threshould.append(total_sig_weights_passed)
-            bkg_above_threshould.append(total_bkg_weights_passed)
-    total_sig_weight = np.sum(sig_predictions_weights)
-    total_bkg_weight = np.sum(bkg_predictions_weights)
+
+    (
+        plot_thresholds,
+        significances,
+        sig_above_threshold,
+        bkg_above_threshold,
+    ) = get_significances(model_wrapper, significance_algo=significance_algo)
+
     significances_no_nan = np.nan_to_num(significances)
     max_significance = np.amax(significances_no_nan)
     index = np.argmax(significances_no_nan)
-    max_significance_threshould = plot_threshoulds[index]
-    max_significance_sig_total = sig_above_threshould[index]
-    max_significance_bkg_total = bkg_above_threshould[index]
+    max_significance_threshold = plot_thresholds[index]
+    max_significance_sig_total = sig_above_threshold[index]
+    max_significance_bkg_total = bkg_above_threshold[index]
+    total_sig_weight = sig_above_threshold[0]
+    total_bkg_weight = bkg_above_threshold[0]
     # make plots
     # plot original significance
     original_significance = train_utils.calculate_significance(
@@ -870,29 +914,29 @@ def plot_significance_scan(
     )
     ax.axhline(y=original_significance, color="grey", linestyle="--")
     # significance scan curve
-    ax.plot(plot_threshoulds, significances_no_nan, color="r", label=significance_algo)
+    ax.plot(plot_thresholds, significances_no_nan, color="r", label=significance_algo)
     # signal/background events scan curve
     ax2 = ax.twinx()
-    max_sig_events = sig_above_threshould[0]
-    max_bkg_events = bkg_above_threshould[0]
-    sig_eff_above_threshould = np.array(sig_above_threshould) / max_sig_events
-    bkg_eff_above_threshould = np.array(bkg_above_threshould) / max_bkg_events
-    ax2.plot(plot_threshoulds, sig_eff_above_threshould, color="orange", label="sig")
-    ax2.plot(plot_threshoulds, bkg_eff_above_threshould, color="blue", label="bkg")
+    max_sig_events = sig_above_threshold[0]
+    max_bkg_events = bkg_above_threshold[0]
+    sig_eff_above_threshold = np.array(sig_above_threshold) / max_sig_events
+    bkg_eff_above_threshold = np.array(bkg_above_threshold) / max_bkg_events
+    ax2.plot(plot_thresholds, sig_eff_above_threshold, color="orange", label="sig")
+    ax2.plot(plot_thresholds, bkg_eff_above_threshold, color="blue", label="bkg")
     ax2.set_ylabel("sig(bkg) ratio after cut")
-    # reference threshould
-    ax.axvline(x=max_significance_threshould, color="green", linestyle="-.")
+    # reference threshold
+    ax.axvline(x=max_significance_threshold, color="green", linestyle="-.")
     # more infomation
     content = (
-        "best threshould:"
-        + str(common_utils.get_significant_digits(max_significance_threshould, 6))
+        "best threshold:"
+        + str(common_utils.get_significant_digits(max_significance_threshold, 6))
         + "\nmax significance:"
         + str(common_utils.get_significant_digits(max_significance, 6))
         + "\nbase significance:"
         + str(common_utils.get_significant_digits(original_significance, 6))
-        + "\nsig events above threshould:"
+        + "\nsig events above threshold:"
         + str(common_utils.get_significant_digits(max_significance_sig_total, 6))
-        + "\nbkg events above threshould:"
+        + "\nbkg events above threshold:"
         + str(common_utils.get_significant_digits(max_significance_bkg_total, 6))
     )
     ax.text(
@@ -908,7 +952,7 @@ def plot_significance_scan(
     # set up plot
     ax.set_title("significance scan")
     ax.set_xscale("logit")
-    ax.set_xlabel("DNN score threshould")
+    ax.set_xlabel("DNN score threshold")
     ax.set_ylabel("significance")
     ax.set_ylim(bottom=0)
     ax.locator_params(nbins=10, axis="x")
@@ -919,7 +963,7 @@ def plot_significance_scan(
     # collect meta data
     model_wrapper.original_significance = original_significance
     model_wrapper.max_significance = max_significance
-    model_wrapper.max_significance_threshould = max_significance_threshould
+    model_wrapper.max_significance_threshold = max_significance_threshold
     # make extra cut table 0.1, 0.2 ... 0.8, 0.9
     # make table for different DNN cut scores
     save_path = save_dir + "/scan_DNN_cut" + suffix + ".csv"
@@ -937,12 +981,12 @@ def plot_significance_scan(
         ]
         for index in range(1, 100):
             dnn_cut = (100 - index) / 100.0
-            threshould_id = (np.abs(np.array(plot_threshoulds) - dnn_cut)).argmin()
-            sig_events = sig_above_threshould[threshould_id]
-            sig_eff = sig_eff_above_threshould[threshould_id]
-            bkg_events = bkg_above_threshould[threshould_id]
-            bkg_eff = bkg_eff_above_threshould[threshould_id]
-            significance = significances[threshould_id]
+            threshold_id = (np.abs(np.array(plot_thresholds) - dnn_cut)).argmin()
+            sig_events = sig_above_threshold[threshold_id]
+            sig_eff = sig_eff_above_threshold[threshold_id]
+            bkg_events = bkg_above_threshold[threshold_id]
+            bkg_eff = bkg_eff_above_threshold[threshold_id]
+            significance = significances[threshold_id]
             new_row = [dnn_cut, sig_events, sig_eff, bkg_events, bkg_eff, significance]
             row_list.append(new_row)
         row_list.append([""])
@@ -973,15 +1017,15 @@ def plot_significance_scan(
         ]
         for index in range(1, 100):
             sig_eff_cut = (100 - index) / 100.0
-            threshould_id = (
-                np.abs(np.array(sig_eff_above_threshould) - sig_eff_cut)
+            threshold_id = (
+                np.abs(np.array(sig_eff_above_threshold) - sig_eff_cut)
             ).argmin()
-            dnn_cut = threshoulds[threshould_id]
-            sig_events = sig_above_threshould[threshould_id]
+            dnn_cut = plot_thresholds[threshold_id]
+            sig_events = sig_above_threshold[threshold_id]
             sig_eff = sig_eff_cut
-            bkg_events = bkg_above_threshould[threshould_id]
-            bkg_eff = bkg_eff_above_threshould[threshould_id]
-            significance = significances[threshould_id]
+            bkg_events = bkg_above_threshold[threshold_id]
+            bkg_eff = bkg_eff_above_threshold[threshold_id]
+            significance = significances[threshold_id]
             new_row = [dnn_cut, sig_events, sig_eff, bkg_events, bkg_eff, significance]
             row_list.append(new_row)
         row_list.append([""])
@@ -1012,15 +1056,15 @@ def plot_significance_scan(
         ]
         for index in range(1, 100):
             bkg_eff_cut = (100 - index) / 100.0
-            threshould_id = (
-                np.abs(np.array(bkg_eff_above_threshould) - bkg_eff_cut)
+            threshold_id = (
+                np.abs(np.array(bkg_eff_above_threshold) - bkg_eff_cut)
             ).argmin()
-            dnn_cut = threshoulds[threshould_id]
-            sig_events = sig_above_threshould[threshould_id]
-            sig_eff = sig_eff_above_threshould[threshould_id]
-            bkg_events = bkg_above_threshould[threshould_id]
+            dnn_cut = plot_thresholds[threshold_id]
+            sig_events = sig_above_threshold[threshold_id]
+            sig_eff = sig_eff_above_threshold[threshold_id]
+            bkg_events = bkg_above_threshold[threshold_id]
             bkg_eff = bkg_eff_cut
-            significance = significances[threshould_id]
+            significance = significances[threshold_id]
             new_row = [dnn_cut, sig_events, sig_eff, bkg_events, bkg_eff, significance]
             row_list.append(new_row)
         row_list.append([""])
@@ -1097,6 +1141,7 @@ def process_array(xs, xb, model, shuffle_col=None, rm_last_two=False):
     xb_proc = xb.copy()
     x_proc = np.concatenate((xs_proc, xb_proc))
     if shuffle_col is not None:
+        # randomize x values but don't change overall distribution
         x_proc = array_utils.reset_col(x_proc, x_proc, shuffle_col)
     if rm_last_two:
         x_proc_selected = train_utils.get_valid_feature(x_proc)
@@ -1221,3 +1266,205 @@ def make_bar_plot(
     if range is not None:
         ax.axis(xmin=range[0], xmax=range[1])
     ax.legend(loc="upper right")
+
+
+def plot_2d_density(
+    job_wrapper, save_plot=False, save_dir=None, save_file_name="2d_density",
+):
+    """Plots 2D hist to see event distribution of signal and backgrounds events.
+
+    x-axis will be dnn scores, y-axis will be mass parameter, z-axis is total
+    weight shown by color
+
+    """
+    model_wrapper = job_wrapper.model_wrapper
+    feedbox = model_wrapper.feedbox
+    model_meta = model_wrapper.model_meta
+    # plot signal
+    sig_arr_original = feedbox["xs_raw"].copy()
+    sig_arr_temp = feedbox["xs_raw"].copy()
+    sig_arr_temp[:, 0:-2] = train_utils.norarray(
+        sig_arr_temp[:, 0:-2],
+        average=np.array(model_meta["norm_average"]),
+        variance=np.array(model_meta["norm_variance"]),
+    )
+    selected_arr = train_utils.get_valid_feature(sig_arr_temp)
+    predict_arr = model_wrapper.get_model().predict(selected_arr)
+    mass_index = job_wrapper.selected_features.index(job_wrapper.reset_feature_name)
+    x = predict_arr
+    y = sig_arr_original[:, mass_index]
+    w = sig_arr_temp[:, -1]
+    ## make plot
+    plot_canvas = ROOT.TCanvas("2d_density_sig", "2d_density_sig", 1200, 900)
+    hist_sig = th1_tools.TH2FTool(
+        "2d_density_sig",
+        "2d_density_sig",
+        nbinx=50,
+        xlow=0,
+        xup=1.0,
+        nbiny=50,
+        ylow=min(y),
+        yup=max(y),
+    )
+    hist_sig.fill_hist(fill_array_x=x, fill_array_y=y, weight_array=w)
+    hist_sig.set_canvas(plot_canvas)
+    hist_sig.set_palette("kBird")
+    hist_sig.update_config("hist", "SetStats", 0)
+    hist_sig.update_config("x_axis", "SetTitle", "dnn_cut")
+    hist_sig.update_config("y_axis", "SetTitle", "mass point")
+    hist_sig.draw("colz")
+    hist_sig.save(save_dir=save_dir, save_file_name=save_file_name + "_sig")
+    # plot background
+    bkg_arr_original = feedbox["xb_raw"].copy()
+    bkg_arr_temp = feedbox["xb_raw"].copy()
+    bkg_arr_temp[:, 0:-2] = train_utils.norarray(
+        bkg_arr_temp[:, 0:-2],
+        average=np.array(model_meta["norm_average"]),
+        variance=np.array(model_meta["norm_variance"]),
+    )
+    selected_arr = train_utils.get_valid_feature(bkg_arr_temp)
+    predict_arr = model_wrapper.get_model().predict(selected_arr)
+    mass_index = job_wrapper.selected_features.index(job_wrapper.reset_feature_name)
+    x = predict_arr
+    y = bkg_arr_original[:, mass_index]
+    w = bkg_arr_temp[:, -1]
+    ## make plot
+    plot_canvas = ROOT.TCanvas("2d_density_bkg", "2d_density_bkg", 1200, 900)
+    hist_bkg = th1_tools.TH2FTool(
+        "2d_density_bkg",
+        "2d_density_bkg",
+        nbinx=50,
+        xlow=0,
+        xup=1.0,
+        nbiny=50,
+        ylow=min(y),
+        yup=max(y),
+    )
+    hist_bkg.fill_hist(fill_array_x=x, fill_array_y=y, weight_array=w)
+    hist_bkg.set_canvas(plot_canvas)
+    hist_bkg.set_palette("kBird")
+    hist_bkg.update_config("hist", "SetStats", 0)
+    hist_bkg.update_config("x_axis", "SetTitle", "dnn score")
+    hist_bkg.update_config("y_axis", "SetTitle", "mass")
+    hist_bkg.draw("colz")
+    hist_bkg.save(save_dir=save_dir, save_file_name=save_file_name + "_bkg")
+
+
+def plot_2d_significance_scan(
+    job_wrapper,
+    save_plot=False,
+    save_dir=None,
+    save_file_name="2d_significance",
+    cut_ranges_dn=None,
+    cut_ranges_up=None,
+):
+    """Makes 2d map of significance"""
+    dnn_cut_list = np.arange(0.8, 1.0, 0.02)
+    w_inputs = []
+    for sig_id, scan_sig_key in enumerate(job_wrapper.sig_list):
+        xs = array_utils.modify_array(
+            job_wrapper.sig_dict[scan_sig_key], select_channel=True
+        )
+        xb = array_utils.modify_array(
+            job_wrapper.bkg_dict[job_wrapper.bkg_key], select_channel=True
+        )
+        m_cut_name = job_wrapper.reset_feature_name
+        if cut_ranges_dn is None or len(cut_ranges_dn) == 0:
+            means, variances = train_utils.get_mean_var(
+                xs[:, 0:-2], axis=0, weights=xs[:, -1]
+            )
+            m_index = job_wrapper.selected_features.index(m_cut_name)
+            m_cut_dn = means[m_index] - math.sqrt(variances[m_index])
+            m_cut_up = means[m_index] + math.sqrt(variances[m_index])
+        else:
+            m_cut_dn = cut_ranges_dn[sig_id]
+            m_cut_up = cut_ranges_up[sig_id]
+        ####
+        print("#### cut_dn:", m_cut_dn)
+        print("#### cut_up:", m_cut_up)
+        feedbox = train_utils.prepare_array(
+            xs,
+            xb,
+            job_wrapper.selected_features,
+            apply_data=False,
+            reshape_array=job_wrapper.norm_array,
+            reset_mass=job_wrapper.reset_feature,
+            reset_mass_name=job_wrapper.reset_feature_name,
+            remove_negative_weight=job_wrapper.rm_negative_weight_events,
+            cut_features=[m_cut_name, m_cut_name],
+            cut_values=[m_cut_dn, m_cut_up],
+            cut_types=[">", "<"],
+            sig_weight=job_wrapper.sig_sumofweight,
+            bkg_weight=job_wrapper.bkg_sumofweight,
+            data_weight=job_wrapper.data_sumofweight,
+            test_rate=job_wrapper.test_rate,
+            rdm_seed=None,
+            model_meta=job_wrapper.model_wrapper.model_meta,
+            verbose=job_wrapper.verbose,
+        )
+        job_wrapper.model_wrapper.set_inputs(feedbox, apply_data=job_wrapper.apply_data)
+        (
+            plot_thresholds,
+            significances,
+            sig_above_threshold,
+            bkg_above_threshold,
+        ) = get_significances(
+            job_wrapper.model_wrapper, significance_algo=job_wrapper.significance_algo,
+        )
+        plot_significances = []
+        for dnn_cut in dnn_cut_list:
+            threshold_id = (np.abs(np.array(plot_thresholds) - dnn_cut)).argmin()
+            plot_significances.append(significances[threshold_id])
+        print("#### plot asimov:", plot_significances)
+        print("#### max asimov:", max(significances))
+        print("#### max asimov dnn:", plot_thresholds[np.argmax(significances)], "\n")
+        w_inputs.append(plot_significances)
+    x = []
+    y = []
+    w = []
+    for index, w_input in enumerate(w_inputs):
+        if len(x) == 0:
+            x = dnn_cut_list.tolist()
+            y = [job_wrapper.sig_list[index]] * len(w_input)
+            w = w_input
+        else:
+            x += dnn_cut_list.tolist()
+            y += [job_wrapper.sig_list[index]] * len(w_input)
+            w += w_input
+    # make plot
+    plot_canvas = ROOT.TCanvas("2d_significance_c", "2d_significance_c", 1200, 900)
+    hist_sig = th1_tools.TH2FTool(
+        "2d_significance",
+        "2d_significance",
+        nbinx=10,
+        xlow=0.8,
+        xup=1.0,
+        nbiny=len(job_wrapper.sig_list),
+        ylow=0,
+        yup=len(job_wrapper.sig_list),
+    )
+    hist_sig_text = th1_tools.TH2FTool(
+        "2d_significance_text",
+        "2d_significance_text",
+        nbinx=10,
+        xlow=0.8,
+        xup=1.0,
+        nbiny=len(job_wrapper.sig_list),
+        ylow=0,
+        yup=len(job_wrapper.sig_list),
+    )
+    hist_sig.fill_hist(fill_array_x=x, fill_array_y=y, weight_array=w)
+    hist_sig.set_canvas(plot_canvas)
+    hist_sig.set_palette("kBird")
+    hist_sig.update_config("hist", "SetStats", 0)
+    hist_sig.update_config("x_axis", "SetTitle", "dnn_cut")
+    hist_sig.update_config("y_axis", "SetTitle", "mass point")
+    hist_sig.draw("colz")
+    hist_sig_text.fill_hist(
+        fill_array_x=x, fill_array_y=y, weight_array=np.array(w).round(decimals=2)
+    )
+    hist_sig_text.set_canvas(plot_canvas)
+    hist_sig_text.update_config("hist", "SetMarkerSize", 1.8)
+    hist_sig_text.draw("text same")
+    if save_plot:
+        plot_canvas.SaveAs(save_dir + "/" + save_file_name + ".png")

@@ -41,15 +41,16 @@ def get_bkg(
     # Add all bkg together
     bkg_all_array = np.concatenate(list(bkg_dict.values()))
     bkg_dict["all"] = bkg_all_array
-    # Add all bkg together with each mass point normalized
+    # Add all bkg together with each component normalized
     bkg_all_array_norm = None
     for bkg in bkg_list:
         temp_array = bkg_dict[bkg]
-        temp_array = array_utils.modify_array(temp_array, norm=True)
-        if bkg_all_array_norm is None:
-            bkg_all_array_norm = temp_array
-        else:
-            bkg_all_array_norm = np.concatenate((bkg_all_array_norm, temp_array))
+        if len(temp_array) != 0:
+            temp_array = array_utils.modify_array(temp_array, norm=True)
+            if bkg_all_array_norm is None:
+                bkg_all_array_norm = temp_array
+            else:
+                bkg_all_array_norm = np.concatenate((bkg_all_array_norm, temp_array))
     bkg_dict["all_norm"] = bkg_all_array_norm
     return bkg_dict
 
@@ -110,11 +111,12 @@ def get_sig(
     sig_all_array_norm = None
     for sig in sig_list:
         temp_array = sig_dict[sig]
-        temp_array = array_utils.modify_array(temp_array, norm=True)
-        if sig_all_array_norm is None:
-            sig_all_array_norm = temp_array
-        else:
-            sig_all_array_norm = np.concatenate((sig_all_array_norm, temp_array))
+        if len(temp_array) != 0:
+            temp_array = array_utils.modify_array(temp_array, norm=True)
+            if sig_all_array_norm is None:
+                sig_all_array_norm = temp_array
+            else:
+                sig_all_array_norm = np.concatenate((sig_all_array_norm, temp_array))
     sig_dict["all_norm"] = sig_all_array_norm
     # For test
     # TODO need to delete/change later
@@ -122,13 +124,14 @@ def get_sig(
     for i, sig in enumerate(sig_list):
         current_weight = 2000 - 150 * i
         temp_array = sig_dict[sig]
-        temp_array = array_utils.modify_array(
-            temp_array, norm=True, sumofweight=current_weight
-        )
-        if sig_all_array_test is None:
-            sig_all_array_test = temp_array
-        else:
-            sig_all_array_test = np.concatenate((sig_all_array_test, temp_array))
+        if len(temp_array) != 0:
+            temp_array = array_utils.modify_array(
+                temp_array, norm=True, sumofweight=current_weight
+            )
+            if sig_all_array_test is None:
+                sig_all_array_test = temp_array
+            else:
+                sig_all_array_test = np.concatenate((sig_all_array_test, temp_array))
     sig_dict["all_test"] = sig_all_array_test
 
     return sig_dict
@@ -238,8 +241,8 @@ def get_npy_individuals(
         print(npy, "shape:", npy_array.shape, "total weights:", total_weights)
 
         if len(cut_features) > 0:
+            cut_array = None
             if campaign in ["run2", "all"]:
-                cut_array = None
                 try:
                     directory = npy_path
                     for feature in cut_features:
@@ -304,10 +307,8 @@ def get_npy_individuals(
                             cut_array = temp_array
                         else:
                             cut_array = np.concatenate((cut_array, temp_array), axis=1)
-                else:
-                    raise ValueError("Invalid campaign name.")
             else:
-                directory = cut_array + "/" + campaign
+                directory = npy_path + "/" + campaign
                 cut_array = None
                 for feature in cut_features:
                     temp_array = np.load(
@@ -328,7 +329,7 @@ def get_npy_individuals(
             # Get indexes that pass cuts
             assert len(cut_features) == len(cut_values) and len(cut_features) == len(
                 cut_types
-            ), "cut_features and cut_values and cut_types should have same lenth."
+            ), "cut_features and cut_values and cut_types should have same length."
             pass_index = None
             for cut_feature_id, (cut_value, cut_type) in enumerate(
                 zip(cut_values, cut_types)

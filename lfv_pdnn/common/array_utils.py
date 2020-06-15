@@ -5,13 +5,12 @@ import numpy as np
 from lfv_pdnn.common import common_utils
 
 
-def clean_array(array, weight_id, remove_negative=False, verbose=False):
-    """removes elements with 0 weight.
+def clean_negative_weights(array, weight_id, verbose=False):
+    """removes elements with negative weight.
 
     Args:
         array: numpy array, input array to be processed, must be numpy array
         weight_id: int, indicate which column is weight value.
-        remove_negative: bool, optional, remove zero weight row if set True
         verbose: bool, optional, show more detailed message if set True.
 
     Returns:
@@ -19,22 +18,42 @@ def clean_array(array, weight_id, remove_negative=False, verbose=False):
     """
     # Start
     if verbose:
-        print("cleaning array...")
-
+        print("cleaning array elements with negative weights...")
     # Clean
     # create new array for output to avoid direct operation on input array
     new = []
-    if remove_negative == True:
-        for d in array:
-            if d[weight_id] <= 0.0:  # remove zero or negative weight row
-                continue
-            new.append(d)
-    else:
-        for d in array:
-            if d[weight_id] == 0.0:  # only remove zero weight row
-                continue
-            new.append(d)
+    for d in array:
+        if d[weight_id] < 0.0:  # remove zero or negative weight row
+            continue
+        new.append(d)
+    # Output
+    out = np.array(new)
+    if verbose:
+        print("shape before", array.shape, "shape after", out.shape)
+    return out
 
+
+def clean_zero_weights(array, weight_id, verbose=False):
+    """removes elements with 0 weight.
+
+    Args:
+        array: numpy array, input array to be processed, must be numpy array
+        weight_id: int, indicate which column is weight value.
+        verbose: bool, optional, show more detailed message if set True.
+
+    Returns:
+        cleaned new numpy array.
+    """
+    # Start
+    if verbose:
+        print("cleaning array elements with zero weights ...")
+    # Clean
+    # create new array for output to avoid direct operation on input array
+    new = []
+    for d in array:
+        if d[weight_id] == 0.0:  # only remove zero weight row
+            continue
+        new.append(d)
     # Output
     out = np.array(new)
     if verbose:
@@ -158,7 +177,9 @@ def modify_array(
         else:
             print("missing parameters, skipping mass selection...")
     # clean array
-    new = clean_array(new, -1, remove_negative=remove_negative_weight, verbose=False)
+    new = clean_zero_weights(new, -1)
+    if remove_negative_weight:
+        new = clean_negative_weights(new, -1)
     # reset mass
     if reset_mass == True:
         if not common_utils.has_none([reset_mass_array, reset_mass_id]):
@@ -170,19 +191,9 @@ def modify_array(
         new[:, -1] = norweight(new[:, -1], norm=sumofweight)
     # shuffle array
     if shuffle == True:
-        # use time as random seed if not specified
-        """
-    if has_none([shuffle_seed]):
-      shuffle_seed = int(time.time())
-    new, x2, y1, y2 = train_test_split(new, np.zeros(len(new)), test_size=0.01, ########################
-                                       random_state=shuffle_seed, shuffle=True)
-    """
         new, _, _, _ = shuffle_and_split(
             new, np.zeros(len(new)), split_ratio=0.0, shuffle_seed=shuffle_seed
         )
-
-    # clean array
-    new = clean_array(new, -1, remove_negative=remove_negative_weight, verbose=False)
     # return result
     return new
 
