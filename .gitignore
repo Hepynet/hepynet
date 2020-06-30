@@ -22,3 +22,5 @@ env_setup/*
 
 # Packages #
 *.ipynb
+share/zprime/apply/loop_low_mass_point.sh
+share/zprime/apply/loop_mass_point.sh

@@ -742,6 +742,7 @@ def plot_scores_separate_root(
         bkg_plot_key_list = [original_keys[index] for index in sort_indexes]
     for arr_key in bkg_plot_key_list:
         bkg_arr_temp = bkg_dict[arr_key].copy()
+        bkg_arr_temp = array_utils.modify_array(bkg_arr_temp, select_channel=True)
         if len(bkg_arr_temp) != 0:
             bkg_arr_temp[:, 0:-2] = train_utils.norarray(
                 bkg_arr_temp[:, 0:-2],
@@ -759,16 +760,6 @@ def plot_scores_separate_root(
         )
         th1_temp.fill_hist(predict_arr, predict_weight_arr)
         hist_list.append(th1_temp)
-    #### debug ####
-    """
-    total_example = 0
-    for i, score in enumerate(predict_arr):
-        if score > 0.9 and total_example < 10:
-            total_example += 1
-            print("#### sig-like arrays:")
-            for j, feature in enumerate(model_wrapper.selected_features):
-                print(feature, ":", bkg_arr_temp[i][j])
-    """
     hist_stacked_bkgs = th1_tools.THStackTool(
         "bkg stack plot", plot_title, hist_list, canvas=plot_pad_score
     )
@@ -782,7 +773,7 @@ def plot_scores_separate_root(
         predict_weight_arr = feedbox["xs_reshape"][:, -1]
         sig_arr_temp = feedbox["xs_raw"].copy()
     else:
-        predict_weight_arr = sig_arr_temp[:, -1]
+        predict_weight_arr = sig_arr[:, -1]
         sig_arr_temp = sig_arr.copy()
     sig_arr_temp[:, 0:-2] = train_utils.norarray(
         sig_arr_temp[:, 0:-2],
@@ -824,9 +815,20 @@ def plot_scores_separate_root(
     total_weight_data = 0
     if apply_data:
         if data_arr is None:
-            selected_arr = feedbox["xd_selected_original_mass"].copy()
-            predict_arr = model.predict(selected_arr)
-            predict_weight_arr = feedbox["xd"][:, -1]
+            predict_weight_arr = feedbox["xd_reshape"][:, -1]
+            data_arr_temp = feedbox["xd_raw"].copy()
+        else:
+            predict_weight_arr = data_arr[:, -1]
+            data_arr_temp = data_arr.copy()
+
+        data_arr_temp[:, 0:-2] = train_utils.norarray(
+            data_arr_temp[:, 0:-2],
+            average=np.array(model_meta["norm_average"]),
+            variance=np.array(model_meta["norm_variance"]),
+        )
+        selected_arr = train_utils.get_valid_feature(data_arr_temp)
+        predict_arr = model.predict(selected_arr)
+
         hist_data = th1_tools.TH1FTool(
             "data added",
             "data",
@@ -836,6 +838,9 @@ def plot_scores_separate_root(
             canvas=plot_pad_score,
         )
         hist_data.fill_hist(predict_arr, predict_weight_arr)
+        for ele in predict_arr:
+            if ele < 0 or ele > 1:
+                print("##:", ele)
         hist_data.update_config("hist", "SetMarkerStyle", ROOT.kFullCircle)
         hist_data.update_config("hist", "SetMarkerColor", ROOT.kBlack)
         hist_data.update_config("hist", "SetMarkerSize", 0.8)
@@ -1310,8 +1315,8 @@ def plot_2d_density(
     hist_sig.set_canvas(plot_canvas)
     hist_sig.set_palette("kBird")
     hist_sig.update_config("hist", "SetStats", 0)
-    hist_sig.update_config("x_axis", "SetTitle", "dnn_cut")
-    hist_sig.update_config("y_axis", "SetTitle", "mass point")
+    hist_sig.update_config("x_axis", "SetTitle", "dnn score")
+    hist_sig.update_config("y_axis", "SetTitle", "mass")
     hist_sig.draw("colz")
     hist_sig.save(save_dir=save_dir, save_file_name=save_file_name + "_sig")
     # plot background
@@ -1379,9 +1384,6 @@ def plot_2d_significance_scan(
         else:
             m_cut_dn = cut_ranges_dn[sig_id]
             m_cut_up = cut_ranges_up[sig_id]
-        ####
-        print("#### cut_dn:", m_cut_dn)
-        print("#### cut_up:", m_cut_up)
         feedbox = train_utils.prepare_array(
             xs,
             xb,
@@ -1415,9 +1417,6 @@ def plot_2d_significance_scan(
         for dnn_cut in dnn_cut_list:
             threshold_id = (np.abs(np.array(plot_thresholds) - dnn_cut)).argmin()
             plot_significances.append(significances[threshold_id])
-        print("#### plot asimov:", plot_significances)
-        print("#### max asimov:", max(significances))
-        print("#### max asimov dnn:", plot_thresholds[np.argmax(significances)], "\n")
         w_inputs.append(plot_significances)
     x = []
     y = []

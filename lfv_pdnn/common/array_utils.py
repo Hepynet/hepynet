@@ -1,4 +1,5 @@
 import time
+import warnings
 
 import numpy as np
 
@@ -163,6 +164,9 @@ def modify_array(
   """
     # Modify
     new = input_array.copy()  # copy data to avoid original data operation
+    if len(new) == 0:
+        warnings.warn("empty input detected in modify_array, no changes will be made.")
+        return new
     # select channel
     if select_channel == True:
         for ele in new:
@@ -268,7 +272,7 @@ def shuffle_and_split(x, y, split_ratio=0.0, shuffle_seed=None):
     """Self defined function to replace train_test_split in sklearn to allow
     more flexibility.
     """
-    # Check consistance of length of x, y
+    # Check consistence of length of x, y
     if len(x) != len(y):
         raise ValueError("Length of x and y is not same.")
     array_len = len(y)
@@ -277,7 +281,7 @@ def shuffle_and_split(x, y, split_ratio=0.0, shuffle_seed=None):
     first_part_index = np.random.choice(
         range(array_len), int(array_len * 1.0 * split_ratio), replace=False
     )
-    # get index for last part of the splited array
+    # get index for last part of the splitted array
     last_part_index = np.setdiff1d(np.array(range(array_len)), first_part_index)
     first_part_x = x[first_part_index]
     first_part_y = y[first_part_index]

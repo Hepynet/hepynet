@@ -198,20 +198,14 @@ class job_executor(object):
             self.load_arrays()
         xs = array_utils.modify_array(self.sig_dict[self.sig_key], select_channel=True)
         xb = array_utils.modify_array(self.bkg_dict[self.bkg_key], select_channel=True)
+        print("#### total xb weight:", np.sum(xb[:, -1]))
         if self.data_key is not None:
             xd = array_utils.modify_array(
                 self.data_dict[self.data_key], select_channel=True
             )
         else:
             xd = None
-        """
-        for key in self.bkg_list:
-            self.plot_bkg_dict[key] = array_utils.modify_array(
-                self.bkg_dict[key],
-                select_channel=True,
-                remove_negative_weight=False,
-            )  # Use negative weight when applying model
-        """
+        print("#### total xd weight:", np.sum(xd[:, -1]))
         if self.save_tb_logs:
             save_dir = self.save_sub_dir + "/tb_logs"
             if not os.path.exists(save_dir):
@@ -260,7 +254,7 @@ class job_executor(object):
                 xs,
                 xb,
                 self.selected_features,
-                xd=xd,
+                xd_input=xd,
                 apply_data=self.apply_data,
                 reshape_array=self.norm_array,
                 reset_mass=self.reset_feature,
@@ -280,7 +274,7 @@ class job_executor(object):
                 xs,
                 xb,
                 self.selected_features,
-                xd=xd,
+                xd_input=xd,
                 apply_data=self.apply_data,
                 reshape_array=self.norm_array,
                 reset_mass=self.reset_feature,
@@ -682,7 +676,7 @@ class job_executor(object):
                 xs,
                 xb,
                 self.selected_features,
-                xd=xd,
+                xd_input=xd,
                 apply_data=self.apply_data,
                 reshape_array=self.norm_array,
                 reset_mass=self.reset_feature,

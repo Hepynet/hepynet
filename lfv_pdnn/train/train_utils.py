@@ -45,7 +45,7 @@ def calculate_significance(sig, bkg, sig_total=1, bkg_total=1, algo="asimov"):
     elif algo == "s_sqrt_b":
         return sig / sqrt(bkg)
     elif algo == "asimov_rel":
-        return calculate_asimov(sig / sig_total, bkg / bkg_total)
+        return calculate_asimov(sig, bkg) / calculate_asimov(sig_total, bkg_total)
     elif algo == "s_b_rel":
         return (sig / sig_total) / (bkg / bkg_total)
     elif algo == "s_sqrt_b_rel":
@@ -151,11 +151,11 @@ def norarray_min_max(array, min, max, axis=None):
 
 
 def prepare_array(
-    xs,
-    xb,
+    xs_input,
+    xb_input,
     selected_features,
     apply_data=False,
-    xd=None,
+    xd_input=None,
     reshape_array=True,
     reset_mass=False,
     reset_mass_name=None,
@@ -173,6 +173,10 @@ def prepare_array(
 ):
     """Prepares array for training."""
     feed_box = {}
+    xs = xs_input.copy()
+    xb = xb_input.copy()
+    if apply_data:
+        xd = xd_input.copy()
     # cut array
     if len(cut_features) > 0:
         # Get indexes that pass cuts
@@ -350,39 +354,64 @@ def prepare_array(
     feed_box["xb_reshape_selected"] = get_valid_feature(xb_reshape)
     # prepare data to apply model when apply_data is True
     if apply_data == True:
+        if len(cut_features) > 0:
+            # Get indexes that pass cuts
+            assert len(cut_features) == len(cut_values) and len(cut_features) == len(
+                cut_types
+            ), "cut_features and cut_values and cut_types should have same length."
+            xd_pass_index = None
+            for (cut_feature, cut_value, cut_type) in zip(
+                cut_features, cut_values, cut_types
+            ):
+                cut_feature_id = selected_features.index(cut_feature)
+                # update data cut index
+                temp_index = array_utils.get_cut_index_value(
+                    xd[:, cut_feature_id], cut_value, cut_type
+                )
+                if xd_pass_index is None:
+                    xd_pass_index = temp_index
+                else:
+                    xd_pass_index = np.intersect1d(xd_pass_index, temp_index)
+            xd = xd[xd_pass_index.flatten(), :]
+        # record raw array
+        feed_box["xd_raw"] = xd
+        # reshape
+        xd_reshape = xd.copy()
         if reshape_array:
-            xd_reshape = xd.copy()
             xd_reshape[:, 0:-2] = norarray(
-                xd_reshape[:, 0:-2], average=means, variance=variances
+                xd_reshape[:, 0:-2],
+                average=feed_box["norm_average"],
+                variance=feed_box["norm_variance"],
             )
-            feed_box["xd"] = xd_reshape
+            feed_box["xd_reshape"] = xd_reshape.copy()
         else:
-            feed_box["xd"] = xd
+            feed_box["xd_reshape"] = xd_reshape.copy()
         if reset_mass:
             reset_mass_id = selected_features.index(reset_mass_name)
             xd_reset_mass = array_utils.modify_array(
-                xd,
+                xd_reshape,
                 reset_mass=reset_mass,
                 reset_mass_array=xs_reshape,
                 reset_mass_id=reset_mass_id,
             )
+            feed_box["xd_reset_mass"] = xd_reset_mass
         else:
-            xd_reset_mass = xd
-        feed_box["xd_reset_mass"] = xd_reset_mass
-        xd_norm = array_utils.modify_array(
-            feed_box["xd"], norm=True, sumofweight=data_weight
+            xd_reset_mass = xd_reshape
+            feed_box["xd_reset_mass"] = xd_reset_mass
+        # normalize total weight
+        xd_reweight = array_utils.modify_array(
+            xd_reshape, norm=True, sumofweight=data_weight
         )
-        xd_norm_reset_mass = array_utils.modify_array(
+        feed_box["xd_reweight"] = xd_reweight
+        xd_reweight_reset_mass = array_utils.modify_array(
             xd_reset_mass, norm=True, sumofweight=data_weight
         )
-        xd_selected = get_valid_feature(xd_norm_reset_mass)
-        xd_selected_original_mass = get_valid_feature(xd_norm)
-        has_data = True
-        feed_box["xd_norm"] = xd_norm
-        feed_box["xd_norm_reset_mass"] = xd_norm_reset_mass
-        feed_box["xd_selected"] = xd_selected
-        feed_box["xd_selected_original_mass"] = xd_selected_original_mass
-        feed_box["has_data"] = has_data
+        feed_box["xd_reweight_reset_mass"] = xd_reweight_reset_mass
+        # get selected features
+        feed_box["xd_selected"] = get_valid_feature(xd_reweight_reset_mass)
+        feed_box["xd_selected_original_mass"] = get_valid_feature(xd_reweight)
+        feed_box["xd_reshape_selected"] = get_valid_feature(xd_reshape)
+        feed_box["has_data"] = True
     feed_box["array_prepared"] = True
     if verbose == 1:
         print("Training array prepared.")
