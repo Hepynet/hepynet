@@ -79,13 +79,11 @@ class job_executor(object):
         # Initialize [array] section
         self.arr_version = None
         self.campaign = None
-        self.bkg_dict_path = None
+        self.arr_path = None
         self.bkg_key = None
         self.bkg_sumofweight = None
-        self.sig_dict_path = None
         self.sig_key = None
         self.sig_sumofweight = None
-        self.data_dict_path = None
         self.data_key = None
         self.data_sumofweight = None
         self.bkg_list = []
@@ -766,13 +764,11 @@ class job_executor(object):
         # Load [array] section
         self.try_parse_str("arr_version", config, "array", "arr_version")
         self.try_parse_str("campaign", config, "array", "campaign")
-        self.try_parse_str("bkg_dict_path", config, "array", "bkg_dict_path")
+        self.try_parse_str("arr_path", config, "array", "arr_path")
         self.try_parse_str("bkg_key", config, "array", "bkg_key")
         self.try_parse_float("bkg_sumofweight", config, "array", "bkg_sumofweight")
-        self.try_parse_str("sig_dict_path", config, "array", "sig_dict_path")
         self.try_parse_str("sig_key", config, "array", "sig_key")
         self.try_parse_float("sig_sumofweight", config, "array", "sig_sumofweight")
-        self.try_parse_str("data_dict_path", config, "array", "data_dict_path")
         self.try_parse_str("data_key", config, "array", "data_key")
         self.try_parse_float("data_sumofweight", config, "array", "data_sumofweight")
         self.try_parse_list("bkg_list", config, "array", "bkg_list")
@@ -1033,19 +1029,15 @@ class job_executor(object):
         ptext = "reset feature name             : " + str(self.reset_feature_name)
         reports.append(Paragraph(ptext, styles["Justify"]))
         reports.append(Spacer(1, 12))
-        ptext = "bkg arrays path                  : " + self.bkg_dict_path
+        ptext = "bkg arrays path                  : " + self.arr_path
         reports.append(Paragraph(ptext, styles["Justify"]))
         ptext = "bkg arrays used                  : " + self.bkg_key
         reports.append(Paragraph(ptext, styles["Justify"]))
         ptext = "bkg total weight set             : " + str(self.bkg_sumofweight)
         reports.append(Paragraph(ptext, styles["Justify"]))
-        ptext = "sig arrays path                  : " + self.sig_dict_path
-        reports.append(Paragraph(ptext, styles["Justify"]))
         ptext = "sig arrays used                  : " + self.sig_key
         reports.append(Paragraph(ptext, styles["Justify"]))
         ptext = "sig total weight                 : " + str(self.sig_sumofweight)
-        reports.append(Paragraph(ptext, styles["Justify"]))
-        ptext = "data arrays path                 : " + str(self.data_dict_path)
         reports.append(Paragraph(ptext, styles["Justify"]))
         ptext = "data arrays used                 : " + str(self.data_key)
         reports.append(Paragraph(ptext, styles["Justify"]))
@@ -1149,8 +1141,9 @@ class job_executor(object):
 
     def load_arrays(self):
         """Get training arrays."""
+        npy_path = self.arr_path + "/" + self.arr_version
         self.bkg_dict = get_arrays.get_bkg(
-            self.bkg_dict_path,
+            npy_path,
             self.campaign,
             self.channel,
             self.bkg_list,
@@ -1160,7 +1153,7 @@ class job_executor(object):
             cut_types=self.cut_types,
         )
         self.sig_dict = get_arrays.get_sig(
-            self.sig_dict_path,
+            npy_path,
             self.campaign,
             self.channel,
             self.sig_list,
@@ -1170,7 +1163,7 @@ class job_executor(object):
             cut_types=self.cut_types,
         )
         self.data_dict = get_arrays.get_data(
-            self.data_dict_path,
+            npy_path,
             self.campaign,
             self.channel,
             self.data_list,
