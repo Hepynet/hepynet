@@ -44,12 +44,16 @@ def calculate_significance(sig, bkg, sig_total=1, bkg_total=1, algo="asimov"):
         return sig / bkg
     elif algo == "s_sqrt_b":
         return sig / sqrt(bkg)
+    elif algo == "s_sqrt_sb":
+        return sig / sqrt(sig + bkg)
     elif algo == "asimov_rel":
         return calculate_asimov(sig, bkg) / calculate_asimov(sig_total, bkg_total)
     elif algo == "s_b_rel":
         return (sig / sig_total) / (bkg / bkg_total)
     elif algo == "s_sqrt_b_rel":
         return (sig / sig_total) / sqrt(bkg / bkg_total)
+    elif algo == "s_sqrt_sb_rel":
+        return (sig / sig_total) / sqrt((bkg + sig) / (sig_total + bkg_total))
     else:
         warnings.warn("Unrecognized significance algorithm, will use default 'asimov'")
         return calculate_asimov(sig, bkg)
@@ -118,6 +122,8 @@ def get_mean_var(array, axis=None, weights=None):
     """Calculate average and variance of an array."""
     average = np.average(array, axis=axis, weights=weights)
     variance = np.average((array - average) ** 2, axis=axis, weights=weights)
+    if 0 in variance:
+        warnings.warn("Encountered 0 variance, set to 0.000001")
     return average, variance + 0.000001
 
 
@@ -150,6 +156,7 @@ def norarray_min_max(array, min, max, axis=None):
     output_array = output_array / ratio
 
 
+'''
 def prepare_array(
     xs_input,
     xb_input,
@@ -171,7 +178,11 @@ def prepare_array(
     model_meta=None,
     verbose=1,
 ):
-    """Prepares array for training."""
+    """Prepares array for training.
+    
+    TODO: outdated code, need to be removed in next version
+    
+    """
     feed_box = {}
     xs = xs_input.copy()
     xb = xb_input.copy()
@@ -418,6 +429,7 @@ def prepare_array(
         print("> signal shape:", feed_box["xs_selected"].shape)
         print("> background shape:", feed_box["xb_selected"].shape)
     return feed_box
+'''
 
 
 def split_and_combine(
@@ -427,7 +439,7 @@ def split_and_combine(
 
     Args:
         xs: numpy array
-        Siganl array for training.
+        Signal array for training.
         xb: numpy array
         Background array for training.
         test_rate: float, optional (default = 0.2)
