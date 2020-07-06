@@ -159,7 +159,7 @@ def plot_correlation_matrix(ax, corr_matrix_dict, matrix_key="bkg"):
     )
 
 
-def plot_feature_importance(ax, model_wrapper, log=True, max_feature=8):
+def plot_feature_importance(ax, model_wrapper, log=True, max_feature=16):
     """Calculates importance of features and sort the feature.
 
     Definition of feature importance used here can be found in:
@@ -198,8 +198,8 @@ def plot_feature_importance(ax, model_wrapper, log=True, max_feature=8):
         num_show = max_feature
     else:
         num_show = num_feature
-    ax.bar(
-        np.arange(num_show),
+    ax.barh(
+        np.flip(np.arange(num_show)),
         sorted_importance[:num_show],
         align="center",
         alpha=0.5,
@@ -895,7 +895,7 @@ def plot_scores_separate_root(
         else:
             predict_weight_arr = data_arr[:, -1]
             data_arr_temp = data_arr.copy()
-
+        data_arr_temp = array_utils.modify_array(data_arr_temp, select_channel=True)
         data_arr_temp[:, 0:-2] = train_utils.norarray(
             data_arr_temp[:, 0:-2],
             average=np.array(model_meta["norm_average"]),
@@ -913,9 +913,6 @@ def plot_scores_separate_root(
             canvas=plot_pad_score,
         )
         hist_data.fill_hist(predict_arr, predict_weight_arr)
-        for ele in predict_arr:
-            if ele < 0 or ele > 1:
-                print("##:", ele)
         hist_data.update_config("hist", "SetMarkerStyle", ROOT.kFullCircle)
         hist_data.update_config("hist", "SetMarkerColor", ROOT.kBlack)
         hist_data.update_config("hist", "SetMarkerSize", 0.8)
@@ -1410,8 +1407,8 @@ def plot_2d_density(
     hist_sig.save(save_dir=save_dir, save_file_name=save_file_name + "_sig")
     # plot background
     bkg_key = model_meta["bkg_key"]
-    bkg_arr_original = feedbox.get_array("xb", "raw", array_class=bkg_key)
-    bkg_arr_temp = feedbox.get_array("xb", "raw", array_class=bkg_key)
+    bkg_arr_original = feedbox.get_array("xb", "raw", array_key=bkg_key)
+    bkg_arr_temp = feedbox.get_array("xb", "raw", array_key=bkg_key)
     bkg_arr_temp[:, 0:-2] = train_utils.norarray(
         bkg_arr_temp[:, 0:-2],
         average=np.array(model_meta["norm_average"]),
@@ -1456,22 +1453,25 @@ def plot_2d_significance_scan(
     """Makes 2d map of significance"""
     dnn_cut_list = np.arange(0.8, 1.0, 0.02)
     w_inputs = []
-    sig_dict = get_arrays.get_sig(
+    print("Making 2d significance scan.")
+    sig_dict = get_arrays.get_npy_individuals(
         job_wrapper.npy_path,
         job_wrapper.campaign,
         job_wrapper.channel,
         job_wrapper.sig_list,
         job_wrapper.selected_features,
+        "sig",
         cut_features=job_wrapper.cut_features,
         cut_values=job_wrapper.cut_values,
         cut_types=job_wrapper.cut_types,
     )
-    bkg_dict = get_arrays.get_bkg(
+    bkg_dict = get_arrays.get_npy_individuals(
         job_wrapper.npy_path,
         job_wrapper.campaign,
         job_wrapper.channel,
         job_wrapper.bkg_list,
         job_wrapper.selected_features,
+        "bkg",
         cut_features=job_wrapper.cut_features,
         cut_values=job_wrapper.cut_values,
         cut_types=job_wrapper.cut_types,

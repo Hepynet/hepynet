@@ -8,11 +8,7 @@ from lfv_pdnn.train import train_utils
 
 
 class Feedbox(object):
-    """DNN inputs management class.
-
-    Args:
-        object ([type]): [description]
-    """
+    """DNN inputs management class."""
 
     def __init__(
         self,

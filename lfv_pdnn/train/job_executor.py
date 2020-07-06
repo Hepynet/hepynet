@@ -235,34 +235,36 @@ class job_executor(object):
             tb_logs_path=self.save_tb_logs_path_subdir,
         )
         # Set up training or loading model
-        print("#### preparing feedbox")
-        bkg_dict = get_arrays.get_bkg(
+        bkg_dict = get_arrays.get_npy_individuals(
             self.npy_path,
             self.campaign,
             self.channel,
             self.bkg_list,
             self.selected_features,
+            "bkg",
             cut_features=self.cut_features,
             cut_values=self.cut_values,
             cut_types=self.cut_types,
         )
-        sig_dict = get_arrays.get_sig(
+        sig_dict = get_arrays.get_npy_individuals(
             self.npy_path,
             self.campaign,
             self.channel,
             self.sig_list,
             self.selected_features,
+            "sig",
             cut_features=self.cut_features,
             cut_values=self.cut_values,
             cut_types=self.cut_types,
         )
         if self.apply_data:
-            data_dict = get_arrays.get_data(
+            data_dict = get_arrays.get_npy_individuals(
                 self.npy_path,
                 self.campaign,
                 self.channel,
                 self.data_list,
                 self.selected_features,
+                "data",
                 cut_features=self.cut_features,
                 cut_values=self.cut_values,
                 cut_types=self.cut_types,
@@ -323,7 +325,6 @@ class job_executor(object):
                 verbose=self.verbose,
                 save_dir=self.save_sub_dir + "/models",
             )
-        print("#### feedbox prepared")
 
         # Logs
         if self.save_model and (self.job_type == "train"):
@@ -415,7 +416,11 @@ class job_executor(object):
                     )
                     # Make feature importance check
                     if self.book_importance_study:
-                        fig, ax = plt.subplots(figsize=(12, 9))
+                        if len(self.selected_features) > 16:
+                            canvas_height = 16
+                        else:
+                            canvas_height = len(self.selected_features)
+                        fig, ax = plt.subplots(figsize=(9, canvas_height))
                         fig_save_path = save_dir + "/importance_" + identifier + ".png"
                         self.fig_feature_importance_path = fig_save_path
                         evaluate.plot_feature_importance(
@@ -682,33 +687,36 @@ class job_executor(object):
                 data_key=self.data_key,
             )
             # Set up training or loading model
-            bkg_dict = get_arrays.get_bkg(
+            bkg_dict = get_arrays.get_npy_individuals(
                 self.npy_path,
                 self.campaign,
                 self.channel,
                 self.bkg_list,
                 self.selected_features,
+                "bkg",
                 cut_features=self.cut_features,
                 cut_values=self.cut_values,
                 cut_types=self.cut_types,
             )
-            sig_dict = get_arrays.get_sig(
+            sig_dict = get_arrays.get_npy_individuals(
                 self.npy_path,
                 self.campaign,
                 self.channel,
                 self.sig_list,
                 self.selected_features,
+                "sig",
                 cut_features=self.cut_features,
                 cut_values=self.cut_values,
                 cut_types=self.cut_types,
             )
             if self.apply_data:
-                data_dict = get_arrays.get_data(
+                data_dict = get_arrays.get_npy_individuals(
                     self.npy_path,
                     self.campaign,
                     self.channel,
                     self.data_list,
                     self.selected_features,
+                    "data",
                     cut_features=self.cut_features,
                     cut_values=self.cut_values,
                     cut_types=self.cut_types,

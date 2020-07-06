@@ -123,7 +123,7 @@ def get_mean_var(array, axis=None, weights=None):
     average = np.average(array, axis=axis, weights=weights)
     variance = np.average((array - average) ** 2, axis=axis, weights=weights)
     if 0 in variance:
-        warnings.warn("Encountered 0 variance, set to 0.000001")
+        warnings.warn("Encountered 0 variance, adding shift value 0.000001")
     return average, variance + 0.000001
 
 

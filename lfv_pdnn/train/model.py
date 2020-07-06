@@ -408,7 +408,6 @@ class Model_Sequential_Base(Model_Base):
         self.auc_test = auc_dict["auc_test"]
         self.auc_train_original = auc_dict["auc_train_original"]
         self.auc_test_original = auc_dict["auc_test_original"]
-        # evaluate.plot_feature_importance(ax[1, 1], self)
         if job_type == "train" and self.feedbox.reset_mass == True:
             evaluate.plot_overtrain_check(ax[2, 0], self, bins=50, log=True)
         evaluate.plot_overtrain_check_original_mass(ax[2, 1], self, bins=50, log=True)
