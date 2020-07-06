@@ -33,7 +33,7 @@ from sklearn.metrics import auc, roc_curve
 
 import ROOT
 from lfv_pdnn.common import array_utils, common_utils
-from lfv_pdnn.data_io import get_arrays
+from lfv_pdnn.data_io import feed_box, get_arrays
 from lfv_pdnn.train import evaluate, job_utils, model, train_utils
 
 SCANNED_PARAS = [
@@ -80,6 +80,7 @@ class job_executor(object):
         self.arr_version = None
         self.campaign = None
         self.arr_path = None
+        self.npy_path = None
         self.bkg_key = None
         self.bkg_sumofweight = None
         self.sig_key = None
@@ -192,18 +193,6 @@ class job_executor(object):
 
         # Prepare
         job_start_time = time.perf_counter()
-        if not self.array_is_loaded:
-            self.load_arrays()
-        xs = array_utils.modify_array(self.sig_dict[self.sig_key], select_channel=True)
-        xb = array_utils.modify_array(self.bkg_dict[self.bkg_key], select_channel=True)
-        print("#### total xb weight:", np.sum(xb[:, -1]))
-        if self.data_key is not None:
-            xd = array_utils.modify_array(
-                self.data_dict[self.data_key], select_channel=True
-            )
-        else:
-            xd = None
-        print("#### total xd weight:", np.sum(xd[:, -1]))
         if self.save_tb_logs:
             save_dir = self.save_sub_dir + "/tb_logs"
             if not os.path.exists(save_dir):
@@ -239,20 +228,57 @@ class job_executor(object):
             self.model_name,
             self.selected_features,
             hypers,
+            sig_key=self.sig_key,
+            bkg_key=self.bkg_key,
+            data_key=self.data_key,
             save_tb_logs=self.save_tb_logs,
             tb_logs_path=self.save_tb_logs_path_subdir,
         )
         # Set up training or loading model
+        print("#### preparing feedbox")
+        bkg_dict = get_arrays.get_bkg(
+            self.npy_path,
+            self.campaign,
+            self.channel,
+            self.bkg_list,
+            self.selected_features,
+            cut_features=self.cut_features,
+            cut_values=self.cut_values,
+            cut_types=self.cut_types,
+        )
+        sig_dict = get_arrays.get_sig(
+            self.npy_path,
+            self.campaign,
+            self.channel,
+            self.sig_list,
+            self.selected_features,
+            cut_features=self.cut_features,
+            cut_values=self.cut_values,
+            cut_types=self.cut_types,
+        )
+        if self.apply_data:
+            data_dict = get_arrays.get_data(
+                self.npy_path,
+                self.campaign,
+                self.channel,
+                self.data_list,
+                self.selected_features,
+                cut_features=self.cut_features,
+                cut_values=self.cut_values,
+                cut_types=self.cut_types,
+            )
+        else:
+            data_dict = None
         if self.job_type == "apply":
             self.model_wrapper.load_model(
                 self.load_dir, self.model_name, job_name=self.load_job_name,
             )
             # need to get feedbox after model loaded to get model meta
-            feedbox = train_utils.prepare_array(
-                xs,
-                xb,
-                self.selected_features,
-                xd_input=xd,
+            feedbox = feed_box.Feedbox(
+                sig_dict,
+                bkg_dict,
+                xd_dict=data_dict,
+                selected_features=self.selected_features,
                 apply_data=self.apply_data,
                 reshape_array=self.norm_array,
                 reset_mass=self.reset_feature,
@@ -268,11 +294,11 @@ class job_executor(object):
             )
             self.model_wrapper.set_inputs(feedbox, apply_data=self.apply_data)
         else:
-            feedbox = train_utils.prepare_array(
-                xs,
-                xb,
-                self.selected_features,
-                xd_input=xd,
+            feedbox = feed_box.Feedbox(
+                sig_dict,
+                bkg_dict,
+                xd_dict=data_dict,
+                selected_features=self.selected_features,
                 apply_data=self.apply_data,
                 reshape_array=self.norm_array,
                 reset_mass=self.reset_feature,
@@ -283,7 +309,7 @@ class job_executor(object):
                 data_weight=self.data_sumofweight,
                 test_rate=self.test_rate,
                 rdm_seed=None,
-                model_meta=None,
+                model_meta=self.model_wrapper.model_meta,
                 verbose=self.verbose,
             )
             self.model_wrapper.set_inputs(feedbox, apply_data=self.apply_data)
@@ -297,6 +323,8 @@ class job_executor(object):
                 verbose=self.verbose,
                 save_dir=self.save_sub_dir + "/models",
             )
+        print("#### feedbox prepared")
+
         # Logs
         if self.save_model and (self.job_type == "train"):
             mod_save_path = self.save_sub_dir + "/models"
@@ -398,7 +426,6 @@ class job_executor(object):
                     # Extra plots (use model on non-mass-reset arrays)
                     evaluate.plot_scores_separate_root(
                         self.model_wrapper,
-                        self.plot_bkg_dict,
                         self.plot_bkg_list,
                         apply_data=self.apply_data,
                         apply_data_range=self.apply_data_range,
@@ -414,7 +441,6 @@ class job_executor(object):
                     )
                     evaluate.plot_scores_separate_root(
                         self.model_wrapper,
-                        self.plot_bkg_dict,
                         self.plot_bkg_list,
                         apply_data=self.apply_data,
                         apply_data_range=self.apply_data_range,
@@ -624,25 +650,6 @@ class job_executor(object):
                         value = int(value)
                 setattr(self, key, value)
             # Prepare
-            if not self.array_is_loaded:
-                self.load_arrays()
-            xs = array_utils.modify_array(
-                self.sig_dict[self.sig_key], select_channel=True
-            )
-            xb = array_utils.modify_array(
-                self.bkg_dict[self.bkg_key], select_channel=True
-            )
-            xd = array_utils.modify_array(
-                self.data_dict[self.data_key], select_channel=True
-            )
-            """
-            for key in self.bkg_list:
-                self.plot_bkg_dict[key] = array_utils.modify_array(
-                    self.plot_bkg_dict[key],
-                    select_channel=True,
-                    remove_negative_weight=False,
-                )  # Use negtive weight when applying model
-            """
             if self.use_early_stop:
                 self.early_stop_paras = {}
                 self.early_stop_paras["monitor"] = self.early_stop_monitor
@@ -667,14 +674,52 @@ class job_executor(object):
             hypers["momentum"] = self.momentum
             hypers["nesterov"] = self.nesterov
             self.model_wrapper = getattr(model, self.model_class)(
-                self.model_name, self.selected_features, hypers
+                self.model_name,
+                self.selected_features,
+                hypers,
+                sig_key=self.sig_key,
+                bkg_key=self.bkg_key,
+                data_key=self.data_key,
             )
             # Set up training or loading model
-            feedbox = train_utils.prepare_array(
-                xs,
-                xb,
+            bkg_dict = get_arrays.get_bkg(
+                self.npy_path,
+                self.campaign,
+                self.channel,
+                self.bkg_list,
                 self.selected_features,
-                xd_input=xd,
+                cut_features=self.cut_features,
+                cut_values=self.cut_values,
+                cut_types=self.cut_types,
+            )
+            sig_dict = get_arrays.get_sig(
+                self.npy_path,
+                self.campaign,
+                self.channel,
+                self.sig_list,
+                self.selected_features,
+                cut_features=self.cut_features,
+                cut_values=self.cut_values,
+                cut_types=self.cut_types,
+            )
+            if self.apply_data:
+                data_dict = get_arrays.get_data(
+                    self.npy_path,
+                    self.campaign,
+                    self.channel,
+                    self.data_list,
+                    self.selected_features,
+                    cut_features=self.cut_features,
+                    cut_values=self.cut_values,
+                    cut_types=self.cut_types,
+                )
+            else:
+                data_dict = None
+            feedbox = feed_box.Feedbox(
+                sig_dict,
+                bkg_dict,
+                xd_dict=data_dict,
+                selected_features=self.selected_features,
                 apply_data=self.apply_data,
                 reshape_array=self.norm_array,
                 reset_mass=self.reset_feature,
@@ -685,6 +730,7 @@ class job_executor(object):
                 data_weight=self.data_sumofweight,
                 test_rate=self.test_rate,
                 rdm_seed=940926,
+                model_meta=self.model_wrapper.model_meta,
                 verbose=0,
             )
             self.model_wrapper.set_inputs(feedbox, apply_data=self.apply_data)
@@ -765,6 +811,7 @@ class job_executor(object):
         self.try_parse_str("arr_version", config, "array", "arr_version")
         self.try_parse_str("campaign", config, "array", "campaign")
         self.try_parse_str("arr_path", config, "array", "arr_path")
+        self.npy_path = self.arr_path + "/" + self.arr_version
         self.try_parse_str("bkg_key", config, "array", "bkg_key")
         self.try_parse_float("bkg_sumofweight", config, "array", "bkg_sumofweight")
         self.try_parse_str("sig_key", config, "array", "sig_key")
@@ -1138,43 +1185,6 @@ class job_executor(object):
         reports.append(im)
         # build/save
         doc.build(reports)
-
-    def load_arrays(self):
-        """Get training arrays."""
-        npy_path = self.arr_path + "/" + self.arr_version
-        self.bkg_dict = get_arrays.get_bkg(
-            npy_path,
-            self.campaign,
-            self.channel,
-            self.bkg_list,
-            self.selected_features,
-            cut_features=self.cut_features,
-            cut_values=self.cut_values,
-            cut_types=self.cut_types,
-        )
-        self.sig_dict = get_arrays.get_sig(
-            npy_path,
-            self.campaign,
-            self.channel,
-            self.sig_list,
-            self.selected_features,
-            cut_features=self.cut_features,
-            cut_values=self.cut_values,
-            cut_types=self.cut_types,
-        )
-        self.data_dict = get_arrays.get_data(
-            npy_path,
-            self.campaign,
-            self.channel,
-            self.data_list,
-            self.selected_features,
-            cut_features=self.cut_features,
-            cut_values=self.cut_values,
-            cut_types=self.cut_types,
-        )
-        self.array_is_loaded = True
-        if self.show_report or self.save_pdf_report:
-            self.plot_bkg_dict = {key: self.bkg_dict[key] for key in self.bkg_list}
 
     def set_para(self, parsed_val, data_type, config_parser, section, val_name):
         """Sets parameters for training manually."""
