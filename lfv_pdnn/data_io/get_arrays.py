@@ -27,6 +27,40 @@ def get_bkg(
 ):
     print("Loading raw background array.")
     # Load individual bkg
+    bkg_dict = {}
+    """
+    if bkg_key == "all" or bkg_key == "all_norm":
+        bkg_dict_temp = get_npy_individuals(
+            npy_path,
+            campaign,
+            channel,
+            bkg_list,
+            selected_features,
+            "bkg",
+            cut_features=cut_features,
+            cut_values=cut_values,
+            cut_types=cut_types,
+        )
+        # Add all bkg together
+        if bkg_key == "all":
+            bkg_all_array = np.concatenate(list(bkg_dict_temp.values()))
+            bkg_dict["all"] = bkg_all_array
+        # Add all bkg together with each component normalized
+        elif bkg_key == "all_norm":
+            bkg_all_array_norm = None
+            for bkg in bkg_list:
+                temp_array = bkg_dict_temp[bkg]
+                if len(temp_array) != 0:
+                    temp_array = array_utils.modify_array(temp_array, norm=True)
+                    if bkg_all_array_norm is None:
+                        bkg_all_array_norm = temp_array
+                    else:
+                        bkg_all_array_norm = np.concatenate(
+                            (bkg_all_array_norm, temp_array)
+                        )
+            bkg_dict["all_norm"] = bkg_all_array_norm
+    else:
+    """
     bkg_dict = get_npy_individuals(
         npy_path,
         campaign,
@@ -38,20 +72,7 @@ def get_bkg(
         cut_values=cut_values,
         cut_types=cut_types,
     )
-    # Add all bkg together
-    bkg_all_array = np.concatenate(list(bkg_dict.values()))
-    bkg_dict["all"] = bkg_all_array
-    # Add all bkg together with each component normalized
-    bkg_all_array_norm = None
-    for bkg in bkg_list:
-        temp_array = bkg_dict[bkg]
-        if len(temp_array) != 0:
-            temp_array = array_utils.modify_array(temp_array, norm=True)
-            if bkg_all_array_norm is None:
-                bkg_all_array_norm = temp_array
-            else:
-                bkg_all_array_norm = np.concatenate((bkg_all_array_norm, temp_array))
-    bkg_dict["all_norm"] = bkg_all_array_norm
+
     return bkg_dict
 
 
@@ -104,6 +125,7 @@ def get_sig(
         cut_values=cut_values,
         cut_types=cut_types,
     )
+    """
     # Add all sig together
     sig_all_array = np.concatenate(list(sig_dict.values()))
     sig_dict["all"] = sig_all_array
@@ -133,7 +155,7 @@ def get_sig(
             else:
                 sig_all_array_test = np.concatenate((sig_all_array_test, temp_array))
     sig_dict["all_test"] = sig_all_array_test
-
+    """
     return sig_dict
 
 
