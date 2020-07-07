@@ -3,14 +3,13 @@ FROM tensorflow/tensorflow:latest-gpu-py3
 # Set up ROOT
 RUN apt-get update \
 && apt-get install -y vim git dpkg-dev cmake g++ gcc binutils libx11-dev \
-libxpm-dev libxft-dev libxext-dev python-dev \
+libxpm-dev libxft-dev libxext-dev python-dev wget gzip \
 && cd /opt \
-&& git clone https://github.com/root-project/root.git \
-&& mkdir build \
-&& cd build \
-&& cmake ../root \
-&& make -j8 \
-&& echo "source /opt/build/bin/thisroot.sh" >> /root/.bashrc
+&& wget https://root.cern/download/root_v6.20.04.Linux-ubuntu18-x86_64-gcc7.5.tar.gz \
+&& gunzip root_v6.20.04.Linux-ubuntu18-x86_64-gcc7.5.tar.gz \
+&& tar xvf root_v6.20.04.Linux-ubuntu18-x86_64-gcc7.5.tar \
+&& cd root \
+&& echo ". /opt/root/bin/thisroot.sh" >> /root/.bashrc
 
 # Basic packages for training
 RUN apt-get update \
