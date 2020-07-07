@@ -130,7 +130,15 @@ class Model_Sequential_Base(Model_Base):
     """
 
     def __init__(
-        self, name, input_features, hypers, save_tb_logs=False, tb_logs_path=None
+        self,
+        name,
+        input_features,
+        hypers,
+        sig_key="all",
+        bkg_key="all",
+        data_key="all",
+        save_tb_logs=False,
+        tb_logs_path=None,
     ):
         """Initialize model."""
         super().__init__(name)
@@ -143,7 +151,13 @@ class Model_Sequential_Base(Model_Base):
         # Arrays
         self.array_prepared = False
         self.selected_features = input_features
-        self.model_meta = {}
+        self.model_meta = {
+            "sig_key": sig_key,
+            "bkg_key": bkg_key,
+            "data_key": data_key,
+            "norm_average": None,
+            "norm_variance": None,
+        }
         # Report
         self.save_tb_logs = save_tb_logs
         self.tb_logs_path = tb_logs_path
@@ -207,12 +221,16 @@ class Model_Sequential_Base(Model_Base):
 
     def get_corrcoef(self) -> dict:
         d_bkg = pd.DataFrame(
-            data=self.feedbox["xb_selected_original_mass"],
+            data=self.feedbox.get_array(
+                "xb", "selected", array_key="all", reset_mass=False
+            ),
             columns=list(self.selected_features),
         )
         bkg_matrix = d_bkg.corr()
         d_sig = pd.DataFrame(
-            data=self.feedbox["xs_selected_original_mass"],
+            data=self.feedbox.get_array(
+                "xs", "selected", array_key="all", reset_mass=False
+            ),
             columns=list(self.selected_features),
         )
         sig_matrix = d_sig.corr()
@@ -345,9 +363,9 @@ class Model_Sequential_Base(Model_Base):
     def set_inputs(self, feedbox: dict, apply_data=False) -> None:
         """Prepares array for training."""
         self.feedbox = feedbox
-        self.array_prepared = feedbox["array_prepared"]
-        self.model_meta["norm_average"] = feedbox["norm_average"].tolist()
-        self.model_meta["norm_variance"] = feedbox["norm_variance"].tolist()
+        self.array_prepared = feedbox.array_prepared
+        self.model_meta["norm_average"] = feedbox.norm_means.tolist()
+        self.model_meta["norm_variance"] = feedbox.norm_variances.tolist()
 
     def show_performance(
         self,
@@ -390,8 +408,7 @@ class Model_Sequential_Base(Model_Base):
         self.auc_test = auc_dict["auc_test"]
         self.auc_train_original = auc_dict["auc_train_original"]
         self.auc_test_original = auc_dict["auc_test_original"]
-        # evaluate.plot_feature_importance(ax[1, 1], self)
-        if job_type == "train" and self.feedbox["is_mass_reset"] == True:
+        if job_type == "train" and self.feedbox.reset_mass == True:
             evaluate.plot_overtrain_check(ax[2, 0], self, bins=50, log=True)
         evaluate.plot_overtrain_check_original_mass(ax[2, 1], self, bins=50, log=True)
         fig.tight_layout()
@@ -404,6 +421,8 @@ class Model_Sequential_Base(Model_Base):
 
     def train(
         self,
+        sig_key="all",
+        bkg_key="all",
         batch_size=128,
         epochs=20,
         val_split=0.25,
@@ -460,18 +479,42 @@ class Model_Sequential_Base(Model_Base):
         )
         train_callbacks.append(checkpoint)
         # check input
-        if np.isnan(np.sum(self.feedbox["x_train_selected"])):
+        (
+            x_train,
+            x_test,
+            y_train,
+            y_test,
+            _,
+            _,
+            _,
+            _,
+        ) = self.feedbox.get_train_test_arrays(
+            sig_key=sig_key, bkg_key=bkg_key, use_selected=False
+        )
+        (
+            x_train_selected,
+            x_test_selected,
+            _,
+            _,
+            _,
+            _,
+            _,
+            _,
+        ) = self.feedbox.get_train_test_arrays(
+            sig_key=sig_key, bkg_key=bkg_key, use_selected=True
+        )
+        if np.isnan(np.sum(x_train_selected)):
             exit(1)
-        if np.isnan(np.sum(self.feedbox["y_train"])):
+        if np.isnan(np.sum(y_train)):
             exit(1)
         self.train_history = self.get_model().fit(
-            self.feedbox["x_train_selected"],
-            self.feedbox["y_train"],
+            x_train_selected,
+            y_train,
             batch_size=batch_size,
             epochs=epochs,
             validation_split=val_split,
             class_weight=self.class_weight,
-            sample_weight=self.feedbox["x_train"][:, -1],
+            sample_weight=x_train[:, -1],
             callbacks=train_callbacks,
             verbose=verbose,
         )
@@ -479,10 +522,7 @@ class Model_Sequential_Base(Model_Base):
         # Quick evaluation
         print("Quick evaluation:")
         score = self.get_model().evaluate(
-            self.feedbox["x_test_selected"],
-            self.feedbox["y_test"],
-            verbose=verbose,
-            sample_weight=self.feedbox["x_test"][:, -1],
+            x_test_selected, y_test, verbose=verbose, sample_weight=x_test[:, -1],
         )
         print("> test loss:", score[0])
         print("> test accuracy:", score[1])
@@ -519,6 +559,8 @@ class Model_Sequential_Base(Model_Base):
 
     def tuning_train(
         self,
+        sig_key="all",
+        bkg_key="all",
         batch_size=128,
         epochs=20,
         val_split=0.25,
@@ -533,13 +575,27 @@ class Model_Sequential_Base(Model_Base):
         if self.array_prepared == False:
             raise ValueError("Training data is not ready.")
         # separate validation samples
-        num_val = math.ceil(len(self.feedbox["y_train"]) * val_split)
-        x_tr = self.feedbox["x_train_selected"][:-num_val, :]
-        x_val = self.feedbox["x_train_selected"][-num_val:, :]
-        y_tr = self.feedbox["y_train"][:-num_val]
-        y_val = self.feedbox["y_train"][-num_val:]
-        wt_tr = self.feedbox["x_train"][:-num_val, -1]
-        wt_val = self.feedbox["x_train"][-num_val:, -1]
+        (
+            x_train,
+            _,
+            y_train,
+            _,
+            x_train_selected,
+            _,
+            _,
+            _,
+            _,
+            _,
+        ) = self.feedbox.get_train_test_arrays(
+            sig_key=sig_key, bkg_key=bkg_key, use_selected=False
+        )
+        num_val = math.ceil(len(y_train) * val_split)
+        x_tr = x_train_selected[:-num_val, :]
+        x_val = x_train_selected[-num_val:, :]
+        y_tr = y_train[:-num_val]
+        y_val = y_train[-num_val:]
+        wt_tr = x_train[:-num_val, -1]
+        wt_val = x_train[-num_val:, -1]
         val_tuple = (x_val, y_val, wt_val)
         self.x_tr = x_tr
         self.x_val = x_val
@@ -590,10 +646,25 @@ class Model_Sequential_Flat(Model_Sequential_Base):
     """
 
     def __init__(
-        self, name, input_features, hypers, save_tb_logs=False, tb_logs_path=None
+        self,
+        name,
+        input_features,
+        hypers,
+        sig_key="all",
+        bkg_key="all",
+        data_key="all",
+        save_tb_logs=False,
+        tb_logs_path=None,
     ):
         super().__init__(
-            name, input_features, hypers, save_tb_logs=False, tb_logs_path=None
+            name,
+            input_features,
+            hypers,
+            sig_key="all",
+            bkg_key="all",
+            data_key="all",
+            save_tb_logs=False,
+            tb_logs_path=None,
         )
 
         self.model_label = "mod_seq"

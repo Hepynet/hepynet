@@ -16,6 +16,7 @@ from sklearn.metrics import auc, roc_auc_score, roc_curve
 import ROOT
 from HEPTools.plot_utils import plot_utils, th1_tools
 from lfv_pdnn.common import array_utils, common_utils
+from lfv_pdnn.data_io import feed_box, get_arrays
 from lfv_pdnn.train import train_utils
 
 
@@ -45,7 +46,8 @@ def get_significances(model_wrapper, significance_algo="asimov"):
     feedbox = model_wrapper.feedbox
     model_meta = model_wrapper.model_meta
     # prepare signal
-    sig_arr_temp = feedbox["xs_raw"].copy()
+    sig_key = model_meta["sig_key"]
+    sig_arr_temp = feedbox.get_array("xs", "raw", array_key=sig_key)
     sig_arr_temp[:, 0:-2] = train_utils.norarray(
         sig_arr_temp[:, 0:-2],
         average=np.array(model_meta["norm_average"]),
@@ -53,9 +55,12 @@ def get_significances(model_wrapper, significance_algo="asimov"):
     )
     sig_selected_arr = train_utils.get_valid_feature(sig_arr_temp)
     sig_predictions = model_wrapper.get_model().predict(sig_selected_arr)
-    sig_predictions_weights = np.reshape(feedbox["xs_reshape"][:, -1], (-1, 1))
+    sig_predictions_weights = np.reshape(
+        feedbox.get_array("xs", "reshape", array_key=sig_key)[:, -1], (-1, 1)
+    )
     # prepare background
-    bkg_arr_temp = feedbox["xb_raw"].copy()
+    bkg_key = model_meta["bkg_key"]
+    bkg_arr_temp = feedbox.get_array("xb", "raw", array_key=bkg_key)
     bkg_arr_temp[:, 0:-2] = train_utils.norarray(
         bkg_arr_temp[:, 0:-2],
         average=np.array(model_meta["norm_average"]),
@@ -63,7 +68,9 @@ def get_significances(model_wrapper, significance_algo="asimov"):
     )
     bkg_selected_arr = train_utils.get_valid_feature(bkg_arr_temp)
     bkg_predictions = model_wrapper.get_model().predict(bkg_selected_arr)
-    bkg_predictions_weights = np.reshape(feedbox["xb_reshape"][:, -1], (-1, 1))
+    bkg_predictions_weights = np.reshape(
+        feedbox.get_array("xb", "reshape", array_key=bkg_key)[:, -1], (-1, 1)
+    )
     # prepare thresholds
     bin_array = np.array(range(-1000, 1000))
     thresholds = 1.0 / (1.0 + 1.0 / np.exp(bin_array * 0.02))
@@ -152,7 +159,7 @@ def plot_correlation_matrix(ax, corr_matrix_dict, matrix_key="bkg"):
     )
 
 
-def plot_feature_importance(ax, model_wrapper, log=True, max_feature=8):
+def plot_feature_importance(ax, model_wrapper, log=True, max_feature=16):
     """Calculates importance of features and sort the feature.
 
     Definition of feature importance used here can be found in:
@@ -163,11 +170,17 @@ def plot_feature_importance(ax, model_wrapper, log=True, max_feature=8):
     # Prepare
     model = model_wrapper.get_model()
     feedbox = model_wrapper.feedbox
-    num_feature = len(feedbox["selected_features"])
-    selected_feature_names = np.array(feedbox["selected_features"])
+    num_feature = len(feedbox.selected_features)
+    selected_feature_names = np.array(feedbox.selected_features)
     feature_importance = np.zeros(num_feature)
-    xs = feedbox["xs_test_original_mass"]
-    xb = feedbox["xb_test_original_mass"]
+    (_, _, _, _, _, xs_test, _, xb_test,) = feedbox.get_train_test_arrays(
+        sig_key=model_wrapper.model_meta["sig_key"],
+        bkg_key=model_wrapper.model_meta["bkg_key"],
+        reset_mass=False,
+        use_selected=False,
+    )
+    xs = xs_test
+    xb = xb_test
     base_auc = calculate_auc(xs, xb, model, rm_last_two=True)
     print("base auc:", base_auc)
     # Calculate importance
@@ -185,8 +198,8 @@ def plot_feature_importance(ax, model_wrapper, log=True, max_feature=8):
         num_show = max_feature
     else:
         num_show = num_feature
-    ax.bar(
-        np.arange(num_show),
+    ax.barh(
+        np.flip(np.arange(num_show)),
         sorted_importance[:num_show],
         align="center",
         alpha=0.5,
@@ -218,12 +231,15 @@ def plot_input_distributions(
         with open(style_cfg_path) as plot_config_file:
             config = json.load(plot_config_file)
 
+    model_meta = model_wrapper.model_meta
+    sig_key = model_meta["sig_key"]
+    bkg_key = model_meta["bkg_key"]
     if show_reshaped:
-        bkg_array = model_wrapper.feedbox["xb_reshape"]
-        sig_array = model_wrapper.feedbox["xs_reshape"]
+        bkg_array = model_wrapper.feedbox.get_array("xb", "reshape", array_key=bkg_key)
+        sig_array = model_wrapper.feedbox.get_array("xs", "reshape", array_key=sig_key)
     else:
-        bkg_array = model_wrapper.feedbox["xb_raw"]
-        sig_array = model_wrapper.feedbox["xs_raw"]
+        bkg_array = model_wrapper.feedbox.get_array("xb", "raw", array_key=bkg_key)
+        sig_array = model_wrapper.feedbox.get_array("xs", "raw", array_key=sig_key)
     bkg_fill_weights = np.reshape(bkg_array[:, -1], (-1, 1))
     sig_fill_weights = np.reshape(sig_array[:, -1], (-1, 1))
     if plot_density:
@@ -374,14 +390,32 @@ def plot_overtrain_check(ax, model_wrapper, bins=50, range=(-0.25, 1.25), log=Tr
     print("Plotting train/test scores.")
     model = model_wrapper.get_model()
     feedbox = model_wrapper.feedbox
+    model_meta = model_wrapper.model_meta
+    sig_key = model_meta["sig_key"]
+    bkg_key = model_meta["bkg_key"]
     # plot test scores
+    (_, _, _, _, xs_train, xs_test, xb_train, xb_test,) = feedbox.get_train_test_arrays(
+        sig_key=sig_key, bkg_key=bkg_key, use_selected=False
+    )
+    (
+        _,
+        _,
+        _,
+        _,
+        xs_train_selected,
+        xs_test_selected,
+        xb_train_selected,
+        xb_test_selected,
+    ) = feedbox.get_train_test_arrays(
+        sig_key=sig_key, bkg_key=bkg_key, use_selected=True
+    )
     plot_scores(
         ax,
         model,
-        feedbox["xb_test_selected"],
-        feedbox["xb_test"][:, -1],
-        feedbox["xs_test_selected"],
-        feedbox["xs_test"][:, -1],
+        xb_test_selected,
+        xb_test[:, -1],
+        xs_test_selected,
+        xs_test[:, -1],
         apply_data=False,
         title="over training check",
         bkg_label="b-test",
@@ -394,9 +428,9 @@ def plot_overtrain_check(ax, model_wrapper, bins=50, range=(-0.25, 1.25), log=Tr
     # plot train scores
     make_bar_plot(
         ax,
-        model.predict(feedbox["xb_train_selected"]),
+        model.predict(xb_train_selected),
         "b-train",
-        weights=np.reshape(feedbox["xb_train"][:, -1], (-1, 1)),
+        weights=np.reshape(xb_train[:, -1], (-1, 1)),
         bins=bins,
         range=range,
         density=True,
@@ -406,9 +440,9 @@ def plot_overtrain_check(ax, model_wrapper, bins=50, range=(-0.25, 1.25), log=Tr
     )
     make_bar_plot(
         ax,
-        model.predict(feedbox["xs_train_selected"]),
+        model.predict(xs_train_selected),
         "s-train",
-        weights=np.reshape(feedbox["xs_train"][:, -1], (-1, 1)),
+        weights=np.reshape(xs_train[:, -1], (-1, 1)),
         bins=bins,
         range=range,
         density=True,
@@ -425,14 +459,42 @@ def plot_overtrain_check_original_mass(
     print("Plotting train/test scores (original mass).")
     model = model_wrapper.get_model()
     feedbox = model_wrapper.feedbox
+    model_meta = model_wrapper.model_meta
+    sig_key = model_meta["sig_key"]
+    bkg_key = model_meta["bkg_key"]
+    (
+        _,
+        _,
+        _,
+        _,
+        xs_train_original_mass,
+        xs_test_original_mass,
+        xb_train_original_mass,
+        xb_test_original_mass,
+    ) = feedbox.get_train_test_arrays(
+        sig_key=sig_key, bkg_key=bkg_key, reset_mass=False, use_selected=False
+    )
+    (
+        _,
+        _,
+        _,
+        _,
+        xs_train_selected_original_mass,
+        xs_test_selected_original_mass,
+        xb_train_selected_original_mass,
+        xb_test_selected_original_mass,
+    ) = feedbox.get_train_test_arrays(
+        sig_key=sig_key, bkg_key=bkg_key, reset_mass=False, use_selected=True
+    )
+
     # plot test scores
     plot_scores(
         ax,
         model,
-        feedbox["xb_test_selected_original_mass"],
-        feedbox["xb_test_original_mass"][:, -1],
-        feedbox["xs_test_selected_original_mass"],
-        feedbox["xs_test_original_mass"][:, -1],
+        xb_test_selected_original_mass,
+        xb_test_original_mass[:, -1],
+        xs_test_selected_original_mass,
+        xs_test_original_mass[:, -1],
         apply_data=False,
         title="over training check",
         bkg_label="b-test",
@@ -445,9 +507,9 @@ def plot_overtrain_check_original_mass(
     # plot train scores
     make_bar_plot(
         ax,
-        model.predict(feedbox["xb_train_selected_original_mass"]),
+        model.predict(xb_train_selected_original_mass),
         "b-train",
-        weights=np.reshape(feedbox["xb_train_original_mass"][:, -1], (-1, 1)),
+        weights=np.reshape(xb_train_original_mass[:, -1], (-1, 1)),
         bins=bins,
         range=range,
         density=True,
@@ -457,9 +519,9 @@ def plot_overtrain_check_original_mass(
     )
     make_bar_plot(
         ax,
-        model.predict(feedbox["xs_train_selected_original_mass"]),
+        model.predict(xs_train_selected_original_mass),
         "s-train",
-        weights=np.reshape(feedbox["xs_train_original_mass"][:, -1], (-1, 1)),
+        weights=np.reshape(xs_train_original_mass[:, -1], (-1, 1)),
         bins=bins,
         range=range,
         density=True,
@@ -641,9 +703,11 @@ def plot_scores_separate(
         )
     # plot signal
     if sig_arr is None:
-        selected_arr = train_utils.get_valid_feature(feedbox["xs_reshape"])
+        sig_key = model_meta["sig_key"]
+        xs_reshape = feedbox.get_array("xs", "reshape", array_key=sig_key)
+        selected_arr = train_utils.get_valid_feature(xs_reshape)
         predict_arr = model.predict(selected_arr)
-        predict_weight_arr = feedbox["xs_reshape"][:, -1]
+        predict_weight_arr = xs_reshape[:, -1]
     else:
         sig_arr_temp = sig_arr.copy()
         sig_arr_temp[:, 0:-2] = train_utils.norarray(
@@ -665,9 +729,14 @@ def plot_scores_separate(
     )
     # plot data
     if apply_data:
+        data_key = model_meta["data_key"]
         if data_arr is None:
-            data_arr = feedbox["xd_selected_original_mass"].copy()
-            data_weight = feedbox["xd"][:, -1]
+            xd = feedbox.get_array("xd", "raw", array_key=data_key)
+            xd_selected = feedbox.get_array(
+                "xd", "selected", array_key=data_key, reset_mass=False
+            )
+            data_arr = xd_selected
+            data_weight = xd[:, -1]
         make_bar_plot(
             ax,
             model.predict(data_arr),
@@ -692,7 +761,6 @@ def plot_scores_separate(
 
 def plot_scores_separate_root(
     model_wrapper,
-    bkg_dict,
     bkg_plot_key_list,
     sig_arr=None,
     apply_data=False,
@@ -720,6 +788,7 @@ def plot_scores_separate_root(
     model = model_wrapper.get_model()
     feedbox = model_wrapper.feedbox
     model_meta = model_wrapper.model_meta
+    bkg_dict = feedbox.xb_dict
     plot_canvas = ROOT.TCanvas(plot_title, plot_title, 800, 800)
     plot_pad_score = ROOT.TPad("pad1", "pad1", 0, 0.3, 1, 1.0)
     plot_pad_score.SetBottomMargin(0)
@@ -770,8 +839,11 @@ def plot_scores_separate_root(
     total_weight_bkg = hist_bkg_total.get_hist().GetSumOfWeights()
     # plot signal
     if sig_arr is None:
-        predict_weight_arr = feedbox["xs_reshape"][:, -1]
-        sig_arr_temp = feedbox["xs_raw"].copy()
+        sig_key = model_meta["sig_key"]
+        predict_weight_arr = feedbox.get_array("xs", "reshape", array_key=sig_key)[
+            :, -1
+        ]
+        sig_arr_temp = feedbox.get_array("xs", "raw", array_key=sig_key)
     else:
         predict_weight_arr = sig_arr[:, -1]
         sig_arr_temp = sig_arr.copy()
@@ -815,12 +887,15 @@ def plot_scores_separate_root(
     total_weight_data = 0
     if apply_data:
         if data_arr is None:
-            predict_weight_arr = feedbox["xd_reshape"][:, -1]
-            data_arr_temp = feedbox["xd_raw"].copy()
+            data_key = model_meta["data_key"]
+            predict_weight_arr = feedbox.get_array("xd", "reshape", array_key=data_key)[
+                :, -1
+            ]
+            data_arr_temp = feedbox.get_array("xd", "raw", array_key=data_key)
         else:
             predict_weight_arr = data_arr[:, -1]
             data_arr_temp = data_arr.copy()
-
+        data_arr_temp = array_utils.modify_array(data_arr_temp, select_channel=True)
         data_arr_temp[:, 0:-2] = train_utils.norarray(
             data_arr_temp[:, 0:-2],
             average=np.array(model_meta["norm_average"]),
@@ -838,9 +913,6 @@ def plot_scores_separate_root(
             canvas=plot_pad_score,
         )
         hist_data.fill_hist(predict_arr, predict_weight_arr)
-        for ele in predict_arr:
-            if ele < 0 or ele > 1:
-                print("##:", ele)
         hist_data.update_config("hist", "SetMarkerStyle", ROOT.kFullCircle)
         hist_data.update_config("hist", "SetMarkerColor", ROOT.kBlack)
         hist_data.update_config("hist", "SetMarkerSize", 0.8)
@@ -1091,27 +1163,40 @@ def plot_train_test_roc(ax, model_wrapper, yscal="logit", ylim=(0.1, 1 - 1e-4)):
     print("Plotting train/test roc curve.")
     model = model_wrapper.get_model()
     feedbox = model_wrapper.feedbox
+    model_meta = model_wrapper.model_meta
+    sig_key = model_meta["sig_key"]
+    bkg_key = model_meta["bkg_key"]
+    (_, _, _, _, xs_train, xs_test, xb_train, xb_test,) = feedbox.get_train_test_arrays(
+        sig_key=sig_key, bkg_key=bkg_key, use_selected=False
+    )
+    (
+        _,
+        _,
+        _,
+        _,
+        xs_train_original_mass,
+        xs_test_original_mass,
+        xb_train_original_mass,
+        xb_test_original_mass,
+    ) = feedbox.get_train_test_arrays(
+        sig_key=sig_key, bkg_key=bkg_key, use_selected=False, reset_mass=False
+    )
     # First plot roc for train dataset
-    auc_train, _, _ = plot_roc(ax, feedbox["xs_train"], feedbox["xb_train"], model)
+    auc_train, _, _ = plot_roc(ax, xs_train, xb_train, model)
     # Then plot roc for test dataset
-    auc_test, _, _ = plot_roc(ax, feedbox["xs_test"], feedbox["xb_test"], model)
+    auc_test, _, _ = plot_roc(ax, xs_test, xb_test, model)
     # Then plot roc for train dataset without reseting mass
     auc_train_original, _, _ = plot_roc(
         ax,
-        feedbox["xs_train_original_mass"],
-        feedbox["xb_train_original_mass"],
+        xs_train_original_mass,
+        xb_train_original_mass,
         model,
         yscal=yscal,
         ylim=ylim,
     )
     # Lastly, plot roc for test dataset without reseting mass
     auc_test_original, _, _ = plot_roc(
-        ax,
-        feedbox["xs_test_original_mass"],
-        feedbox["xb_test_original_mass"],
-        model,
-        yscal=yscal,
-        ylim=ylim,
+        ax, xs_test_original_mass, xb_test_original_mass, model, yscal=yscal, ylim=ylim,
     )
     # Show auc value:
     plot_auc_text(
@@ -1286,8 +1371,9 @@ def plot_2d_density(
     feedbox = model_wrapper.feedbox
     model_meta = model_wrapper.model_meta
     # plot signal
-    sig_arr_original = feedbox["xs_raw"].copy()
-    sig_arr_temp = feedbox["xs_raw"].copy()
+    sig_key = model_meta["sig_key"]
+    sig_arr_original = feedbox.get_array("xs", "raw", array_key=sig_key)
+    sig_arr_temp = feedbox.get_array("xs", "raw", array_key=sig_key)
     sig_arr_temp[:, 0:-2] = train_utils.norarray(
         sig_arr_temp[:, 0:-2],
         average=np.array(model_meta["norm_average"]),
@@ -1320,8 +1406,9 @@ def plot_2d_density(
     hist_sig.draw("colz")
     hist_sig.save(save_dir=save_dir, save_file_name=save_file_name + "_sig")
     # plot background
-    bkg_arr_original = feedbox["xb_raw"].copy()
-    bkg_arr_temp = feedbox["xb_raw"].copy()
+    bkg_key = model_meta["bkg_key"]
+    bkg_arr_original = feedbox.get_array("xb", "raw", array_key=bkg_key)
+    bkg_arr_temp = feedbox.get_array("xb", "raw", array_key=bkg_key)
     bkg_arr_temp[:, 0:-2] = train_utils.norarray(
         bkg_arr_temp[:, 0:-2],
         average=np.array(model_meta["norm_average"]),
@@ -1366,13 +1453,31 @@ def plot_2d_significance_scan(
     """Makes 2d map of significance"""
     dnn_cut_list = np.arange(0.8, 1.0, 0.02)
     w_inputs = []
+    print("Making 2d significance scan.")
+    sig_dict = get_arrays.get_npy_individuals(
+        job_wrapper.npy_path,
+        job_wrapper.campaign,
+        job_wrapper.channel,
+        job_wrapper.sig_list,
+        job_wrapper.selected_features,
+        "sig",
+        cut_features=job_wrapper.cut_features,
+        cut_values=job_wrapper.cut_values,
+        cut_types=job_wrapper.cut_types,
+    )
+    bkg_dict = get_arrays.get_npy_individuals(
+        job_wrapper.npy_path,
+        job_wrapper.campaign,
+        job_wrapper.channel,
+        job_wrapper.bkg_list,
+        job_wrapper.selected_features,
+        "bkg",
+        cut_features=job_wrapper.cut_features,
+        cut_values=job_wrapper.cut_values,
+        cut_types=job_wrapper.cut_types,
+    )
     for sig_id, scan_sig_key in enumerate(job_wrapper.sig_list):
-        xs = array_utils.modify_array(
-            job_wrapper.sig_dict[scan_sig_key], select_channel=True
-        )
-        xb = array_utils.modify_array(
-            job_wrapper.bkg_dict[job_wrapper.bkg_key], select_channel=True
-        )
+        xs = array_utils.modify_array(sig_dict[scan_sig_key], select_channel=True)
         m_cut_name = job_wrapper.reset_feature_name
         if cut_ranges_dn is None or len(cut_ranges_dn) == 0:
             means, variances = train_utils.get_mean_var(
@@ -1384,10 +1489,10 @@ def plot_2d_significance_scan(
         else:
             m_cut_dn = cut_ranges_dn[sig_id]
             m_cut_up = cut_ranges_up[sig_id]
-        feedbox = train_utils.prepare_array(
-            xs,
-            xb,
-            job_wrapper.selected_features,
+        feedbox = feed_box.Feedbox(
+            sig_dict,
+            bkg_dict,
+            selected_features=job_wrapper.selected_features,
             apply_data=False,
             reshape_array=job_wrapper.norm_array,
             reset_mass=job_wrapper.reset_feature,
@@ -1405,12 +1510,7 @@ def plot_2d_significance_scan(
             verbose=job_wrapper.verbose,
         )
         job_wrapper.model_wrapper.set_inputs(feedbox, apply_data=job_wrapper.apply_data)
-        (
-            plot_thresholds,
-            significances,
-            sig_above_threshold,
-            bkg_above_threshold,
-        ) = get_significances(
+        (plot_thresholds, significances, _, _,) = get_significances(
             job_wrapper.model_wrapper, significance_algo=job_wrapper.significance_algo,
         )
         plot_significances = []
