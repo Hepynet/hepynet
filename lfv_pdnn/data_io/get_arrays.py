@@ -25,6 +25,7 @@ def get_npy_individuals(
     cut_features=[],
     cut_values=[],
     cut_types=[],
+    weight_scale=1,
 ):
     """Gets individual npy arrays with given info.
 
@@ -115,6 +116,8 @@ def get_npy_individuals(
                     npy_array = temp_array
                 else:
                     npy_array = np.concatenate((npy_array, temp_array), axis=1)
+        if weight_scale != 1:
+            npy_array[:, -1] = npy_array[:, -1] * weight_scale
         total_weights = np.sum(npy_array[:, -1])
         print(npy, "shape:", npy_array.shape, "total weights:", total_weights)
 

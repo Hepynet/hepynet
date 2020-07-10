@@ -253,7 +253,7 @@ def prep_mass_fast(xbtrain, xstrain, mass_id=0, shuffle_seed=None):
 
 
 def reset_col(reset_array, ref_array, col=0, shuffle_seed=None):
-    """Resets one column in an array based on the distribution of refference."""
+    """Resets one column in an array based on the distribution of reference."""
     if common_utils.has_none([shuffle_seed]):
         shuffle_seed = int(time.time())
     np.random.seed(shuffle_seed)

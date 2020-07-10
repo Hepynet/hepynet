@@ -433,7 +433,13 @@ def prepare_array(
 
 
 def split_and_combine(
-    xs, xb, test_rate=0.2, shuffle_combined_array=True, shuffle_seed=None
+    xs,
+    xb,
+    ys=None,
+    yb=None,
+    test_rate=0.2,
+    shuffle_combined_array=True,
+    shuffle_seed=None,
 ):
     """Prepares array for training & validation
 
@@ -460,8 +466,10 @@ def split_and_combine(
         Signal/bakcground separated.
 
     """
-    ys = np.ones(len(xs))
-    yb = np.zeros(len(xb))
+    if ys is None:
+        ys = np.ones(len(xs)).reshape(-1, 1)
+    if yb is None:
+        yb = np.zeros(len(xb)).reshape(-1, 1)
 
     xs_train, xs_test, ys_train, ys_test = array_utils.shuffle_and_split(
         xs, ys, split_ratio=1 - test_rate, shuffle_seed=shuffle_seed
@@ -485,4 +493,18 @@ def split_and_combine(
         x_test = x_test[shuffle_index]
         y_test = y_test[shuffle_index]
 
-    return x_train, x_test, y_train, y_test, xs_train, xs_test, xb_train, xb_test
+    return (
+        x_train,
+        x_test,
+        y_train,
+        y_test,
+        xs_train,
+        xs_test,
+        ys_train,
+        ys_test,
+        xb_train,
+        xb_test,
+        yb_train,
+        yb_test,
+    )
+

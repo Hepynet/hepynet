@@ -104,6 +104,7 @@ class job_executor(object):
         self.model_class = None
         self.layers = None
         self.nodes = None
+        self.output_bkg_node_names = []
         self.dropout_rate = 0.5
         self.momentum = 0.5
         self.nesterov = True
@@ -137,8 +138,10 @@ class job_executor(object):
         self.apply_data = False
         self.apply_data_range = []
         self.book_importance_study = False
+        self.book_kine_study = False
         self.book_cut_kine_study = False
         self.dnn_cut_list = []
+        self.book_cor_matrix = False
         self.book_significance_scan = False
         self.book_2d_significance_scan = False
         self.significance_algo = False
@@ -215,6 +218,7 @@ class job_executor(object):
         hypers = {}
         hypers["layers"] = self.layers
         hypers["nodes"] = self.nodes
+        hypers["output_bkg_node_names"] = self.output_bkg_node_names
         hypers["learn_rate"] = self.learn_rate
         hypers["decay"] = self.learn_rate_decay
         hypers["dropout_rate"] = self.dropout_rate
@@ -347,37 +351,39 @@ class job_executor(object):
             if not os.path.exists(save_dir):
                 os.makedirs(save_dir)
             # show and save according to setting
-            evaluate.plot_input_distributions(
-                self.model_wrapper,
-                apply_data=False,
-                figsize=(8, 6),
-                style_cfg_path=self.kine_cfg,
-                save_fig=True,
-                save_dir=self.save_sub_dir + "/kinematics/raw",
-            )
-            evaluate.plot_input_distributions(
-                self.model_wrapper,
-                apply_data=False,
-                figsize=(8, 6),
-                style_cfg_path=self.kine_cfg,
-                save_fig=True,
-                save_dir=self.save_sub_dir + "/kinematics/processed",
-                show_reshaped=True,
-            )
+            if self.book_kine_study:
+                evaluate.plot_input_distributions(
+                    self.model_wrapper,
+                    apply_data=False,
+                    figsize=(8, 6),
+                    style_cfg_path=self.kine_cfg,
+                    save_fig=True,
+                    save_dir=self.save_sub_dir + "/kinematics/raw",
+                )
+                evaluate.plot_input_distributions(
+                    self.model_wrapper,
+                    apply_data=False,
+                    figsize=(8, 6),
+                    style_cfg_path=self.kine_cfg,
+                    save_fig=True,
+                    save_dir=self.save_sub_dir + "/kinematics/processed",
+                    show_reshaped=True,
+                )
             # Make correlation plot
-            fig, ax = plt.subplots(ncols=2, figsize=(16, 8))
-            ax[0].set_title("bkg correlation")
-            evaluate.plot_correlation_matrix(
-                ax[0], self.model_wrapper.get_corrcoef(), matrix_key="bkg"
-            )
-            ax[1].set_title("sig correlation")
-            evaluate.plot_correlation_matrix(
-                ax[1], self.model_wrapper.get_corrcoef(), matrix_key="sig"
-            )
-            if self.save_pdf_report:
-                fig_save_path = save_dir + "/correlation_matrix.png"
-                self.fig_correlation_matrix_path = fig_save_path
-                fig.savefig(fig_save_path)
+            if self.book_cor_matrix:
+                fig, ax = plt.subplots(ncols=2, figsize=(16, 8))
+                ax[0].set_title("bkg correlation")
+                evaluate.plot_correlation_matrix(
+                    ax[0], self.model_wrapper.get_corrcoef(), matrix_key="bkg"
+                )
+                ax[1].set_title("sig correlation")
+                evaluate.plot_correlation_matrix(
+                    ax[1], self.model_wrapper.get_corrcoef(), matrix_key="sig"
+                )
+                if self.save_pdf_report:
+                    fig_save_path = save_dir + "/correlation_matrix.png"
+                    self.fig_correlation_matrix_path = fig_save_path
+                    fig.savefig(fig_save_path)
 
             model_path_list = ["_final"]
             if self.check_model_epoch:
@@ -405,13 +411,12 @@ class job_executor(object):
                         identifier = "epoch{:02d}".format(model_num)
                         self.model_wrapper.load_model_with_path(model_path)
                     # Make performance plots
-                    fig_save_path = save_dir + "/performance_" + identifier + ".png"
                     self.fig_performance_path = fig_save_path
                     self.model_wrapper.show_performance(
                         apply_data=False,  # don't apply data in training performance
                         show_fig=self.show_report,
                         save_fig=self.save_pdf_report,
-                        save_path=fig_save_path,
+                        save_dir=save_dir,
                         job_type=self.job_type,
                     )
                     # Make feature importance check
@@ -434,30 +439,14 @@ class job_executor(object):
                         self.plot_bkg_list,
                         apply_data=self.apply_data,
                         apply_data_range=self.apply_data_range,
-                        plot_title="DNN scores (lin)",
+                        plot_title="DNN scores",
                         bins=50,
-                        range=(0, 1),
+                        x_range=(0, 1),
                         scale_sig=True,
                         density=self.plot_density,
-                        log_scale=False,
                         save_plot=True,
                         save_dir=save_dir,
-                        save_file_name="DNN_scores_lin_" + identifier,
-                    )
-                    evaluate.plot_scores_separate_root(
-                        self.model_wrapper,
-                        self.plot_bkg_list,
-                        apply_data=self.apply_data,
-                        apply_data_range=self.apply_data_range,
-                        plot_title="DNN scores (log)",
-                        bins=50,
-                        range=(0, 1),
-                        scale_sig=True,
-                        density=self.plot_density,
-                        log_scale=True,
-                        save_plot=True,
-                        save_dir=save_dir,
-                        save_file_name="DNN_scores_log_" + identifier,
+                        save_file_name="DNN_scores_" + identifier,
                     )
                     # show kinemetics at different dnn cut
                     if self.book_cut_kine_study:
@@ -669,6 +658,7 @@ class job_executor(object):
             hypers = {}
             hypers["layers"] = self.layers
             hypers["nodes"] = self.nodes
+            hypers["output_bkg_node_names"] = self.output_bkg_node_names
             hypers["learn_rate"] = self.learn_rate
             hypers["decay"] = self.learn_rate_decay
             hypers["dropout_rate"] = self.dropout_rate
@@ -849,6 +839,9 @@ class job_executor(object):
         self.try_parse_str("model_class", config, "model", "model_class")
         self.try_parse_int("layers", config, "model", "layers")
         self.try_parse_int("nodes", config, "model", "nodes")
+        self.try_parse_list(
+            "output_bkg_node_names", config, "model", "output_bkg_node_names"
+        )
         self.try_parse_float("dropout_rate", config, "model", "dropout_rate")
         self.try_parse_float("momentum", config, "model", "momentum")
         self.try_parse_bool("nesterov", config, "model", "nesterov")
@@ -898,10 +891,12 @@ class job_executor(object):
         self.try_parse_bool(
             "book_importance_study", config, "report", "book_importance_study"
         )
+        self.try_parse_bool("book_kine_study", config, "report", "book_kine_study")
         self.try_parse_bool(
             "book_cut_kine_study", config, "report", "book_cut_kine_study"
         )
         self.try_parse_list("dnn_cut_list", config, "report", "dnn_cut_list")
+        self.try_parse_bool("book_cor_matrix", config, "report", "book_cor_matrix")
         self.try_parse_bool(
             "book_significance_scan", config, "report", "book_significance_scan"
         )
@@ -1162,9 +1157,9 @@ class job_executor(object):
         reports.append(Paragraph(ptext, styles["Justify"]))
         ptext = "-" * 80
         reports.append(Paragraph(ptext, styles["Justify"]))
-        fig = self.fig_performance_path
-        im = Image(fig, 6.4 * inch, 7.2 * inch)
-        reports.append(im)
+        # fig = self.fig_performance_path
+        # im = Image(fig, 6.4 * inch, 7.2 * inch)
+        # reports.append(im)
         # show total weights of sig/bkg/data
         ptext = "sig total weight  : " + str(self.model_wrapper.total_weight_sig)
         reports.append(Paragraph(ptext, styles["Justify"]))
@@ -1173,11 +1168,11 @@ class job_executor(object):
         ptext = "data total weight : " + str(self.model_wrapper.total_weight_data)
         reports.append(Paragraph(ptext, styles["Justify"]))
         # dnn scores
-        fig = self.fig_dnn_scores_lin_path
-        im1 = Image(fig, 3.2 * inch, 2.4 * inch)
-        fig = self.fig_dnn_scores_log_path
-        im2 = Image(fig, 3.2 * inch, 2.4 * inch)
-        reports.append(Table([[im1, im2]]))
+        # fig = self.fig_dnn_scores_lin_path
+        # im1 = Image(fig, 3.2 * inch, 2.4 * inch)
+        # fig = self.fig_dnn_scores_log_path
+        # im2 = Image(fig, 3.2 * inch, 2.4 * inch)
+        # reports.append(Table([[im1, im2]]))
         # significance scan and feature importance
         if self.book_importance_study:
             fig = self.fig_feature_importance_path
@@ -1188,9 +1183,10 @@ class job_executor(object):
             im = Image(fig, 3.2 * inch, 2.4 * inch)
             reports.append(im)
         # correlation matrix
-        fig = self.fig_correlation_matrix_path
-        im = Image(fig, 6.4 * inch, 3.2 * inch)
-        reports.append(im)
+        if self.book_cor_matrix:
+            fig = self.fig_correlation_matrix_path
+            im = Image(fig, 6.4 * inch, 3.2 * inch)
+            reports.append(im)
         # build/save
         doc.build(reports)
 
