@@ -9,15 +9,21 @@ Note:
     concatenated.
 
 """
+import array
+import os
+from pathlib import Path
 
 import numpy as np
 
+import ROOT
+import uproot
 from lfv_pdnn.common import array_utils
 
 
 def get_npy_individuals(
     npy_path,
     campaign,
+    region,
     channel,
     npy_list,
     selected_features,
@@ -45,7 +51,8 @@ def get_npy_individuals(
                 for feature in selected_features + [channel, "weight"]:
                     temp_array1 = np.load(
                         directory
-                        + "/mc16a"
+                        + "/mc16a/"
+                        + region
                         + "/"
                         + npy_prefix
                         + "_"
@@ -57,7 +64,8 @@ def get_npy_individuals(
                     temp_array1 = np.reshape(temp_array1, (-1, 1))
                     temp_array2 = np.load(
                         directory
-                        + "/mc16d"
+                        + "/mc16d/"
+                        + region
                         + "/"
                         + npy_prefix
                         + "_"
@@ -69,7 +77,8 @@ def get_npy_individuals(
                     temp_array2 = np.reshape(temp_array2, (-1, 1))
                     temp_array3 = np.load(
                         directory
-                        + "/mc16e"
+                        + "/mc16e/"
+                        + region
                         + "/"
                         + npy_prefix
                         + "_"
@@ -87,7 +96,7 @@ def get_npy_individuals(
                     else:
                         npy_array = np.concatenate((npy_array, temp_array), axis=1)
             except:
-                directory = npy_path + "/" + campaign
+                directory = npy_path + "/" + campaign + "/" + region
                 for feature in selected_features + [channel, "weight"]:
                     temp_array = np.load(
                         directory
@@ -105,7 +114,7 @@ def get_npy_individuals(
                     else:
                         npy_array = np.concatenate((npy_array, temp_array), axis=1)
         else:
-            directory = npy_path + "/" + campaign
+            directory = npy_path + "/" + campaign + "/" + region
             npy_array = None
             for feature in selected_features + [channel, "weight"]:
                 temp_array = np.load(
@@ -129,7 +138,8 @@ def get_npy_individuals(
                     for feature in cut_features:
                         temp_array1 = np.load(
                             directory
-                            + "/mc16a"
+                            + "/mc16a/"
+                            + region
                             + "/"
                             + npy_prefix
                             + "_"
@@ -141,7 +151,8 @@ def get_npy_individuals(
                         temp_array1 = np.reshape(temp_array1, (-1, 1))
                         temp_array2 = np.load(
                             directory
-                            + "/mc16d"
+                            + "/mc16d/"
+                            + region
                             + "/"
                             + npy_prefix
                             + "_"
@@ -153,7 +164,8 @@ def get_npy_individuals(
                         temp_array2 = np.reshape(temp_array2, (-1, 1))
                         temp_array3 = np.load(
                             directory
-                            + "/mc16e"
+                            + "/mc16e/"
+                            + region
                             + "/"
                             + npy_prefix
                             + "_"
@@ -171,7 +183,7 @@ def get_npy_individuals(
                         else:
                             cut_array = np.concatenate((cut_array, temp_array), axis=1)
                 except:
-                    directory = npy_path + "/" + campaign
+                    directory = npy_path + "/" + campaign + "/" + region
                     for feature in cut_features:
                         temp_array = np.load(
                             directory
@@ -189,7 +201,7 @@ def get_npy_individuals(
                         else:
                             cut_array = np.concatenate((cut_array, temp_array), axis=1)
             else:
-                directory = npy_path + "/" + campaign
+                directory = npy_path + "/" + campaign + "/" + region
                 cut_array = None
                 for feature in cut_features:
                     temp_array = np.load(
@@ -238,3 +250,23 @@ def get_npy_individuals(
 
     print("All {} weight together:".format(npy_prefix), added_weights)
     return return_dict
+
+
+def dump_ntup_from_npy(ntup_name, branch_list, branch_type, contents, out_path):
+    """Generates ntuples from numpy arrays."""
+    out_dir = Path(out_path).parent
+    os.makedirs(out_dir, exist_ok=True)
+    out_file = ROOT.TFile(out_path, "RECREATE")
+    out_file.cd()
+
+    out_ntuple = ROOT.TNtuple(ntup_name, ntup_name, ":".join(branch_list))
+    n_branch = len(branch_list)
+    n_entries = len(contents[0])
+    for i in range(n_entries):
+        fill_values = []
+        for j in range(n_branch):
+            fill_values.append(contents[j][i])
+        out_ntuple.Fill(array.array(branch_type, fill_values))
+
+    out_file.cd()
+    out_ntuple.Write()

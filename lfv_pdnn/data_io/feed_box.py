@@ -1,6 +1,8 @@
+import copy
 import time
 import warnings
-import copy
+from sys import getsizeof
+
 import numpy as np
 
 from lfv_pdnn.common import array_utils
