@@ -255,7 +255,7 @@ def plot_feature_importance(
         sort_list = np.flip(np.argsort(feature_importance))
         sorted_importance = feature_importance[sort_list]
         sorted_names = selected_feature_names[sort_list]
-        print("Feature importance rank:", sorted_names)
+        print("feature importance rank:", sorted_names)
         # Plot
         if num_feature > max_feature:
             num_show = max_feature
@@ -268,10 +268,10 @@ def plot_feature_importance(
             alpha=0.5,
             log=log,
         )
-        ax.axhline(1, ls="--", color="r")
+        ax.axvline(x=1, ls="--", color="r")
         ax.set_title("feature importance")
-        ax.set_xticks(np.arange(num_show))
-        ax.set_xticklabels(sorted_names[:num_show])
+        ax.set_yticks(np.arange(num_show))
+        ax.set_yticklabels(sorted_names[:num_show])
         fig.savefig(fig_save_path)
 
 

@@ -25,8 +25,9 @@ def clean_negative_weights(array, weight_id, verbose=False):
     new = []
     for d in array:
         if d[weight_id] < 0.0:  # remove zero or negative weight row
-            continue
-        new.append(d)
+            new.append(0)
+        else:
+            new.append(d)
     # Output
     out = np.array(new)
     if verbose:
@@ -181,7 +182,6 @@ def modify_array(
         else:
             print("missing parameters, skipping mass selection...")
     # clean array
-    new = clean_zero_weights(new, -1)
     if remove_negative_weight:
         new = clean_negative_weights(new, -1)
     # reset mass
