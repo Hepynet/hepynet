@@ -29,7 +29,7 @@ from sklearn.metrics import auc, roc_curve
 import ROOT
 from HEPTools.plot_utils import plot_utils, th1_tools
 from lfv_pdnn.common import array_utils, common_utils
-from lfv_pdnn.data_io import get_arrays
+from lfv_pdnn.data_io import root_io
 from lfv_pdnn.train import evaluate, train_utils
 
 
@@ -411,21 +411,28 @@ class Model_Sequential_Base(Model_Base):
             save_dir=save_dir,
         )
         # roc curves
-        auc_dict = evaluate.plot_multi_class_roc(
-            self, figsize=figsize, show_fig=show_fig, save_dir=save_dir
-        )
+        # auc_dict = evaluate.plot_multi_class_roc(
+        #    self, figsize=figsize, show_fig=show_fig, save_dir=save_dir
+        # )
         # Collect meta data
         # self.auc_train = auc_dict["auc_train"]
         # self.auc_test = auc_dict["auc_test"]
         # self.auc_train_original = auc_dict["auc_train_original"]
         # self.auc_test_original = auc_dict["auc_test_original"]
+        """
         if job_type == "train" and self.feedbox.reset_mass == True:
             evaluate.plot_overtrain_check(
-                self, show_fig=False, save_dir=save_dir, bins=50, log=True
+                self,
+                show_fig=False,
+                save_dir=save_dir,
+                bins=50,
+                log=True,
+                reset_mass=True,
             )
-        evaluate.plot_overtrain_check_original_mass(
-            self, show_fig=False, save_dir=save_dir, bins=50, log=True
+        evaluate.plot_overtrain_check(
+            self, show_fig=False, save_dir=save_dir, bins=50, log=True, reset_mass=False
         )
+        """
 
     def train(
         self,
@@ -506,6 +513,9 @@ class Model_Sequential_Base(Model_Base):
             multi_class_bkgs=self.model_hypers["output_bkg_node_names"],
             use_selected=False,
         )
+        x_train_selected = train_utils.get_valid_feature(x_train)
+        x_test_selected = train_utils.get_valid_feature(x_test)
+        """
         (
             x_train_selected,
             x_test_selected,
@@ -525,6 +535,7 @@ class Model_Sequential_Base(Model_Base):
             multi_class_bkgs=self.model_hypers["output_bkg_node_names"],
             use_selected=True,
         )
+        """
         if np.isnan(np.sum(x_train_selected)):
             exit(1)
         if np.isnan(np.sum(y_train)):

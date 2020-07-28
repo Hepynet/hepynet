@@ -17,7 +17,7 @@ from sklearn.metrics import auc, roc_auc_score, roc_curve
 import ROOT
 from HEPTools.plot_utils import plot_utils, th1_tools
 from lfv_pdnn.common import array_utils, common_utils
-from lfv_pdnn.data_io import feed_box, get_arrays
+from lfv_pdnn.data_io import feed_box, root_io
 from lfv_pdnn.train import train_utils
 
 
@@ -26,10 +26,19 @@ def calculate_auc(xs, xb, model, shuffle_col=None, rm_last_two=False):
     x_plot, y_plot, y_pred = process_array(
         xs, xb, model, shuffle_col=shuffle_col, rm_last_two=rm_last_two
     )
-    fpr_dm, tpr_dm, _ = roc_curve(y_plot, y_pred, sample_weight=x_plot[:, -1])
-    # Calculate auc and return
-    auc_value = auc(fpr_dm, tpr_dm)
-    return auc_value
+    if y_plot.ndim == 2:
+        num_nodes = y_plot.shape[1]
+        auc_value = []
+        for node_id in range(num_nodes):
+            fpr_dm, tpr_dm, _ = roc_curve(
+                y_plot[:, node_id], y_pred[:, node_id], sample_weight=x_plot[:, -1]
+            )
+            auc_value.append(auc(fpr_dm, tpr_dm))
+    else:
+        fpr_dm, tpr_dm, _ = roc_curve(y_plot, y_pred, sample_weight=x_plot[:, -1])
+        # Calculate auc and return
+        auc_value = auc(fpr_dm, tpr_dm)
+        return auc_value
 
 
 def get_significances(model_wrapper, significance_algo="asimov"):
@@ -402,19 +411,19 @@ def plot_overtrain_check(
     figsize: tuple = (12, 9),
     show_fig: bool = False,
     save_dir: str = None,
-    bins=50,
-    x_range=(-0.25, 1.25),
-    log=True,
+    bins: int = 50,
+    x_range: tuple = (-0.25, 1.25),
+    log: bool = True,
+    reset_mass: bool = False,
 ):
     """Plots train/test scores distribution to check overtrain"""
-    print("Plotting train/test scores.")
+    print("Plotting train/test scores (original mass).")
     model = model_wrapper.get_model()
     feedbox = model_wrapper.feedbox
     model_meta = model_wrapper.model_meta
     sig_key = model_meta["sig_key"]
     bkg_key = model_meta["bkg_key"]
     all_nodes = ["sig"] + model_wrapper.model_hypers["output_bkg_node_names"]
-    # plot test scores
     (
         _,
         _,
@@ -432,40 +441,32 @@ def plot_overtrain_check(
         sig_key=sig_key,
         bkg_key=bkg_key,
         multi_class_bkgs=model_wrapper.model_hypers["output_bkg_node_names"],
+        reset_mass=reset_mass,
         use_selected=False,
     )
-    (
-        _,
-        _,
-        _,
-        _,
-        xs_train_selected,
-        xs_test_selected,
-        _,
-        _,
-        xb_train_selected,
-        xb_test_selected,
-        _,
-        _,
-    ) = feedbox.get_train_test_arrays(
-        sig_key=sig_key,
-        bkg_key=bkg_key,
-        multi_class_bkgs=model_wrapper.model_hypers["output_bkg_node_names"],
-        use_selected=True,
-    )
+    xs_train_selected = train_utils.get_valid_feature(xs_train)
+    xs_train_weight = xs_train[:, -1]
+    xs_test_selected = train_utils.get_valid_feature(xs_test)
+    xs_test_weight = xs_test[:, -1]
+    xb_train_selected = train_utils.get_valid_feature(xb_train)
+    xb_train_weight = xb_train[:, -1]
+    xb_test_selected = train_utils.get_valid_feature(xb_test)
+    xb_test_weight = xb_test[:, -1]
     # plot for each nodes
     num_nodes = len(all_nodes)
+    xb_train_scores = model.predict(xb_train_selected)
+    xs_train_scores = model.predict(xs_train_selected)
+    xb_test_scores = model.predict(xb_test_selected)
+    xs_test_scores = model.predict(xs_test_selected)
     for node_num in range(num_nodes):
         fig, ax = plt.subplots(figsize=figsize)
         # plot scores
         plot_scores(
             ax,
-            model,
-            xb_test_selected,
-            xb_test[:, -1],
-            xs_test_selected,
-            xs_test[:, -1],
-            node_num=node_num,
+            xb_test_scores[:, node_num],
+            xb_test_weight,
+            xs_test_scores[:, node_num],
+            xs_test_weight,
             apply_data=False,
             title="over training check",
             bkg_label="b-test",
@@ -477,9 +478,9 @@ def plot_overtrain_check(
         )
         make_bar_plot(
             ax,
-            model.predict(xb_train_selected)[:, node_num],
+            xb_train_scores[:, node_num],
             "b-train",
-            weights=xb_train[:, -1],
+            weights=xb_train_weight,
             bins=bins,
             range=x_range,
             density=True,
@@ -489,9 +490,9 @@ def plot_overtrain_check(
         )
         make_bar_plot(
             ax,
-            model.predict(xs_train_selected)[:, node_num],
+            xs_train_scores[:, node_num],
             "s-train",
-            weights=xs_train[:, -1],
+            weights=xs_train_weight,
             bins=bins,
             range=x_range,
             density=True,
@@ -503,123 +504,15 @@ def plot_overtrain_check(
         if show_fig:
             plt.show()
         if save_dir is not None:
-            fig.savefig(
-                save_dir
-                + "/eva_overtrain_original_mass_{}.png".format(all_nodes[node_num])
-            )
-
-
-def plot_overtrain_check_original_mass(
-    model_wrapper,
-    figsize: tuple = (12, 9),
-    show_fig: bool = False,
-    save_dir: str = None,
-    bins: int = 50,
-    x_range: tuple = (-0.25, 1.25),
-    log: bool = True,
-):
-    """Plots train/test scores distribution to check overtrain"""
-    print("Plotting train/test scores (original mass).")
-    model = model_wrapper.get_model()
-    feedbox = model_wrapper.feedbox
-    model_meta = model_wrapper.model_meta
-    sig_key = model_meta["sig_key"]
-    bkg_key = model_meta["bkg_key"]
-    all_nodes = ["sig"] + model_wrapper.model_hypers["output_bkg_node_names"]
-    (
-        _,
-        _,
-        _,
-        _,
-        xs_train_original_mass,
-        xs_test_original_mass,
-        _,
-        _,
-        xb_train_original_mass,
-        xb_test_original_mass,
-        _,
-        _,
-    ) = feedbox.get_train_test_arrays(
-        sig_key=sig_key,
-        bkg_key=bkg_key,
-        multi_class_bkgs=model_wrapper.model_hypers["output_bkg_node_names"],
-        reset_mass=False,
-        use_selected=False,
-    )
-    (
-        _,
-        _,
-        _,
-        _,
-        xs_train_selected_original_mass,
-        xs_test_selected_original_mass,
-        _,
-        _,
-        xb_train_selected_original_mass,
-        xb_test_selected_original_mass,
-        _,
-        _,
-    ) = feedbox.get_train_test_arrays(
-        sig_key=sig_key,
-        bkg_key=bkg_key,
-        multi_class_bkgs=model_wrapper.model_hypers["output_bkg_node_names"],
-        reset_mass=False,
-        use_selected=True,
-    )
-    # plot for each nodes
-    num_nodes = len(all_nodes)
-    for node_num in range(num_nodes):
-        fig, ax = plt.subplots(figsize=figsize)
-        # plot scores
-        plot_scores(
-            ax,
-            model,
-            xb_test_selected_original_mass,
-            xb_test_original_mass[:, -1],
-            xs_test_selected_original_mass,
-            xs_test_original_mass[:, -1],
-            node_num=node_num,
-            apply_data=False,
-            title="over training check",
-            bkg_label="b-test",
-            sig_label="s-test",
-            bins=bins,
-            range=x_range,
-            density=True,
-            log=log,
-        )
-        make_bar_plot(
-            ax,
-            model.predict(xb_train_selected_original_mass)[:, node_num],
-            "b-train",
-            weights=xb_train_original_mass[:, -1],
-            bins=bins,
-            range=x_range,
-            density=True,
-            use_error=True,
-            color="darkblue",
-            fmt=".",
-        )
-        make_bar_plot(
-            ax,
-            model.predict(xs_train_selected_original_mass)[:, node_num],
-            "s-train",
-            weights=xs_train_original_mass[:, -1],
-            bins=bins,
-            range=x_range,
-            density=True,
-            use_error=True,
-            color="maroon",
-            fmt=".",
-        )
-        # Make and show plots
-        if show_fig:
-            plt.show()
-        if save_dir is not None:
-            fig.savefig(
-                save_dir
-                + "/eva_overtrain_original_mass_{}.png".format(all_nodes[node_num])
-            )
+            if reset_mass:
+                fig_name = "/eva_overtrain_original_mass_{}.png".format(
+                    all_nodes[node_num]
+                )
+            else:
+                fig_name = "/eva_overtrain_reset_mass_{}.png".format(
+                    all_nodes[node_num]
+                )
+            fig.savefig(save_dir + "/" + fig_name)
 
 
 def plot_loss(
@@ -694,13 +587,11 @@ def plot_roc(
 
 def plot_scores(
     ax,
-    model,
-    selected_bkg,
+    bkg_scores,
     bkg_weight,
-    selected_sig,
+    sig_scores,
     sig_weight,
-    node_num=0,
-    selected_data=None,
+    data_scores=None,
     data_weight=None,
     apply_data=False,
     title="scores",
@@ -712,8 +603,11 @@ def plot_scores(
     log=False,
 ):
     """Plots score distribution for signal and background."""
+    ####
+    print("#### bkg_score shape", bkg_scores.shape)
+    print("#### bkg_weight shape", bkg_weight.shape)
     ax.hist(
-        model.predict(selected_bkg)[:, node_num],
+        bkg_scores,
         weights=bkg_weight,
         bins=bins,
         range=range,
@@ -727,7 +621,7 @@ def plot_scores(
         fill=True,
     )
     ax.hist(
-        model.predict(selected_sig)[:, node_num],
+        sig_scores,
         weights=sig_weight,
         bins=bins,
         range=range,
@@ -744,7 +638,7 @@ def plot_scores(
     if apply_data:
         make_bar_plot(
             ax,
-            model.predict(selected_data)[:, node_num],
+            data_scores,
             "data",
             weights=np.reshape(data_weight, (-1, 1)),
             bins=bins,
@@ -1718,9 +1612,10 @@ def plot_2d_significance_scan(
     dnn_cut_list = np.arange(0.8, 1.0, 0.02)
     w_inputs = []
     print("Making 2d significance scan.")
-    sig_dict = get_arrays.get_npy_individuals(
+    sig_dict = root_io.get_npy_individuals(
         job_wrapper.npy_path,
         job_wrapper.campaign,
+        job_wrapper.region,
         job_wrapper.channel,
         job_wrapper.sig_list,
         job_wrapper.selected_features,
@@ -1729,9 +1624,10 @@ def plot_2d_significance_scan(
         cut_values=job_wrapper.cut_values,
         cut_types=job_wrapper.cut_types,
     )
-    bkg_dict = get_arrays.get_npy_individuals(
+    bkg_dict = root_io.get_npy_individuals(
         job_wrapper.npy_path,
         job_wrapper.campaign,
+        job_wrapper.region,
         job_wrapper.channel,
         job_wrapper.bkg_list,
         job_wrapper.selected_features,
