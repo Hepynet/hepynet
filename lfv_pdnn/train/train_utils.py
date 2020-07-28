@@ -18,6 +18,7 @@ import numpy as np
 from sklearn.metrics import accuracy_score, auc, classification_report
 
 from lfv_pdnn.common import array_utils
+from lfv_pdnn.data_io import root_io
 
 
 def calculate_asimov(sig, bkg):
@@ -57,6 +58,47 @@ def calculate_significance(sig, bkg, sig_total=1, bkg_total=1, algo="asimov"):
     else:
         warnings.warn("Unrecognized significance algorithm, will use default 'asimov'")
         return calculate_asimov(sig, bkg)
+
+
+def dump_fit_ntup(
+    feedbox, keras_model, fit_ntup_branches, output_bkg_node_names, ntup_dir="./"
+):
+    prefix_map = {"sig": "xs", "bkg": "xb"}
+    if feedbox.apply_data:
+        prefix_map["data"] = "xd"
+    for map_key in list(prefix_map.keys()):
+        sample_keys = list(getattr(feedbox, prefix_map[map_key] + "_dict").keys())
+        for sample_key in sample_keys:
+            dump_branches = fit_ntup_branches + ["weight"]
+            # prepare contents
+            dump_array = feedbox.get_array(
+                prefix_map[map_key], "raw", array_key=sample_key, reset_mass=False
+            )
+            predict_input = feedbox.get_array(
+                prefix_map[map_key], "selected", array_key=sample_key, reset_mass=False
+            )
+            predictions = keras_model.predict(predict_input)
+            dump_contents = []
+            for branch in dump_branches:
+                if branch == "weight":
+                    branch_index = -1
+                else:
+                    branch_index = feedbox.selected_features.index(branch)
+                branch_content = dump_array[:, branch_index]
+                dump_contents.append(branch_content)
+            if len(output_bkg_node_names) == 0:
+                dump_branches.append("dnn_out")
+                dump_contents.append(predictions)
+            else:
+                for i, out_node in enumerate(["sig"] + output_bkg_node_names):
+                    out_node = out_node.replace("+", "_")
+                    dump_branches.append("dnn_out_" + out_node)
+                    dump_contents.append(predictions[:, i])
+            # dump
+            ntup_path = ntup_dir + "/" + map_key + "_" + sample_key + ".root"
+            root_io.dump_ntup_from_npy(
+                "ntup", dump_branches, "f", dump_contents, ntup_path,
+            )
 
 
 def get_mass_range(mass_array, weights, nsig=1):
@@ -156,282 +198,6 @@ def norarray_min_max(array, min, max, axis=None):
     output_array = output_array / ratio
 
 
-'''
-def prepare_array(
-    xs_input,
-    xb_input,
-    selected_features,
-    apply_data=False,
-    xd_input=None,
-    reshape_array=True,
-    reset_mass=False,
-    reset_mass_name=None,
-    remove_negative_weight=False,
-    cut_features=[],
-    cut_values=[],
-    cut_types=[],
-    sig_weight=1000,
-    bkg_weight=1000,
-    data_weight=1000,
-    test_rate=0.2,
-    rdm_seed=None,
-    model_meta=None,
-    verbose=1,
-):
-    """Prepares array for training.
-    
-    TODO: outdated code, need to be removed in next version
-    
-    """
-    feed_box = {}
-    xs = xs_input.copy()
-    xb = xb_input.copy()
-    if apply_data:
-        xd = xd_input.copy()
-    # cut array
-    if len(cut_features) > 0:
-        # Get indexes that pass cuts
-        assert len(cut_features) == len(cut_values) and len(cut_features) == len(
-            cut_types
-        ), "cut_features and cut_values and cut_types should have same length."
-        xs_pass_index = None
-        xb_pass_index = None
-        for (cut_feature, cut_value, cut_type) in zip(
-            cut_features, cut_values, cut_types
-        ):
-            cut_feature_id = selected_features.index(cut_feature)
-            # update signal cut index
-            temp_index = array_utils.get_cut_index_value(
-                xs[:, cut_feature_id], cut_value, cut_type
-            )
-            if xs_pass_index is None:
-                xs_pass_index = temp_index
-            else:
-                xs_pass_index = np.intersect1d(xs_pass_index, temp_index)
-            # update background cut index
-            temp_index = array_utils.get_cut_index_value(
-                xb[:, cut_feature_id], cut_value, cut_type
-            )
-            if xb_pass_index is None:
-                xb_pass_index = temp_index
-            else:
-                xb_pass_index = np.intersect1d(xb_pass_index, temp_index)
-        xs = xs[xs_pass_index.flatten(), :]
-        xb = xb[xb_pass_index.flatten(), :]
-    # record raw array
-    feed_box["xs_raw"] = xs
-    feed_box["xb_raw"] = xb
-    # normalize input variables if norm_array is True
-    xs_reshape = xs.copy()
-    xb_reshape = xb.copy()
-    # remove negative weights for variance calculation
-    if remove_negative_weight:
-        xb_pos_weihgt = array_utils.modify_array(xb, remove_negative_weight=True,)
-    # reshape
-    if reshape_array:
-        if model_meta is not None:
-            means = np.array(model_meta["norm_average"])
-            variances = np.array(model_meta["norm_variance"])
-        else:
-            means, variances = get_mean_var(
-                xb_pos_weihgt[:, 0:-2], axis=0, weights=xb_pos_weihgt[:, -1]
-            )
-        feed_box["norm_average"] = means
-        feed_box["norm_variance"] = variances
-
-        xs_reshape[:, 0:-2] = norarray(
-            xs_reshape[:, 0:-2], average=means, variance=variances
-        )
-        xb_reshape[:, 0:-2] = norarray(
-            xb_reshape[:, 0:-2], average=means, variance=variances
-        )
-        feed_box["xs_reshape"] = xs_reshape
-        feed_box["xb_reshape"] = xb_reshape
-    else:
-        feed_box["norm_average"] = np.zeros(len(selected_features))
-        feed_box["norm_variance"] = np.ones(len(selected_features))
-        feed_box["xs_reshape"] = xs_reshape.copy()
-        feed_box["xb_reshape"] = xb_reshape.copy()
-    if rdm_seed is None:
-        rdm_seed = int(time.time())
-        feed_box["rdm_seed"] = rdm_seed
-    # get bkg array with mass reset
-    if reset_mass:
-        reset_mass_id = selected_features.index(reset_mass_name)
-        xb_reset_mass = array_utils.modify_array(
-            xb_reshape,
-            reset_mass=reset_mass,
-            reset_mass_array=xs_reshape,
-            reset_mass_id=reset_mass_id,
-        )
-        feed_box["xb_reset_mass"] = xb_reset_mass
-        feed_box["is_mass_reset"] = True
-    else:
-        xb_reset_mass = xb_reshape
-        feed_box["xb_reset_mass"] = xb_reshape
-        feed_box["is_mass_reset"] = False
-    # remove negative weights & normalize total weight
-    xs_reweight = array_utils.modify_array(
-        xs_reshape,
-        remove_negative_weight=remove_negative_weight,
-        norm=True,
-        sumofweight=sig_weight,
-    )
-    xb_reweight = array_utils.modify_array(
-        xb_reshape,
-        remove_negative_weight=remove_negative_weight,
-        norm=True,
-        sumofweight=bkg_weight,
-    )
-    xb_reweight_reset_mass = array_utils.modify_array(
-        xb_reset_mass,
-        remove_negative_weight=remove_negative_weight,
-        norm=True,
-        sumofweight=bkg_weight,
-    )
-    feed_box["xs_reweight"] = xs_reweight
-    feed_box["xb_reweight"] = xb_reweight
-    feed_box["xb_reweight_reset_mass"] = xb_reweight_reset_mass
-    # get train/test data set, split with ratio=test_rate
-    (
-        x_train,
-        x_test,
-        y_train,
-        y_test,
-        xs_train,
-        xs_test,
-        xb_train,
-        xb_test,
-    ) = split_and_combine(
-        xs_reweight, xb_reweight_reset_mass, test_rate=test_rate, shuffle_seed=rdm_seed
-    )
-    feed_box["x_train"] = x_train
-    feed_box["x_test"] = x_test
-    feed_box["y_train"] = y_train
-    feed_box["y_test"] = y_test
-    feed_box["xs_train"] = xs_train
-    feed_box["xs_test"] = xs_test
-    feed_box["xb_train"] = xb_train
-    feed_box["xb_test"] = xb_test
-    (
-        x_train_original_mass,
-        x_test_original_mass,
-        y_train_original_mass,
-        y_test_original_mass,
-        xs_train_original_mass,
-        xs_test_original_mass,
-        xb_train_original_mass,
-        xb_test_original_mass,
-    ) = split_and_combine(
-        xs_reweight, xb_reweight, test_rate=test_rate, shuffle_seed=rdm_seed
-    )
-    feed_box["x_train_original_mass"] = x_train_original_mass
-    feed_box["x_test_original_mass"] = x_test_original_mass
-    feed_box["y_train_original_mass"] = y_train_original_mass
-    feed_box["y_test_original_mass"] = y_test_original_mass
-    feed_box["xs_train_original_mass"] = xs_train_original_mass
-    feed_box["xs_test_original_mass"] = xs_test_original_mass
-    feed_box["xb_train_original_mass"] = xb_train_original_mass
-    feed_box["xb_test_original_mass"] = xb_test_original_mass
-    # select features used for training
-    feed_box["selected_features"] = selected_features
-    feed_box["x_train_selected"] = get_valid_feature(x_train)
-    feed_box["x_test_selected"] = get_valid_feature(x_test)
-    feed_box["xs_train_selected"] = get_valid_feature(xs_train)
-    feed_box["xb_train_selected"] = get_valid_feature(xb_train)
-    feed_box["xs_test_selected"] = get_valid_feature(xs_test)
-    feed_box["xb_test_selected"] = get_valid_feature(xb_test)
-    feed_box["xs_selected"] = get_valid_feature(xs_reweight)
-    feed_box["xb_selected"] = get_valid_feature(xb_reweight_reset_mass)
-    feed_box["x_train_selected_original_mass"] = get_valid_feature(
-        x_train_original_mass
-    )
-    feed_box["x_test_selected_original_mass"] = get_valid_feature(x_test_original_mass)
-    feed_box["xs_train_selected_original_mass"] = get_valid_feature(
-        xs_train_original_mass
-    )
-    feed_box["xb_train_selected_original_mass"] = get_valid_feature(
-        xb_train_original_mass
-    )
-    feed_box["xs_test_selected_original_mass"] = get_valid_feature(
-        xs_test_original_mass
-    )
-    feed_box["xb_test_selected_original_mass"] = get_valid_feature(
-        xb_test_original_mass
-    )
-    feed_box["xs_selected_original_mass"] = get_valid_feature(xs_reweight)
-    feed_box["xb_selected_original_mass"] = get_valid_feature(xb_reweight)
-    feed_box["xs_reshape_selected"] = get_valid_feature(xs_reshape)
-    feed_box["xb_reshape_selected"] = get_valid_feature(xb_reshape)
-    # prepare data to apply model when apply_data is True
-    if apply_data == True:
-        if len(cut_features) > 0:
-            # Get indexes that pass cuts
-            assert len(cut_features) == len(cut_values) and len(cut_features) == len(
-                cut_types
-            ), "cut_features and cut_values and cut_types should have same length."
-            xd_pass_index = None
-            for (cut_feature, cut_value, cut_type) in zip(
-                cut_features, cut_values, cut_types
-            ):
-                cut_feature_id = selected_features.index(cut_feature)
-                # update data cut index
-                temp_index = array_utils.get_cut_index_value(
-                    xd[:, cut_feature_id], cut_value, cut_type
-                )
-                if xd_pass_index is None:
-                    xd_pass_index = temp_index
-                else:
-                    xd_pass_index = np.intersect1d(xd_pass_index, temp_index)
-            xd = xd[xd_pass_index.flatten(), :]
-        # record raw array
-        feed_box["xd_raw"] = xd
-        # reshape
-        xd_reshape = xd.copy()
-        if reshape_array:
-            xd_reshape[:, 0:-2] = norarray(
-                xd_reshape[:, 0:-2],
-                average=feed_box["norm_average"],
-                variance=feed_box["norm_variance"],
-            )
-            feed_box["xd_reshape"] = xd_reshape.copy()
-        else:
-            feed_box["xd_reshape"] = xd_reshape.copy()
-        if reset_mass:
-            reset_mass_id = selected_features.index(reset_mass_name)
-            xd_reset_mass = array_utils.modify_array(
-                xd_reshape,
-                reset_mass=reset_mass,
-                reset_mass_array=xs_reshape,
-                reset_mass_id=reset_mass_id,
-            )
-            feed_box["xd_reset_mass"] = xd_reset_mass
-        else:
-            xd_reset_mass = xd_reshape
-            feed_box["xd_reset_mass"] = xd_reset_mass
-        # normalize total weight
-        xd_reweight = array_utils.modify_array(
-            xd_reshape, norm=True, sumofweight=data_weight
-        )
-        feed_box["xd_reweight"] = xd_reweight
-        xd_reweight_reset_mass = array_utils.modify_array(
-            xd_reset_mass, norm=True, sumofweight=data_weight
-        )
-        feed_box["xd_reweight_reset_mass"] = xd_reweight_reset_mass
-        # get selected features
-        feed_box["xd_selected"] = get_valid_feature(xd_reweight_reset_mass)
-        feed_box["xd_selected_original_mass"] = get_valid_feature(xd_reweight)
-        feed_box["xd_reshape_selected"] = get_valid_feature(xd_reshape)
-        feed_box["has_data"] = True
-    feed_box["array_prepared"] = True
-    if verbose == 1:
-        print("Training array prepared.")
-        print("> signal shape:", feed_box["xs_selected"].shape)
-        print("> background shape:", feed_box["xb_selected"].shape)
-    return feed_box
-'''
-
-
 def split_and_combine(
     xs,
     xb,
@@ -449,7 +215,7 @@ def split_and_combine(
         xb: numpy array
         Background array for training.
         test_rate: float, optional (default = 0.2)
-        Portion of samples (array rows) to be used as independant test samples.
+        Portion of samples (array rows) to be used as independent test samples.
         shuffle_combined_array: bool, optional (default=True)
         Whether to shuffle outputs arrays before return.
         shuffle_seed: int or None, optional (default=None)
@@ -462,8 +228,8 @@ def split_and_combine(
         Array for training/testing.
         Contain mixed signal and background. 
         xs_test/xb_test: numpy array
-        Array for scores plottind.
-        Signal/bakcground separated.
+        Array for scores plotting.
+        Signal/background separated.
 
     """
     if ys is None:
