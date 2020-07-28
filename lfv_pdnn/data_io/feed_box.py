@@ -345,6 +345,8 @@ class Feedbox(object):
                 train_utils.get_valid_feature(xb_test),
                 yb_train,
                 yb_test,
+                x_train[:, -1],
+                x_test[:, -1],
             )
         else:
             ####
@@ -364,6 +366,8 @@ class Feedbox(object):
                 xb_test,
                 yb_train,
                 yb_test,
+                x_train[:, -1],
+                x_test[:, -1],
             )
 
     def get_selected(self, input_type, array_key="all", reset_mass=None):

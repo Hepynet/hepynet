@@ -187,7 +187,7 @@ def modify_array(
     # reset mass
     if reset_mass == True:
         if not common_utils.has_none([reset_mass_array, reset_mass_id]):
-            new = prep_mass_fast(new, reset_mass_array, mass_id=reset_mass_id)
+            new = reset_col(new, reset_mass_array, new[:-1], col=reset_mass_id)
         else:
             print("missing parameters, skipping mass reset...")
     # normalize weight
@@ -228,43 +228,21 @@ def norweight(weight_array, norm=1000):
     return new
 
 
-def prep_mass_fast(xbtrain, xstrain, mass_id=0, shuffle_seed=None):
-    """Resets background mass distribution according to signal distribution
-
-    Args:
-        xbtrain: numpy array
-            Background array
-        xstrain: numpy array
-            Siganl array
-        mass_id: int (default=0)
-            Column index of mass.
-        shuffle_seed: int or None, optional (default=None)
-            Seed for randomization process.
-            Set to None to use current time as seed.
-            Set to a specific value to get an unchanged shuffle result.
-
-    Returns:
-        new: numpy array
-            new background array with mass distribution reset
-
-    """
-    new = reset_col(xbtrain, xstrain, col=mass_id, shuffle_seed=None)
-    return new
-
-
-def reset_col(reset_array, ref_array, col=0, shuffle_seed=None):
+def reset_col(reset_array, ref_array, ref_weights, col=0, shuffle_seed=None):
     """Resets one column in an array based on the distribution of reference."""
     if common_utils.has_none([shuffle_seed]):
         shuffle_seed = int(time.time())
     np.random.seed(shuffle_seed)
     new = reset_array.copy()
     total_events = len(new)
-    sump = sum(ref_array[:, -1])
+    positive_weights = ref_weights.copy().clip(min=0)
+    if (positive_weights != ref_weights).all():
+        warnings.warn("Non-positive weights detected, set to zero")
+    sump = sum(positive_weights)
     reset_list = np.random.choice(
-        ref_array[:, col], size=total_events, p=1 / sump * ref_array[:, -1]
+        ref_array[:, col], size=total_events, p=(1 / sump) * positive_weights
     )
-    for count, entry in enumerate(new):
-        entry[col] = reset_list[count]
+    new[:, col] = reset_list
     return new
 
 

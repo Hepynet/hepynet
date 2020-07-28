@@ -507,6 +507,8 @@ class Model_Sequential_Base(Model_Base):
             _,
             _,
             _,
+            _,
+            _,
         ) = self.feedbox.get_train_test_arrays(
             sig_key=sig_key,
             bkg_key=bkg_key,
@@ -515,27 +517,6 @@ class Model_Sequential_Base(Model_Base):
         )
         x_train_selected = train_utils.get_valid_feature(x_train)
         x_test_selected = train_utils.get_valid_feature(x_test)
-        """
-        (
-            x_train_selected,
-            x_test_selected,
-            _,
-            _,
-            _,
-            _,
-            _,
-            _,
-            _,
-            _,
-            _,
-            _,
-        ) = self.feedbox.get_train_test_arrays(
-            sig_key=sig_key,
-            bkg_key=bkg_key,
-            multi_class_bkgs=self.model_hypers["output_bkg_node_names"],
-            use_selected=True,
-        )
-        """
         if np.isnan(np.sum(x_train_selected)):
             exit(1)
         if np.isnan(np.sum(y_train)):
@@ -619,6 +600,8 @@ class Model_Sequential_Base(Model_Base):
             y_train,
             _,
             x_train_selected,
+            _,
+            _,
             _,
             _,
             _,

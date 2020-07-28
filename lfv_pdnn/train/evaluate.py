@@ -21,24 +21,26 @@ from lfv_pdnn.data_io import feed_box, root_io
 from lfv_pdnn.train import train_utils
 
 
-def calculate_auc(xs, xb, model, shuffle_col=None, rm_last_two=False):
+def calculate_auc(x_plot, y_plot, weights, model, shuffle_col=None, rm_last_two=False):
     """Returns auc of given sig/bkg array."""
-    x_plot, y_plot, y_pred = process_array(
-        xs, xb, model, shuffle_col=shuffle_col, rm_last_two=rm_last_two
-    )
+    auc_value = []
+    if shuffle_col is not None:
+        # randomize x values but don't change overall distribution
+        x_plot = array_utils.reset_col(x_plot, x_plot, weights, col=shuffle_col)
+    y_pred = model.predict(x_plot)
     if y_plot.ndim == 2:
         num_nodes = y_plot.shape[1]
-        auc_value = []
         for node_id in range(num_nodes):
             fpr_dm, tpr_dm, _ = roc_curve(
                 y_plot[:, node_id], y_pred[:, node_id], sample_weight=x_plot[:, -1]
             )
+            sort_index = fpr_dm.argsort()
+            fpr_dm = fpr_dm[sort_index]
+            tpr_dm = tpr_dm[sort_index]
             auc_value.append(auc(fpr_dm, tpr_dm))
     else:
-        fpr_dm, tpr_dm, _ = roc_curve(y_plot, y_pred, sample_weight=x_plot[:, -1])
-        # Calculate auc and return
-        auc_value = auc(fpr_dm, tpr_dm)
-        return auc_value
+        auc_value = [roc_auc_score(y_plot, y_pred, sample_weight=weights)]
+    return auc_value
 
 
 def get_significances(model_wrapper, significance_algo="asimov"):
@@ -179,7 +181,9 @@ def plot_correlation_matrix(ax, corr_matrix_dict, matrix_key="bkg"):
     )
 
 
-def plot_feature_importance(ax, model_wrapper, log=True, max_feature=16):
+def plot_feature_importance(
+    model_wrapper, save_dir, identifier="", log=True, max_feature=16
+):
     """Calculates importance of features and sort the feature.
 
     Definition of feature importance used here can be found in:
@@ -192,44 +196,83 @@ def plot_feature_importance(ax, model_wrapper, log=True, max_feature=16):
     feedbox = model_wrapper.feedbox
     num_feature = len(feedbox.selected_features)
     selected_feature_names = np.array(feedbox.selected_features)
-    feature_importance = np.zeros(num_feature)
-    (_, _, _, _, _, xs_test, _, _, _, xb_test, _, _,) = feedbox.get_train_test_arrays(
+    (
+        _,
+        x_test,
+        _,
+        y_test,
+        _,
+        _,
+        _,
+        _,
+        _,
+        _,
+        _,
+        _,
+        _,
+        weight_test,
+    ) = feedbox.get_train_test_arrays(
         sig_key=model_wrapper.model_meta["sig_key"],
         bkg_key=model_wrapper.model_meta["bkg_key"],
         multi_class_bkgs=model_wrapper.model_hypers["output_bkg_node_names"],
         reset_mass=False,
-        use_selected=False,
+        use_selected=True,
     )
-    xs = xs_test
-    xb = xb_test
-    base_auc = calculate_auc(xs, xb, model, rm_last_two=True)
-    print("base auc:", base_auc)
-    # Calculate importance
-    for num, feature_name in enumerate(selected_feature_names):
-        current_auc = calculate_auc(xs, xb, model, shuffle_col=num, rm_last_two=True)
-        feature_importance[num] = (1 - current_auc) / (1 - base_auc)
-        print(feature_name, ":", feature_importance[num])
-    # Sort
-    sort_list = np.flip(np.argsort(feature_importance))
-    sorted_importance = feature_importance[sort_list]
-    sorted_names = selected_feature_names[sort_list]
-    print("Feature importance rank:", sorted_names)
-    # Plot
-    if num_feature > max_feature:
-        num_show = max_feature
+    all_nodes = []
+    if y_test.ndim == 2:
+        num_nodes = y_test.shape[1]
+        all_nodes = ["sig"] + model_wrapper.model_hypers["output_bkg_node_names"]
     else:
-        num_show = num_feature
-    ax.barh(
-        np.flip(np.arange(num_show)),
-        sorted_importance[:num_show],
-        align="center",
-        alpha=0.5,
-        log=log,
-    )
-    ax.axhline(1, ls="--", color="r")
-    ax.set_title("feature importance")
-    ax.set_xticks(np.arange(num_show))
-    ax.set_xticklabels(sorted_names[:num_show])
+        all_nodes = ["sig"]
+    # Make plots
+    fig_save_pattern = save_dir + "/importance_" + identifier + "_{}.png"
+    if num_feature > 16:
+        canvas_height = 16
+    else:
+        canvas_height = num_feature
+    fig_save_path = save_dir + "/importance_" + identifier + "_{}.png"
+    base_auc = calculate_auc(x_test, y_test, weight_test, model, rm_last_two=True)
+    # Calculate importance
+    feature_auc = []
+    for num, feature_name in enumerate(selected_feature_names):
+        current_auc = calculate_auc(
+            x_test, y_test, weight_test, model, shuffle_col=num, rm_last_two=True
+        )
+        print("#### current auc:", current_auc)
+        feature_auc.append(current_auc)
+    for node_id, node in enumerate(all_nodes):
+        print("making importance plot for node:", node)
+        fig_save_path = fig_save_pattern.format(node)
+        fig, ax = plt.subplots(figsize=(9, canvas_height))
+        print("base auc:", base_auc[node_id])
+        feature_importance = np.zeros(num_feature)
+        for num, feature_name in enumerate(selected_feature_names):
+            current_auc = feature_auc[num][node_id]
+            feature_importance[num] = (1 - current_auc) / (1 - base_auc[node_id])
+            print(feature_name, ":", feature_importance[num])
+
+        # Sort
+        sort_list = np.flip(np.argsort(feature_importance))
+        sorted_importance = feature_importance[sort_list]
+        sorted_names = selected_feature_names[sort_list]
+        print("Feature importance rank:", sorted_names)
+        # Plot
+        if num_feature > max_feature:
+            num_show = max_feature
+        else:
+            num_show = num_feature
+        ax.barh(
+            np.flip(np.arange(num_show)),
+            sorted_importance[:num_show],
+            align="center",
+            alpha=0.5,
+            log=log,
+        )
+        ax.axhline(1, ls="--", color="r")
+        ax.set_title("feature importance")
+        ax.set_xticks(np.arange(num_show))
+        ax.set_xticklabels(sorted_names[:num_show])
+        fig.savefig(fig_save_path)
 
 
 def plot_input_distributions(
@@ -437,6 +480,8 @@ def plot_overtrain_check(
         xb_test,
         _,
         _,
+        _,
+        _,
     ) = feedbox.get_train_test_arrays(
         sig_key=sig_key,
         bkg_key=bkg_key,
@@ -566,8 +611,6 @@ def plot_roc(
     print(y_pred[0:20, :])
     for i in range(20):
         print("#### y_plot:", y_plot[i], "| y_pred:", y_pred[i])
-    ####
-    # x_plot, y_plot, y_pred = process_array(xs, xb, model, rm_last_two=True)
     fpr_dm, tpr_dm, _ = roc_curve(
         y_plot[:, node_num], y_pred[:, node_num], sample_weight=x_plot[:, -1]
     )
@@ -1220,6 +1263,8 @@ def plot_multi_class_roc(
         xb_test_original_mass,
         yb_train_original_mass,
         yb_test_original_mass,
+        _,
+        _,
     ) = feedbox.get_train_test_arrays(
         sig_key=sig_key,
         bkg_key=bkg_key,
@@ -1304,6 +1349,8 @@ def plot_train_test_roc(ax, model_wrapper, yscal="logit", ylim=(0.1, 1 - 1e-4)):
         xb_test,
         yb_train,
         yb_test,
+        _,
+        _,
     ) = feedbox.get_train_test_arrays(
         sig_key=sig_key,
         bkg_key=bkg_key,
@@ -1323,6 +1370,8 @@ def plot_train_test_roc(ax, model_wrapper, yscal="logit", ylim=(0.1, 1 - 1e-4)):
         xb_test_original_mass,
         yb_train_original_mass,
         yb_test_original_mass,
+        _,
+        _,
     ) = feedbox.get_train_test_arrays(
         sig_key=sig_key,
         bkg_key=bkg_key,
@@ -1380,24 +1429,6 @@ def plot_train_test_roc(ax, model_wrapper, yscal="logit", ylim=(0.1, 1 - 1e-4)):
     auc_dict["auc_train_original"] = auc_train_original
     auc_dict["auc_test_original"] = auc_test_original
     return auc_dict
-
-
-def process_array(xs, xb, model, shuffle_col=None, rm_last_two=False):
-    """Process sig/bkg arrays in the same way for training arrays."""
-    # Get data
-    xs_proc = xs.copy()
-    xb_proc = xb.copy()
-    x_proc = np.concatenate((xs_proc, xb_proc))
-    if shuffle_col is not None:
-        # randomize x values but don't change overall distribution
-        x_proc = array_utils.reset_col(x_proc, x_proc, shuffle_col)
-    if rm_last_two:
-        x_proc_selected = train_utils.get_valid_feature(x_proc)
-    else:
-        x_proc_selected = x_proc
-    y_proc = np.concatenate((np.ones(xs_proc.shape[0]), np.zeros(xb_proc.shape[0])))
-    y_pred = model.predict(x_proc_selected)
-    return x_proc, y_proc, y_pred
 
 
 def make_bar_plot(

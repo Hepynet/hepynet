@@ -61,6 +61,7 @@ class job_executor(object):
 
     def __init__(self, input_path):
         """Initialize executor."""
+        # set up default values for parameters
         # general
         self.job_create_time = str(datetime.datetime.now())
         self.datestr = datetime.date.today().strftime("%Y-%m-%d")
@@ -172,6 +173,7 @@ class job_executor(object):
         # Get config
         if not self.cfg_is_collected:
             self.get_config()
+        self.show_configurations()
         # Set save sub-directory for this task
         dir_pattern = self.save_dir + "/" + self.datestr + "_" + self.job_name + "_v{}"
         self.save_sub_dir = common_utils.get_newest_file_version(dir_pattern)["path"]
@@ -362,6 +364,7 @@ class job_executor(object):
                 os.makedirs(save_dir)
             # show and save according to setting
             if self.book_kine_study:
+                print(">> Making input distribution plots")
                 evaluate.plot_input_distributions(
                     self.model_wrapper,
                     apply_data=False,
@@ -381,6 +384,7 @@ class job_executor(object):
                 )
             # Make correlation plot
             if self.book_cor_matrix:
+                print(">> Making correlation plot")
                 fig, ax = plt.subplots(ncols=2, figsize=(16, 8))
                 ax[0].set_title("bkg correlation")
                 evaluate.plot_correlation_matrix(
@@ -421,6 +425,7 @@ class job_executor(object):
                         identifier = "epoch{:02d}".format(model_num)
                         self.model_wrapper.load_model_with_path(model_path)
                     # Make performance plots
+                    print(">> Making performance plots")
                     self.fig_performance_path = fig_save_path
                     self.model_wrapper.show_performance(
                         apply_data=False,  # don't apply data in training performance
@@ -431,6 +436,7 @@ class job_executor(object):
                     )
                     # Overtrain check
                     if self.book_roc:
+                        print(">> Making roc curve plot")
                         evaluate.plot_multi_class_roc(
                             self.model_wrapper,
                             figsize=(12, 9),
@@ -438,6 +444,7 @@ class job_executor(object):
                             save_dir=save_dir,
                         )
                     if self.book_train_test_compare:
+                        print(">> Making train/test compare plots")
                         if (
                             self.job_type == "train"
                             and self.model_wrapper.feedbox.reset_mass == True
@@ -460,19 +467,16 @@ class job_executor(object):
                         )
                     # Make feature importance check
                     if self.book_importance_study:
-                        if len(self.selected_features) > 16:
-                            canvas_height = 16
-                        else:
-                            canvas_height = len(self.selected_features)
-                        fig, ax = plt.subplots(figsize=(9, canvas_height))
-                        fig_save_path = save_dir + "/importance_" + identifier + ".png"
-                        self.fig_feature_importance_path = fig_save_path
+                        print(">> Checking input feature importance")
                         evaluate.plot_feature_importance(
-                            ax, self.model_wrapper, max_feature=12
+                            self.model_wrapper,
+                            save_dir,
+                            identifier=identifier,
+                            max_feature=12,
                         )
-                        fig.savefig(fig_save_path)
                     # Extra plots (use model on non-mass-reset arrays)
                     if self.book_mc_data_compare:
+                        print(">> Making data/mc scores distributions plots")
                         evaluate.plot_scores_separate_root(
                             self.model_wrapper,
                             self.plot_bkg_list,
@@ -489,6 +493,7 @@ class job_executor(object):
                         )
                     # show kinemetics at different dnn cut
                     if self.book_cut_kine_study:
+                        print(">> Making kinematic plots with different DNN cut")
                         for dnn_cut in self.dnn_cut_list:
                             evaluate.plot_input_distributions(
                                 self.model_wrapper,
@@ -850,14 +855,17 @@ class job_executor(object):
         config = ConfigParser()
         config.read(ini_path)
         # Check whether need to import other (default) ini file first
-        default_ini_path = None
+        import_ini_path = None
+        import_ini_path_list = []
         try:
-            default_ini_path = config.get("config", "include")
+            import_ini_path = config.get("config", "include")
+            import_ini_path_list = import_ini_path.replace(" ", "").split(",")
         except:
             pass
-        if default_ini_path is not None:
-            print("Including:", default_ini_path)
-            self.get_config(default_ini_path)
+        if import_ini_path is not None:
+            for ini_path in import_ini_path_list:
+                print("Including:", ini_path)
+                self.get_config(ini_path)
         # Load [job] section
         self.try_parse_str("job_name", config, "job", "job_name")
         self.try_parse_str("job_type", config, "job", "job_type")
@@ -889,7 +897,7 @@ class job_executor(object):
         self.try_parse_bool("reset_feature", config, "array", "reset_feature")
         self.try_parse_str("reset_feature_name", config, "array", "reset_feature_name")
         self.try_parse_bool(
-            "rm_negative_weight_events", config, "model", "rm_negative_weight_events"
+            "rm_negative_weight_events", config, "array", "rm_negative_weight_events"
         )
         self.try_parse_list("cut_features", config, "array", "cut_features")
         self.try_parse_list("cut_values", config, "array", "cut_values")
@@ -1260,6 +1268,107 @@ class job_executor(object):
             reports.append(im)
         # build/save
         doc.build(reports)
+
+    def show_configurations(self):
+        print("#" * 80)
+        print("Configurations of this job is listed below:")
+        print("#" * 80)
+        # [job] section
+        print("[job]")
+        print("> job_name:", self.job_name)
+        print("> job_type:", self.job_type)
+        print("> save_dir:", self.save_dir)
+        print("> load_dir:", self.load_dir)
+        print("> load_job_name:", self.load_job_name)
+        # [array] section
+        print("[array]")
+        print("> arr_version:", self.arr_version)
+        print("> campaign:", self.campaign)
+        print("> region:", self.region)
+        print("> arr_path:", self.arr_path)
+        print("> bkg_key:", self.bkg_key)
+        print("> bkg_sumofweight:", self.bkg_sumofweight)
+        print("> sig_key:", self.sig_key)
+        print("> sig_sumofweight:", self.sig_sumofweight)
+        print("> data_key:", self.data_key)
+        print("> data_sumofweight:", self.data_sumofweight)
+        print("> bkg_list:", self.bkg_list)
+        print("> sig_list:", self.sig_list)
+        print("> data_list:", self.data_list)
+        print("> selected_features:", self.selected_features)
+        print("> channel:", self.channel)
+        print("> norm_array:", self.norm_array)
+        print("> reset_feature:", self.reset_feature)
+        print("> reset_feature_name:", self.reset_feature_name)
+        print("> rm_negative_weight_events:", self.rm_negative_weight_events)
+        print("> cut_features:", self.cut_features)
+        print("> cut_values:", self.cut_values)
+        print("> cut_types:", self.cut_types)
+        # [model] section
+        print("[model]")
+        print("> model_name:", self.model_name)
+        print("> model_class:", self.model_class)
+        print("> layers:", self.layers)
+        print("> nodes:", self.nodes)
+        print("> output_bkg_node_names:", self.output_bkg_node_names)
+        print("> dropout_rate:", self.dropout_rate)
+        print("> momentum:", self.momentum)
+        print("> nesterov:", self.nesterov)
+        print("> learn_rate:", self.learn_rate)
+        print("> learn_rate_decay:", self.learn_rate_decay)
+        print("> test_rate:", self.test_rate)
+        print("> batch_size:", self.batch_size)
+        print("> epochs:", self.epochs)
+        print("> val_split:", self.val_split)
+        print("> sig_class_weight:", self.sig_class_weight)
+        print("> bkg_class_weight:", self.bkg_class_weight)
+        print("> train_metrics:", self.train_metrics)
+        print("> train_metrics_weighted:", self.train_metrics_weighted)
+        print("> use_early_stop:", self.use_early_stop)
+        print("> early_stop_monitor:", self.early_stop_monitor)
+        print("> early_stop_min_delta:", self.early_stop_min_delta)
+        print("> early_stop_patience:", self.early_stop_patience)
+        print("> early_stop_mode:", self.early_stop_mode)
+        print(
+            "> early_stop_restore_best_weights:", self.early_stop_restore_best_weights
+        )
+        print("> save_model:", self.save_model)
+        # [para_scan]
+        print("[para_scan]")
+        print("> perform_para_scan:", self.perform_para_scan)
+        print("> max_scan_iterations:", self.max_scan_iterations)
+        print("> scan_loss_type:", self.scan_loss_type)
+        print("> para_scan_cfg:", self.para_scan_cfg)
+        # [report] section
+        print("[report]")
+        print("> plot_bkg_list:", self.plot_bkg_list)
+        print("> plot_density:", self.plot_density)
+        print("> apply_data:", self.apply_data)
+        print("> apply_data_range:", self.apply_data_range)
+        print("> kine_cfg:", self.kine_cfg)
+        print("> book_roc:", self.book_roc)
+        print("> book_train_test_compare:", self.book_train_test_compare)
+        print("> book_importance_study:", self.book_importance_study)
+        print("> book_mc_data_compare:", self.book_mc_data_compare)
+        print("> book_kine_study:", self.book_kine_study)
+        print("> book_cut_kine_study:", self.book_cut_kine_study)
+        print("> dnn_cut_list:", self.dnn_cut_list)
+        print("> book_cor_matrix:", self.book_cor_matrix)
+        print("> book_significance_scan:", self.book_significance_scan)
+        print("> book_2d_significance_scan:", self.book_2d_significance_scan)
+        print("> book_fit_ntup:", self.book_fit_ntup)
+        print("> fit_ntup_branches:", self.fit_ntup_branches)
+        print("> fit_ntup_region:", self.fit_ntup_region)
+        print("> ntup_save_dir:", self.ntup_save_dir)
+        print("> significance_algo:", self.significance_algo)
+        print("> significance_cut_ranges_dn:", self.significance_cut_ranges_dn)
+        print("> significance_cut_ranges_up:", self.significance_cut_ranges_up)
+        print("> show_report:", self.show_report)
+        print("> save_pdf_report:", self.save_pdf_report)
+        print("> save_tb_logs:", self.save_tb_logs)
+        print("> verbose:", self.verbose)
+        print("> check_model_epoch:", self.check_model_epoch)
+        print("#" * 80)
 
     def set_para(self, parsed_val, data_type, config_parser, section, val_name):
         """Sets parameters for training manually."""
