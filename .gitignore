@@ -7,8 +7,7 @@ test/*
 run/*
 lfv_pdnn.egg-info/*
 env_setup/*
-share/TrexFitter/backups
-share/TrexFitter/test
+share/TrexFitter/
 
 # Side files that are not needed to be saved #
 *.pyc
@@ -20,9 +19,12 @@ share/TrexFitter/test
 *.h5
 
 # Don't save ini file unless dicided to do so
-*.ini
+#*.ini
 
 # Packages #
 *.ipynb
 share/zprime/apply/loop_low_mass_point.sh
 share/zprime/apply/loop_mass_point.sh
+
+# dynamic ignores
+docker/backup_Dockerfile
