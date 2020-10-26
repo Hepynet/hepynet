@@ -2,9 +2,9 @@ import glob
 import json
 import math
 import os
-import warnings
 
 import numpy as np
+from lfv_pdnn.common.logging_cfg import *
 
 
 def create_folders(foldernames, parent_path="./"):
@@ -63,7 +63,7 @@ def get_file_list(directory, search_pattern, out_name_identifier="None"):
     absolute_file_list = glob.glob(directory + "/" + search_pattern, recursive=True)
     absolute_file_list.sort()
     if len(absolute_file_list) == 0:
-        warnings.warn("Empty file list, please check input.")
+        logging.warning("Empty file list, please check input.")
     # Get file name match the pattern
     file_name_list = [os.path.basename(path) for path in absolute_file_list]
     # Rename file_name_list if out_name_identifier is specified
@@ -80,15 +80,15 @@ def get_file_list(directory, search_pattern, out_name_identifier="None"):
             if name == name_check:
                 num_same_name += 1
         if num_same_name > 1:
-            warnings.warn("Same file name detected.")
+            logging.warning("Same file name detected.")
     return absolute_file_list, file_name_list
 
 
-def get_newest_file_version(path_pattern, n_digit=2, ver_num=None):
+def get_newest_file_version(path_pattern, n_digit=2, ver_num=None, use_existing=False):
     """Check existed file and return last available file path with version.
 
   Version range 00 -> 99 (or 999)
-  If reach limit, last available version will be used. 99/999
+  If reach limit, last available version will be used. 99 (or 999)
 
   """
     # return file path if ver_num is given
@@ -104,18 +104,24 @@ def get_newest_file_version(path_pattern, n_digit=2, ver_num=None):
     while os.path.exists(path):
         ver_num += 1
         path = path_pattern.format(str(ver_num).zfill(n_digit))
+    if use_existing:
+        if ver_num < 1:
+            logging.warning("Non existing folder found! Using 0 for the counting.")
+            path = path_pattern.format(str(0).zfill(n_digit))
+        else:
+            path = path_pattern.format(str(ver_num - 1).zfill(n_digit))
     if ver_num > max_version:
-        warnings.warn(
+        logging.warning(
             "Too much model version detected at same date. \
       Will only keep maximum {} different versions.".format(
                 max_version
             )
         )
-        warnings.warn("Version {} will be overwrite!".format(max_version))
+        logging.warning("Version {} will be overwrite!".format(max_version))
         ver_num = max_version
     return {
         "ver_num": ver_num,
-        "path": path_pattern.format(str(ver_num).zfill(n_digit)),
+        "path": path,
     }
 
 
@@ -189,14 +195,14 @@ def read_dict_from_txt(file_path, key_type="str", value_type="str"):
                     key = eval(content1)
                 except ZeroDivisionError:
                     key_error = True
-                    warnings.warn("Float division by zero.")
+                    logging.warning("Float division by zero.")
                     continue  # skip invalid key
                 except:
                     key_error = True
-                    warnings.warn("Unknown evaluation error.")
+                    logging.warning("Unknown evaluation error.")
                     continue  # skip invalid key
             else:
-                warnings.warn("Unrecognized key type.")
+                logging.warning("Unrecognized key type.")
             # get value
             if value_type == "str":
                 value = content2.strip()
@@ -206,16 +212,16 @@ def read_dict_from_txt(file_path, key_type="str", value_type="str"):
                 except ZeroDivisionError:
                     value_error = True
                     value = 0  # set default value
-                    warnings.warn("Float division by zero.")
+                    logging.warning("Float division by zero.")
                 except:
                     value_error = True
                     value = 0  # set default value
-                    warnings.warn("Unknown evaluation error.")
+                    logging.warning("Unknown evaluation error.")
             else:
-                warnings.warn("Unrecognized value type.")
+                logging.warning("Unrecognized value type.")
             # save dict item
             if key in dict_output:
-                warnings.warn("Key already exists, overwriting value...")
+                logging.warning("Key already exists, overwriting value...")
                 if value_error == True:
                     continue  # skip invalid value if value of key already exists
             dict_output[key] = value
