@@ -4,8 +4,8 @@ import warnings
 from sys import getsizeof
 
 import numpy as np
-
 from lfv_pdnn.common import array_utils
+from lfv_pdnn.common.logging_cfg import *
 from lfv_pdnn.train import train_utils
 
 
@@ -157,10 +157,6 @@ class Feedbox(object):
         else:
             warnings.warn("Unknown input_type")
             return None
-        # read array from dict
-        ####
-        # print("#### array_key", array_key)
-        # print("#### array_dict keys", list(array_dict.keys()))
         if array_key in list(array_dict.keys()):
             array_out = array_dict[array_key]
         elif array_key == "all":
@@ -183,14 +179,15 @@ class Feedbox(object):
             array_out = array_utils.modify_array(
                 array_out, remove_negative_weight=True,
             )
-        return array_out
+        return array_out.copy()
 
     def get_reshape(self, input_type, array_key="all"):
         x_reshape = self.get_raw(input_type, array_key=array_key)
+        print("x_reshape shape:", x_reshape.shape)
         x_reshape[:, 0:-2] = train_utils.norarray(
             x_reshape[:, 0:-2], average=self.norm_means, variance=self.norm_variances,
         )
-        return x_reshape
+        return x_reshape.copy()
 
     def get_reweight(
         self,
@@ -271,9 +268,6 @@ class Feedbox(object):
             ys_element[0] = 1
             ys = np.tile(ys_element, (len(xs_reweight), 1))
             for node_num, bkg_node in enumerate(multi_class_bkgs):
-                ####
-                print("#### bkg_node:", bkg_node)
-
                 bkg_node_list = ("".join(bkg_node.split())).split("+")
                 xb_reweight_node = None
                 for bkg_ele in bkg_node_list:
@@ -302,7 +296,6 @@ class Feedbox(object):
                 else:
                     xb_reweight = np.concatenate((xb_reweight, xb_reweight_node))
                     yb = np.concatenate((yb, yb_single))
-                print("#### node weights:", np.sum(xb_reweight_node[:, -1]))
             xb_reweight = array_utils.modify_array(
                 xb_reweight, norm=True, sumofweight=self.bkg_weight
             )
@@ -349,10 +342,6 @@ class Feedbox(object):
                 x_test[:, -1],
             )
         else:
-            ####
-            print("#### in feed_box")
-            print("#### y_train shape:", y_train.shape)
-            print("#### ys_train shape:", ys_train.shape)
             return (
                 x_train,
                 x_test,

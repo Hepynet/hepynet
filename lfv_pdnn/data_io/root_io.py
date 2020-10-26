@@ -96,6 +96,9 @@ def get_npy_individuals(
                     else:
                         npy_array = np.concatenate((npy_array, temp_array), axis=1)
             except:
+                print(
+                    "Failed to get arrays from mc16a/d/e folders, trying to consider run2/all as folder name."
+                )
                 directory = npy_path + "/" + campaign + "/" + region
                 for feature in selected_features + [channel, "weight"]:
                     temp_array = np.load(
@@ -130,79 +133,63 @@ def get_npy_individuals(
         total_weights = np.sum(npy_array[:, -1])
         print(npy, "shape:", npy_array.shape, "total weights:", total_weights)
 
-        if len(cut_features) > 0:
-            cut_array = None
-            if campaign in ["run2", "all"]:
-                try:
-                    directory = npy_path
-                    for feature in cut_features:
-                        temp_array1 = np.load(
-                            directory
-                            + "/mc16a/"
-                            + region
-                            + "/"
-                            + npy_prefix
-                            + "_"
-                            + npy
-                            + "_"
-                            + feature
-                            + ".npy"
-                        )
-                        temp_array1 = np.reshape(temp_array1, (-1, 1))
-                        temp_array2 = np.load(
-                            directory
-                            + "/mc16d/"
-                            + region
-                            + "/"
-                            + npy_prefix
-                            + "_"
-                            + npy
-                            + "_"
-                            + feature
-                            + ".npy"
-                        )
-                        temp_array2 = np.reshape(temp_array2, (-1, 1))
-                        temp_array3 = np.load(
-                            directory
-                            + "/mc16e/"
-                            + region
-                            + "/"
-                            + npy_prefix
-                            + "_"
-                            + npy
-                            + "_"
-                            + feature
-                            + ".npy"
-                        )
-                        temp_array3 = np.reshape(temp_array3, (-1, 1))
-                        temp_array = np.concatenate(
-                            (temp_array1, temp_array2, temp_array3), axis=0
-                        )
-                        if cut_array is None:
-                            cut_array = temp_array
-                        else:
-                            cut_array = np.concatenate((cut_array, temp_array), axis=1)
-                except:
-                    directory = npy_path + "/" + campaign + "/" + region
-                    for feature in cut_features:
-                        temp_array = np.load(
-                            directory
-                            + "/"
-                            + npy_prefix
-                            + "_"
-                            + npy
-                            + "_"
-                            + feature
-                            + ".npy"
-                        )
-                        temp_array = np.reshape(temp_array, (-1, 1))
-                        if cut_array is None:
-                            cut_array = temp_array
-                        else:
-                            cut_array = np.concatenate((cut_array, temp_array), axis=1)
-            else:
+        cut_features += [channel]
+        cut_values += [1]
+        cut_types += ["="]
+
+        cut_array = None
+        if campaign in ["run2", "all"]:
+            try:
+                directory = npy_path
+                for feature in cut_features:
+                    temp_array1 = np.load(
+                        directory
+                        + "/mc16a/"
+                        + region
+                        + "/"
+                        + npy_prefix
+                        + "_"
+                        + npy
+                        + "_"
+                        + feature
+                        + ".npy"
+                    )
+                    temp_array1 = np.reshape(temp_array1, (-1, 1))
+                    temp_array2 = np.load(
+                        directory
+                        + "/mc16d/"
+                        + region
+                        + "/"
+                        + npy_prefix
+                        + "_"
+                        + npy
+                        + "_"
+                        + feature
+                        + ".npy"
+                    )
+                    temp_array2 = np.reshape(temp_array2, (-1, 1))
+                    temp_array3 = np.load(
+                        directory
+                        + "/mc16e/"
+                        + region
+                        + "/"
+                        + npy_prefix
+                        + "_"
+                        + npy
+                        + "_"
+                        + feature
+                        + ".npy"
+                    )
+                    temp_array3 = np.reshape(temp_array3, (-1, 1))
+                    temp_array = np.concatenate(
+                        (temp_array1, temp_array2, temp_array3), axis=0
+                    )
+                    if cut_array is None:
+                        cut_array = temp_array
+                    else:
+                        cut_array = np.concatenate((cut_array, temp_array), axis=1)
+            except:
                 directory = npy_path + "/" + campaign + "/" + region
-                cut_array = None
                 for feature in cut_features:
                     temp_array = np.load(
                         directory
@@ -219,32 +206,45 @@ def get_npy_individuals(
                         cut_array = temp_array
                     else:
                         cut_array = np.concatenate((cut_array, temp_array), axis=1)
-            # Get indexes that pass cuts
-            assert len(cut_features) == len(cut_values) and len(cut_features) == len(
-                cut_types
-            ), "cut_features and cut_values and cut_types should have same length."
-            pass_index = None
-            for cut_feature_id, (cut_value, cut_type) in enumerate(
-                zip(cut_values, cut_types)
-            ):
-                temp_index = array_utils.get_cut_index_value(
-                    cut_array[:, cut_feature_id], cut_value, cut_type
+        else:
+            directory = npy_path + "/" + campaign + "/" + region
+            cut_array = None
+            for feature in cut_features:
+                temp_array = np.load(
+                    directory + "/" + npy_prefix + "_" + npy + "_" + feature + ".npy"
                 )
-                if pass_index is None:
-                    pass_index = temp_index
+                temp_array = np.reshape(temp_array, (-1, 1))
+                if cut_array is None:
+                    cut_array = temp_array
                 else:
-                    pass_index = np.intersect1d(pass_index, temp_index)
-            npy_array = npy_array[pass_index.flatten(), :]
-
-            total_weights = np.sum(npy_array[:, -1])
-            print(
-                npy,
-                "shape:",
-                npy_array.shape,
-                "total weights:",
-                total_weights,
-                "(after cuts)",
+                    cut_array = np.concatenate((cut_array, temp_array), axis=1)
+        # Get indexes that pass cuts
+        assert len(cut_features) == len(cut_values) and len(cut_features) == len(
+            cut_types
+        ), "cut_features and cut_values and cut_types should have same length."
+        pass_index = None
+        for cut_feature_id, (cut_value, cut_type) in enumerate(
+            zip(cut_values, cut_types)
+        ):
+            temp_index = array_utils.get_cut_index_value(
+                cut_array[:, cut_feature_id], cut_value, cut_type
             )
+            if pass_index is None:
+                pass_index = temp_index
+            else:
+                pass_index = np.intersect1d(pass_index, temp_index)
+        npy_array = npy_array[pass_index.flatten(), :]
+
+        total_weights = np.sum(npy_array[:, -1])
+        print(
+            npy,
+            "shape:",
+            npy_array.shape,
+            "total weights:",
+            total_weights,
+            "(after cuts)",
+        )
+
         return_dict[npy] = npy_array
         added_weights += total_weights
 
