@@ -156,8 +156,9 @@ class job_executor(object):
         self.significance_algo = False
         self.significance_cut_ranges_dn = []
         self.significance_cut_ranges_up = []
-        self.show_report = None
-        self.save_pdf_report = None
+        self.enable_model_study = None
+        self.pop_plots = None
+        self.print_report = None
         self.save_tb_logs = None
         self.verbose = None
         self.check_model_epoch = None
@@ -175,8 +176,21 @@ class job_executor(object):
             self.get_config()
         self.show_configurations()
         # Set save sub-directory for this task
-        dir_pattern = self.save_dir + "/" + self.datestr + "_" + self.job_name + "_v{}"
-        self.save_sub_dir = common_utils.get_newest_file_version(dir_pattern)["path"]
+        if self.job_type == "train":
+            dir_pattern = (
+                self.save_dir + "/" + self.datestr + "_" + self.job_name + "_v{}"
+            )
+            self.save_sub_dir = common_utils.get_newest_file_version(dir_pattern)[
+                "path"
+            ]
+        elif self.job_type == "apply":
+            # use same directory as input "train" directory for "apply" type jobs
+            dir_pattern = (
+                self.save_dir + "/" + self.datestr + "_" + self.load_job_name + "_v{}"
+            )
+            self.save_sub_dir = common_utils.get_newest_file_version(
+                dir_pattern, use_existing=True
+            )["path"]
         # Suppress inevitably ROOT warnings in python
         ROOT.gROOT.ProcessLine("gErrorIgnoreLevel = 2001;")
         # Execute job(s)
@@ -205,6 +219,15 @@ class job_executor(object):
         """Execute single DNN training with given configuration."""
         # Prepare
         job_start_time = time.perf_counter()
+
+        if self.job_type == "train":
+            # model load directory should be same as save directory for "train" type jobs
+            self.load_dir = self.save_dir
+            self.load_job_name = self.job_name
+        elif self.job_type == "apply":
+            if self.load_dir == None:
+                self.load_dir = self.save_dir
+
         if self.save_tb_logs:
             save_dir = self.save_sub_dir + "/tb_logs"
             if not os.path.exists(save_dir):
@@ -349,11 +372,7 @@ class job_executor(object):
             self.model_wrapper.save_model(
                 save_dir=mod_save_path, file_name=model_save_name
             )
-        if self.job_type == "train":
-            # model load directory should be same as save directory for "train" type jobs
-            self.load_dir = self.save_dir
-            self.load_job_name = self.job_name
-        if self.show_report or self.save_pdf_report:
+        if self.enable_model_study:
             # Performance plots
             self.fig_performance_path = None
             self.report_path = None
@@ -370,7 +389,6 @@ class job_executor(object):
                     apply_data=False,
                     figsize=(8, 6),
                     style_cfg_path=self.kine_cfg,
-                    save_fig=True,
                     save_dir=self.save_sub_dir + "/kinematics/raw",
                 )
                 evaluate.plot_input_distributions(
@@ -378,7 +396,6 @@ class job_executor(object):
                     apply_data=False,
                     figsize=(8, 6),
                     style_cfg_path=self.kine_cfg,
-                    save_fig=True,
                     save_dir=self.save_sub_dir + "/kinematics/processed",
                     show_reshaped=True,
                 )
@@ -394,10 +411,9 @@ class job_executor(object):
                 evaluate.plot_correlation_matrix(
                     ax[1], self.model_wrapper.get_corrcoef(), matrix_key="sig"
                 )
-                if self.save_pdf_report:
-                    fig_save_path = save_dir + "/correlation_matrix.png"
-                    self.fig_correlation_matrix_path = fig_save_path
-                    fig.savefig(fig_save_path)
+                fig_save_path = save_dir + "/correlation_matrix.png"
+                self.fig_correlation_matrix_path = fig_save_path
+                fig.savefig(fig_save_path)
 
             model_path_list = ["_final"]
             if self.check_model_epoch:
@@ -429,8 +445,8 @@ class job_executor(object):
                     self.fig_performance_path = fig_save_path
                     self.model_wrapper.show_performance(
                         apply_data=False,  # don't apply data in training performance
-                        show_fig=self.show_report,
-                        save_fig=self.save_pdf_report,
+                        show_fig=self.pop_plots,
+                        save_fig=True,
                         save_dir=save_dir,
                         job_type=self.job_type,
                     )
@@ -440,7 +456,7 @@ class job_executor(object):
                         evaluate.plot_multi_class_roc(
                             self.model_wrapper,
                             figsize=(12, 9),
-                            show_fig=self.show_report,
+                            show_fig=self.pop_plots,
                             save_dir=save_dir,
                         )
                     if self.book_train_test_compare:
@@ -500,7 +516,6 @@ class job_executor(object):
                                 apply_data=False,
                                 figsize=(8, 6),
                                 style_cfg_path=self.kine_cfg,
-                                save_fig=True,
                                 save_dir=self.save_sub_dir
                                 + "/kinematics/model_{}_cut_p{}".format(
                                     identifier, dnn_cut * 100
@@ -520,12 +535,11 @@ class job_executor(object):
                             significance_algo=self.significance_algo,
                             suffix="_" + identifier,
                         )
-                        if self.save_pdf_report:
-                            fig_save_path = (
-                                save_dir + "/significance_scan_" + identifier + ".png"
-                            )
-                            self.fig_significance_scan_path = fig_save_path
-                            fig.savefig(fig_save_path)
+                        fig_save_path = (
+                            save_dir + "/significance_scan_" + identifier + ".png"
+                        )
+                        self.fig_significance_scan_path = fig_save_path
+                        fig.savefig(fig_save_path)
                     # 2d significance scan
                     if self.book_2d_significance_scan:
                         # save original model wrapper
@@ -585,7 +599,7 @@ class job_executor(object):
                             ntup_dir=ntup_dir,
                         )
 
-        if self.save_pdf_report:
+        if self.print_report:
             self.fig_dnn_scores_lin_path = save_dir + "/DNN_scores_lin_final.png"
             self.fig_dnn_scores_log_path = save_dir + "/DNN_scores_log_final.png"
             pdf_save_path = save_dir + "/summary_report.pdf"
@@ -866,6 +880,7 @@ class job_executor(object):
             for ini_path in import_ini_path_list:
                 print("Including:", ini_path)
                 self.get_config(ini_path)
+                print("Included:", ini_path)
         # Load [job] section
         self.try_parse_str("job_name", config, "job", "job_name")
         self.try_parse_str("job_type", config, "job", "job_type")
@@ -877,7 +892,7 @@ class job_executor(object):
         self.try_parse_str("campaign", config, "array", "campaign")
         self.try_parse_str("region", config, "array", "region")
         self.try_parse_str("arr_path", config, "array", "arr_path")
-        self.npy_path = self.arr_path + "/" + self.arr_version
+        self.npy_path = str(self.arr_path) + "/" + str(self.arr_version)
         self.try_parse_str("bkg_key", config, "array", "bkg_key")
         self.try_parse_float("bkg_sumofweight", config, "array", "bkg_sumofweight")
         self.try_parse_str("sig_key", config, "array", "sig_key")
@@ -989,8 +1004,11 @@ class job_executor(object):
         self.try_parse_list(
             "significance_cut_ranges_up", config, "report", "significance_cut_ranges_up"
         )
-        self.try_parse_bool("show_report", config, "report", "show_report")
-        self.try_parse_bool("save_pdf_report", config, "report", "save_pdf_report")
+        self.try_parse_bool(
+            "enable_model_study", config, "report", "enable_model_study"
+        )
+        self.try_parse_bool("pop_plots", config, "report", "pop_plots")
+        self.try_parse_bool("print_report", config, "report", "print_report")
         self.try_parse_bool("save_tb_logs", config, "report", "save_tb_logs")
         self.try_parse_int("verbose", config, "report", "verbose")
         self.try_parse_bool("check_model_epoch", config, "report", "check_model_epoch")
@@ -1253,10 +1271,10 @@ class job_executor(object):
         # im2 = Image(fig, 3.2 * inch, 2.4 * inch)
         # reports.append(Table([[im1, im2]]))
         # significance scan and feature importance
-        if self.book_importance_study:
-            fig = self.fig_feature_importance_path
-            im = Image(fig, 3.2 * inch, 2.4 * inch)
-            reports.append(im)
+        # if self.book_importance_study:
+        #    fig = self.fig_feature_importance_path
+        #    im = Image(fig, 3.2 * inch, 2.4 * inch)
+        #    reports.append(im)
         if self.book_significance_scan:
             fig = self.fig_significance_scan_path
             im = Image(fig, 3.2 * inch, 2.4 * inch)
@@ -1271,7 +1289,7 @@ class job_executor(object):
 
     def show_configurations(self):
         print("#" * 80)
-        print("Configurations of this job is listed below:")
+        print("Configurations of this job are listed below:")
         print("#" * 80)
         # [job] section
         print("[job]")
@@ -1363,8 +1381,8 @@ class job_executor(object):
         print("> significance_algo:", self.significance_algo)
         print("> significance_cut_ranges_dn:", self.significance_cut_ranges_dn)
         print("> significance_cut_ranges_up:", self.significance_cut_ranges_up)
-        print("> show_report:", self.show_report)
-        print("> save_pdf_report:", self.save_pdf_report)
+        print("> enable_model_study:", self.enable_model_study)
+        print("> print_report:", self.print_report)
         print("> save_tb_logs:", self.save_tb_logs)
         print("> verbose:", self.verbose)
         print("> check_model_epoch:", self.check_model_epoch)

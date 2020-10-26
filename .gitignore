@@ -7,12 +7,18 @@ test/*
 run/*
 lfv_pdnn.egg-info/*
 env_setup/*
-share/TrexFitter/
 
 # Side files that are not needed to be saved #
-*.pyc
 *.bak
 *.ipynb_checkpoints*
+*.pdf
+*.png
+*.pyc
+*.tex
+*.yaml
+*.root
+*.xml
+TRexFitter/*/*
 
 # Output data (local only)
 *.json

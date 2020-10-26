@@ -32,7 +32,7 @@ def calculate_auc(x_plot, y_plot, weights, model, shuffle_col=None, rm_last_two=
         num_nodes = y_plot.shape[1]
         for node_id in range(num_nodes):
             fpr_dm, tpr_dm, _ = roc_curve(
-                y_plot[:, node_id], y_pred[:, node_id], sample_weight=x_plot[:, -1]
+                y_plot[:, node_id], y_pred[:, node_id], sample_weight=weights
             )
             sort_index = fpr_dm.argsort()
             fpr_dm = fpr_dm[sort_index]
@@ -43,7 +43,9 @@ def calculate_auc(x_plot, y_plot, weights, model, shuffle_col=None, rm_last_two=
     return auc_value
 
 
-def get_significances(model_wrapper, significance_algo="asimov"):
+def get_significances(
+    model_wrapper, significance_algo="asimov", multi_class_cut_branch=0
+):
     """Gets significances scan arrays.
     
     Return:
@@ -67,6 +69,8 @@ def get_significances(model_wrapper, significance_algo="asimov"):
     )
     sig_selected_arr = train_utils.get_valid_feature(sig_arr_temp)
     sig_predictions = model_wrapper.get_model().predict(sig_selected_arr)
+    if sig_predictions.ndim == 2:
+        sig_predictions = sig_predictions[:, multi_class_cut_branch]
     sig_predictions_weights = np.reshape(
         feedbox.get_array("xs", "reshape", array_key=sig_key)[:, -1], (-1, 1)
     )
@@ -80,6 +84,8 @@ def get_significances(model_wrapper, significance_algo="asimov"):
     )
     bkg_selected_arr = train_utils.get_valid_feature(bkg_arr_temp)
     bkg_predictions = model_wrapper.get_model().predict(bkg_selected_arr)
+    if bkg_predictions.ndim == 2:
+        bkg_predictions = bkg_predictions[:, multi_class_cut_branch]
     bkg_predictions_weights = np.reshape(
         feedbox.get_array("xb", "reshape", array_key=bkg_key)[:, -1], (-1, 1)
     )
@@ -220,7 +226,6 @@ def plot_feature_importance(
     )
     all_nodes = []
     if y_test.ndim == 2:
-        num_nodes = y_test.shape[1]
         all_nodes = ["sig"] + model_wrapper.model_hypers["output_bkg_node_names"]
     else:
         all_nodes = ["sig"]
@@ -238,7 +243,6 @@ def plot_feature_importance(
         current_auc = calculate_auc(
             x_test, y_test, weight_test, model, shuffle_col=num, rm_last_two=True
         )
-        print("#### current auc:", current_auc)
         feature_auc.append(current_auc)
     for node_id, node in enumerate(all_nodes):
         print("making importance plot for node:", node)
@@ -282,9 +286,9 @@ def plot_input_distributions(
     style_cfg_path=None,
     show_reshaped=False,
     dnn_cut=None,
+    multi_class_cut_branch=0,
     compare_cut_sb_separated=False,
     plot_density=True,
-    save_fig=False,
     save_dir=None,
     save_format="png",
 ):
@@ -322,6 +326,8 @@ def plot_input_distributions(
         )
         sig_selected_arr = train_utils.get_valid_feature(sig_arr_temp)
         sig_predictions = model_wrapper.get_model().predict(sig_selected_arr)
+        if sig_predictions.ndim == 2:
+            sig_predictions = sig_predictions[:, multi_class_cut_branch]
         sig_cut_index = array_utils.get_cut_index(sig_predictions, [dnn_cut], ["<"])
         sig_fill_weights_dnn = sig_fill_weights.copy()
         sig_fill_weights_dnn[sig_cut_index] = 0
@@ -334,6 +340,8 @@ def plot_input_distributions(
         )
         bkg_selected_arr = train_utils.get_valid_feature(bkg_arr_temp)
         bkg_predictions = model_wrapper.get_model().predict(bkg_selected_arr)
+        if bkg_predictions.ndim == 2:
+            bkg_predictions = bkg_predictions[:, multi_class_cut_branch]
         bkg_cut_index = array_utils.get_cut_index(bkg_predictions, [dnn_cut], ["<"])
         bkg_fill_weights_dnn = bkg_fill_weights.copy()
         bkg_fill_weights_dnn[bkg_cut_index] = 0
@@ -408,7 +416,7 @@ def plot_input_distributions(
             hist_col.draw(
                 draw_options="hist",
                 legend_title="legend",
-                draw_norm=False,
+                draw_norm=plot_density,
                 remove_empty_ends=True,
             )
             hist_col.save(
@@ -603,14 +611,7 @@ def plot_roc(
     x_plot = np.concatenate((xs, xb))
     y_plot = np.concatenate((ys, yb))
     y_pred = model.predict(train_utils.get_valid_feature(x_plot))
-    ####
-    print("#### x_plot shape:", x_plot.shape)
-    print("#### y_plot shape:", y_plot.shape)
-    print("#### y_pred shape:", y_pred.shape)
-    print("#### raw y_pred: ")
     print(y_pred[0:20, :])
-    for i in range(20):
-        print("#### y_plot:", y_plot[i], "| y_pred:", y_pred[i])
     fpr_dm, tpr_dm, _ = roc_curve(
         y_plot[:, node_num], y_pred[:, node_num], sample_weight=x_plot[:, -1]
     )
@@ -646,9 +647,6 @@ def plot_scores(
     log=False,
 ):
     """Plots score distribution for signal and background."""
-    ####
-    print("#### bkg_score shape", bkg_scores.shape)
-    print("#### bkg_weight shape", bkg_weight.shape)
     ax.hist(
         bkg_scores,
         weights=bkg_weight,
@@ -853,11 +851,85 @@ def plot_scores_separate_root(
     print("Plotting scores with bkg separated with ROOT.")
     all_nodes = ["sig"] + model_wrapper.model_hypers["output_bkg_node_names"]
     num_nodes = len(all_nodes)
+
+    model = model_wrapper.get_model()
+    feedbox = model_wrapper.feedbox
+    model_meta = model_wrapper.model_meta
+    bkg_dict = feedbox.xb_dict
+
+    # prepare background
+    if (type(bkg_plot_key_list) is not list) or len(bkg_plot_key_list) == 0:
+        # prepare plot key list sort with total weight by default
+        original_keys = list(bkg_dict.keys())
+        total_weight_list = []
+        for key in original_keys:
+            if len(bkg_dict[key]) == 0:
+                total_weight = 0
+            else:
+                total_weight = np.sum((bkg_dict[key])[:, -1])
+            total_weight_list.append(total_weight)
+        sort_indexes = np.argsort(np.array(total_weight_list))
+        bkg_plot_key_list = [original_keys[index] for index in sort_indexes]
+    bkg_predict_dict = {}
+    bkg_weight_dict = {}
+    for arr_key in bkg_plot_key_list:
+        bkg_arr_temp = bkg_dict[arr_key].copy()
+        bkg_arr_temp = array_utils.modify_array(bkg_arr_temp, select_channel=True)
+        if len(bkg_arr_temp) != 0:
+            bkg_arr_temp[:, 0:-2] = train_utils.norarray(
+                bkg_arr_temp[:, 0:-2],
+                average=np.array(model_meta["norm_average"]),
+                variance=np.array(model_meta["norm_variance"]),
+            )
+            selected_arr = train_utils.get_valid_feature(bkg_arr_temp)
+            predict_arr = model.predict(selected_arr)
+            predict_weight_arr = bkg_arr_temp[:, -1]
+        else:
+            predict_arr = np.array([])
+            predict_weight_arr = np.array([])
+        bkg_predict_dict[arr_key] = predict_arr
+        bkg_weight_dict[arr_key] = predict_weight_arr
+    # prepare signal
+    if sig_arr is None:
+        sig_key = model_meta["sig_key"]
+        predict_weight_arr = feedbox.get_array("xs", "reshape", array_key=sig_key)[
+            :, -1
+        ]
+        sig_arr_temp = feedbox.get_array("xs", "raw", array_key=sig_key)
+    else:
+        predict_weight_arr = sig_arr[:, -1]
+        sig_arr_temp = sig_arr.copy()
+    sig_arr_temp[:, 0:-2] = train_utils.norarray(
+        sig_arr_temp[:, 0:-2],
+        average=np.array(model_meta["norm_average"]),
+        variance=np.array(model_meta["norm_variance"]),
+    )
+    selected_arr = train_utils.get_valid_feature(sig_arr_temp)
+    sig_predict = model.predict(selected_arr)
+    sig_weight = predict_weight_arr
+    # prepare data
+    if apply_data:
+        if data_arr is None:
+            data_key = model_meta["data_key"]
+            predict_weight_arr = feedbox.get_array("xd", "reshape", array_key=data_key)[
+                :, -1
+            ]
+            data_arr_temp = feedbox.get_array("xd", "raw", array_key=data_key)
+        else:
+            predict_weight_arr = data_arr[:, -1]
+            data_arr_temp = data_arr.copy()
+        data_arr_temp = array_utils.modify_array(data_arr_temp, select_channel=True)
+        data_arr_temp[:, 0:-2] = train_utils.norarray(
+            data_arr_temp[:, 0:-2],
+            average=np.array(model_meta["norm_average"]),
+            variance=np.array(model_meta["norm_variance"]),
+        )
+        selected_arr = train_utils.get_valid_feature(data_arr_temp)
+        data_predict = model.predict(selected_arr)
+        data_weight = predict_weight_arr
+
+    # plot
     for node_num in range(num_nodes):
-        model = model_wrapper.get_model()
-        feedbox = model_wrapper.feedbox
-        model_meta = model_wrapper.model_meta
-        bkg_dict = feedbox.xb_dict
         plot_canvas = ROOT.TCanvas(plot_title, plot_title, 800, 800)
         plot_pad_score = ROOT.TPad("pad1", "pad1", 0, 0.3, 1, 1.0)
         plot_pad_score.SetBottomMargin(0)
@@ -866,37 +938,13 @@ def plot_scores_separate_root(
         plot_pad_score.cd()
         hist_list = []
         # plot background
-        if (type(bkg_plot_key_list) is not list) or len(bkg_plot_key_list) == 0:
-            # prepare plot key list sort with total weight by default
-            original_keys = list(bkg_dict.keys())
-            total_weight_list = []
-            for key in original_keys:
-                if len(bkg_dict[key]) == 0:
-                    total_weight = 0
-                else:
-                    total_weight = np.sum((bkg_dict[key])[:, -1])
-                total_weight_list.append(total_weight)
-            sort_indexes = np.argsort(np.array(total_weight_list))
-            bkg_plot_key_list = [original_keys[index] for index in sort_indexes]
         for arr_key in bkg_plot_key_list:
-            bkg_arr_temp = bkg_dict[arr_key].copy()
-            bkg_arr_temp = array_utils.modify_array(bkg_arr_temp, select_channel=True)
-            if len(bkg_arr_temp) != 0:
-                bkg_arr_temp[:, 0:-2] = train_utils.norarray(
-                    bkg_arr_temp[:, 0:-2],
-                    average=np.array(model_meta["norm_average"]),
-                    variance=np.array(model_meta["norm_variance"]),
-                )
-                selected_arr = train_utils.get_valid_feature(bkg_arr_temp)
-                predict_arr = model.predict(selected_arr)[:, node_num]
-                predict_weight_arr = bkg_arr_temp[:, -1]
-            else:
-                predict_arr = np.array([])
-                predict_weight_arr = np.array([])
             th1_temp = th1_tools.TH1FTool(
                 arr_key, arr_key, nbin=bins, xlow=x_range[0], xup=x_range[1]
             )
-            th1_temp.fill_hist(predict_arr, predict_weight_arr)
+            th1_temp.fill_hist(
+                bkg_predict_dict[arr_key][:, node_num], bkg_weight_dict[arr_key]
+            )
             hist_list.append(th1_temp)
         hist_stacked_bkgs = th1_tools.THStackTool(
             "bkg stack plot", plot_title, hist_list, canvas=plot_pad_score
@@ -908,22 +956,6 @@ def plot_scores_separate_root(
         hist_bkg_total = hist_stacked_bkgs.get_added_hist()
         total_weight_bkg = hist_bkg_total.get_hist().GetSumOfWeights()
         # plot signal
-        if sig_arr is None:
-            sig_key = model_meta["sig_key"]
-            predict_weight_arr = feedbox.get_array("xs", "reshape", array_key=sig_key)[
-                :, -1
-            ]
-            sig_arr_temp = feedbox.get_array("xs", "raw", array_key=sig_key)
-        else:
-            predict_weight_arr = sig_arr[:, -1]
-            sig_arr_temp = sig_arr.copy()
-        sig_arr_temp[:, 0:-2] = train_utils.norarray(
-            sig_arr_temp[:, 0:-2],
-            average=np.array(model_meta["norm_average"]),
-            variance=np.array(model_meta["norm_variance"]),
-        )
-        selected_arr = train_utils.get_valid_feature(sig_arr_temp)
-        predict_arr = model.predict(selected_arr)[:, node_num]
         if scale_sig:
             sig_title = "sig-scaled"
         else:
@@ -936,7 +968,7 @@ def plot_scores_separate_root(
             xup=x_range[1],
             canvas=plot_pad_score,
         )
-        hist_sig.fill_hist(predict_arr, predict_weight_arr)
+        hist_sig.fill_hist(sig_predict[:, node_num], sig_weight)
         total_weight_sig = hist_sig.get_hist().GetSumOfWeights()
         if scale_sig:
             total_weight = hist_stacked_bkgs.get_total_weights()
@@ -956,24 +988,6 @@ def plot_scores_separate_root(
         # plot data if required
         total_weight_data = 0
         if apply_data:
-            if data_arr is None:
-                data_key = model_meta["data_key"]
-                predict_weight_arr = feedbox.get_array(
-                    "xd", "reshape", array_key=data_key
-                )[:, -1]
-                data_arr_temp = feedbox.get_array("xd", "raw", array_key=data_key)
-            else:
-                predict_weight_arr = data_arr[:, -1]
-                data_arr_temp = data_arr.copy()
-            data_arr_temp = array_utils.modify_array(data_arr_temp, select_channel=True)
-            data_arr_temp[:, 0:-2] = train_utils.norarray(
-                data_arr_temp[:, 0:-2],
-                average=np.array(model_meta["norm_average"]),
-                variance=np.array(model_meta["norm_variance"]),
-            )
-            selected_arr = train_utils.get_valid_feature(data_arr_temp)
-            predict_arr = model.predict(selected_arr)[:, node_num]
-
             hist_data = th1_tools.TH1FTool(
                 "data added",
                 "data",
@@ -982,7 +996,7 @@ def plot_scores_separate_root(
                 xup=x_range[1],
                 canvas=plot_pad_score,
             )
-            hist_data.fill_hist(predict_arr, predict_weight_arr)
+            hist_data.fill_hist(data_predict[:, node_num], data_weight)
             hist_data.update_config("hist", "SetMarkerStyle", ROOT.kFullCircle)
             hist_data.update_config("hist", "SetMarkerColor", ROOT.kBlack)
             hist_data.update_config("hist", "SetMarkerSize", 0.8)
@@ -992,10 +1006,9 @@ def plot_scores_separate_root(
                 )
             hist_data.draw("same e1")
             total_weight_data = hist_data.get_hist().GetSumOfWeights()
+            hist_data.build_legend(0.4, 0.7, 0.6, 0.9)
         else:
-            hist_data = hist_sig
             total_weight_data = 0
-        hist_data.build_legend(0.4, 0.7, 0.6, 0.9)
 
         # ratio plot
         plot_canvas.cd()
@@ -1570,6 +1583,8 @@ def plot_2d_density(
     )
     selected_arr = train_utils.get_valid_feature(sig_arr_temp)
     predict_arr = model_wrapper.get_model().predict(selected_arr)
+    if predict_arr.ndim == 2:
+        predict_arr = predict_arr[:, 0]
     mass_index = job_wrapper.selected_features.index(job_wrapper.reset_feature_name)
     x = predict_arr
     y = sig_arr_original[:, mass_index]
@@ -1605,6 +1620,8 @@ def plot_2d_density(
     )
     selected_arr = train_utils.get_valid_feature(bkg_arr_temp)
     predict_arr = model_wrapper.get_model().predict(selected_arr)
+    if predict_arr.ndim == 2:
+        predict_arr = predict_arr[:, 0]
     mass_index = job_wrapper.selected_features.index(job_wrapper.reset_feature_name)
     x = predict_arr
     y = bkg_arr_original[:, mass_index]
@@ -1749,6 +1766,7 @@ def plot_2d_significance_scan(
     hist_sig.update_config("hist", "SetStats", 0)
     hist_sig.update_config("x_axis", "SetTitle", "dnn_cut")
     hist_sig.update_config("y_axis", "SetTitle", "mass point")
+    hist_sig.update_config("y_axis", "SetLabelOffset", 0.003)
     hist_sig.draw("colz")
     hist_sig_text.fill_hist(
         fill_array_x=x, fill_array_y=y, weight_array=np.array(w).round(decimals=2)

@@ -134,9 +134,9 @@ class Model_Sequential_Base(Model_Base):
         name,
         input_features,
         hypers,
-        sig_key="all",
-        bkg_key="all",
-        data_key="all",
+        sig_key=None,
+        bkg_key=None,
+        data_key=None,
         save_tb_logs=False,
         tb_logs_path=None,
     ):
@@ -276,7 +276,7 @@ class Model_Sequential_Base(Model_Base):
 
     def load_model_with_path(self, model_path, paras_path=None):
         """Loads model with given path
-        
+
         Note:
             Should load model parameters manually.
         """
@@ -333,7 +333,7 @@ class Model_Sequential_Base(Model_Base):
         # Save
         self.model.save(save_path)
         self.model_save_path = save_path
-        print("model:", self.model_name, "has been saved to:", save_path)
+        print(f"\033[F model:", self.model_name, "has been saved to:", save_path)
         # update path for json
         save_path = save_dir + "/" + file_name + "_paras.json"
         self.save_model_paras(save_path)
@@ -521,10 +521,6 @@ class Model_Sequential_Base(Model_Base):
             exit(1)
         if np.isnan(np.sum(y_train)):
             exit(1)
-        ####
-        # print("#### output_bkg_node_names", self.model_hypers["output_bkg_node_names"])
-        # print("#### x_train_selected shape", x_train_selected.shape)
-        # print("#### y_train shape", y_train.shape)
         self.get_model().summary()
         self.train_history = self.get_model().fit(
             x_train_selected,
@@ -532,7 +528,6 @@ class Model_Sequential_Base(Model_Base):
             batch_size=batch_size,
             epochs=epochs,
             validation_split=val_split,
-            #### class_weight=self.class_weight,
             sample_weight=x_train[:, -1],
             callbacks=train_callbacks,
             verbose=verbose,
@@ -684,11 +679,11 @@ class Model_Sequential_Flat(Model_Sequential_Base):
             name,
             input_features,
             hypers,
-            sig_key="all",
-            bkg_key="all",
-            data_key="all",
-            save_tb_logs=False,
-            tb_logs_path=None,
+            sig_key=sig_key,
+            bkg_key=bkg_key,
+            data_key=data_key,
+            save_tb_logs=save_tb_logs,
+            tb_logs_path=tb_logs_path,
         )
 
         self.model_label = "mod_seq"
@@ -768,9 +763,9 @@ class Model_Sequential_Multi_Class(Model_Sequential_Base):
             name,
             input_features,
             hypers,
-            sig_key="all",
-            bkg_key="all",
-            data_key="all",
+            sig_key=sig_key,
+            bkg_key=bkg_key,
+            data_key=data_key,
             save_tb_logs=False,
             tb_logs_path=None,
         )
