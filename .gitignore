@@ -7,6 +7,8 @@ test/*
 run/*
 lfv_pdnn.egg-info/*
 env_setup/*
+share/TrexFitter/backups
+share/TrexFitter/test
 
 # Side files that are not needed to be saved #
 *.pyc

@@ -33,7 +33,7 @@ from sklearn.metrics import auc, roc_curve
 
 import ROOT
 from lfv_pdnn.common import array_utils, common_utils
-from lfv_pdnn.data_io import feed_box, get_arrays
+from lfv_pdnn.data_io import feed_box, root_io
 from lfv_pdnn.train import evaluate, job_utils, model, train_utils
 
 SCANNED_PARAS = [
@@ -61,6 +61,7 @@ class job_executor(object):
 
     def __init__(self, input_path):
         """Initialize executor."""
+        # set up default values for parameters
         # general
         self.job_create_time = str(datetime.datetime.now())
         self.datestr = datetime.date.today().strftime("%Y-%m-%d")
@@ -79,6 +80,7 @@ class job_executor(object):
         # Initialize [array] section
         self.arr_version = None
         self.campaign = None
+        self.region = ""
         self.arr_path = None
         self.npy_path = None
         self.bkg_key = None
@@ -104,6 +106,7 @@ class job_executor(object):
         self.model_class = None
         self.layers = None
         self.nodes = None
+        self.output_bkg_node_names = []
         self.dropout_rate = 0.5
         self.momentum = 0.5
         self.nesterov = True
@@ -136,11 +139,20 @@ class job_executor(object):
         self.plot_density = True
         self.apply_data = False
         self.apply_data_range = []
+        self.book_roc = False
+        self.book_train_test_compare = False
         self.book_importance_study = False
+        self.book_mc_data_compare = False
+        self.book_kine_study = False
         self.book_cut_kine_study = False
         self.dnn_cut_list = []
+        self.book_cor_matrix = False
         self.book_significance_scan = False
         self.book_2d_significance_scan = False
+        self.book_fit_ntup = False
+        self.fit_ntup_branches = []
+        self.fit_ntup_region = None
+        self.ntup_save_dir = None
         self.significance_algo = False
         self.significance_cut_ranges_dn = []
         self.significance_cut_ranges_up = []
@@ -161,6 +173,7 @@ class job_executor(object):
         # Get config
         if not self.cfg_is_collected:
             self.get_config()
+        self.show_configurations()
         # Set save sub-directory for this task
         dir_pattern = self.save_dir + "/" + self.datestr + "_" + self.job_name + "_v{}"
         self.save_sub_dir = common_utils.get_newest_file_version(dir_pattern)["path"]
@@ -190,7 +203,6 @@ class job_executor(object):
 
     def execute_single_job(self):
         """Execute single DNN training with given configuration."""
-
         # Prepare
         job_start_time = time.perf_counter()
         if self.save_tb_logs:
@@ -215,6 +227,7 @@ class job_executor(object):
         hypers = {}
         hypers["layers"] = self.layers
         hypers["nodes"] = self.nodes
+        hypers["output_bkg_node_names"] = self.output_bkg_node_names
         hypers["learn_rate"] = self.learn_rate
         hypers["decay"] = self.learn_rate_decay
         hypers["dropout_rate"] = self.dropout_rate
@@ -235,9 +248,10 @@ class job_executor(object):
             tb_logs_path=self.save_tb_logs_path_subdir,
         )
         # Set up training or loading model
-        bkg_dict = get_arrays.get_npy_individuals(
+        bkg_dict = root_io.get_npy_individuals(
             self.npy_path,
             self.campaign,
+            self.region,
             self.channel,
             self.bkg_list,
             self.selected_features,
@@ -246,9 +260,10 @@ class job_executor(object):
             cut_values=self.cut_values,
             cut_types=self.cut_types,
         )
-        sig_dict = get_arrays.get_npy_individuals(
+        sig_dict = root_io.get_npy_individuals(
             self.npy_path,
             self.campaign,
+            self.region,
             self.channel,
             self.sig_list,
             self.selected_features,
@@ -258,9 +273,10 @@ class job_executor(object):
             cut_types=self.cut_types,
         )
         if self.apply_data:
-            data_dict = get_arrays.get_npy_individuals(
+            data_dict = root_io.get_npy_individuals(
                 self.npy_path,
                 self.campaign,
+                self.region,
                 self.channel,
                 self.data_list,
                 self.selected_features,
@@ -347,37 +363,41 @@ class job_executor(object):
             if not os.path.exists(save_dir):
                 os.makedirs(save_dir)
             # show and save according to setting
-            evaluate.plot_input_distributions(
-                self.model_wrapper,
-                apply_data=False,
-                figsize=(8, 6),
-                style_cfg_path=self.kine_cfg,
-                save_fig=True,
-                save_dir=self.save_sub_dir + "/kinematics/raw",
-            )
-            evaluate.plot_input_distributions(
-                self.model_wrapper,
-                apply_data=False,
-                figsize=(8, 6),
-                style_cfg_path=self.kine_cfg,
-                save_fig=True,
-                save_dir=self.save_sub_dir + "/kinematics/processed",
-                show_reshaped=True,
-            )
+            if self.book_kine_study:
+                print(">> Making input distribution plots")
+                evaluate.plot_input_distributions(
+                    self.model_wrapper,
+                    apply_data=False,
+                    figsize=(8, 6),
+                    style_cfg_path=self.kine_cfg,
+                    save_fig=True,
+                    save_dir=self.save_sub_dir + "/kinematics/raw",
+                )
+                evaluate.plot_input_distributions(
+                    self.model_wrapper,
+                    apply_data=False,
+                    figsize=(8, 6),
+                    style_cfg_path=self.kine_cfg,
+                    save_fig=True,
+                    save_dir=self.save_sub_dir + "/kinematics/processed",
+                    show_reshaped=True,
+                )
             # Make correlation plot
-            fig, ax = plt.subplots(ncols=2, figsize=(16, 8))
-            ax[0].set_title("bkg correlation")
-            evaluate.plot_correlation_matrix(
-                ax[0], self.model_wrapper.get_corrcoef(), matrix_key="bkg"
-            )
-            ax[1].set_title("sig correlation")
-            evaluate.plot_correlation_matrix(
-                ax[1], self.model_wrapper.get_corrcoef(), matrix_key="sig"
-            )
-            if self.save_pdf_report:
-                fig_save_path = save_dir + "/correlation_matrix.png"
-                self.fig_correlation_matrix_path = fig_save_path
-                fig.savefig(fig_save_path)
+            if self.book_cor_matrix:
+                print(">> Making correlation plot")
+                fig, ax = plt.subplots(ncols=2, figsize=(16, 8))
+                ax[0].set_title("bkg correlation")
+                evaluate.plot_correlation_matrix(
+                    ax[0], self.model_wrapper.get_corrcoef(), matrix_key="bkg"
+                )
+                ax[1].set_title("sig correlation")
+                evaluate.plot_correlation_matrix(
+                    ax[1], self.model_wrapper.get_corrcoef(), matrix_key="sig"
+                )
+                if self.save_pdf_report:
+                    fig_save_path = save_dir + "/correlation_matrix.png"
+                    self.fig_correlation_matrix_path = fig_save_path
+                    fig.savefig(fig_save_path)
 
             model_path_list = ["_final"]
             if self.check_model_epoch:
@@ -405,62 +425,75 @@ class job_executor(object):
                         identifier = "epoch{:02d}".format(model_num)
                         self.model_wrapper.load_model_with_path(model_path)
                     # Make performance plots
-                    fig_save_path = save_dir + "/performance_" + identifier + ".png"
+                    print(">> Making performance plots")
                     self.fig_performance_path = fig_save_path
                     self.model_wrapper.show_performance(
                         apply_data=False,  # don't apply data in training performance
                         show_fig=self.show_report,
                         save_fig=self.save_pdf_report,
-                        save_path=fig_save_path,
+                        save_dir=save_dir,
                         job_type=self.job_type,
                     )
+                    # Overtrain check
+                    if self.book_roc:
+                        print(">> Making roc curve plot")
+                        evaluate.plot_multi_class_roc(
+                            self.model_wrapper,
+                            figsize=(12, 9),
+                            show_fig=self.show_report,
+                            save_dir=save_dir,
+                        )
+                    if self.book_train_test_compare:
+                        print(">> Making train/test compare plots")
+                        if (
+                            self.job_type == "train"
+                            and self.model_wrapper.feedbox.reset_mass == True
+                        ):
+                            evaluate.plot_overtrain_check(
+                                self.model_wrapper,
+                                show_fig=False,
+                                save_dir=save_dir,
+                                bins=50,
+                                log=True,
+                                reset_mass=True,
+                            )
+                        evaluate.plot_overtrain_check(
+                            self.model_wrapper,
+                            show_fig=False,
+                            save_dir=save_dir,
+                            bins=50,
+                            log=True,
+                            reset_mass=False,
+                        )
                     # Make feature importance check
                     if self.book_importance_study:
-                        if len(self.selected_features) > 16:
-                            canvas_height = 16
-                        else:
-                            canvas_height = len(self.selected_features)
-                        fig, ax = plt.subplots(figsize=(9, canvas_height))
-                        fig_save_path = save_dir + "/importance_" + identifier + ".png"
-                        self.fig_feature_importance_path = fig_save_path
+                        print(">> Checking input feature importance")
                         evaluate.plot_feature_importance(
-                            ax, self.model_wrapper, max_feature=12
+                            self.model_wrapper,
+                            save_dir,
+                            identifier=identifier,
+                            max_feature=12,
                         )
-                        fig.savefig(fig_save_path)
-
                     # Extra plots (use model on non-mass-reset arrays)
-                    evaluate.plot_scores_separate_root(
-                        self.model_wrapper,
-                        self.plot_bkg_list,
-                        apply_data=self.apply_data,
-                        apply_data_range=self.apply_data_range,
-                        plot_title="DNN scores (lin)",
-                        bins=50,
-                        range=(0, 1),
-                        scale_sig=True,
-                        density=self.plot_density,
-                        log_scale=False,
-                        save_plot=True,
-                        save_dir=save_dir,
-                        save_file_name="DNN_scores_lin_" + identifier,
-                    )
-                    evaluate.plot_scores_separate_root(
-                        self.model_wrapper,
-                        self.plot_bkg_list,
-                        apply_data=self.apply_data,
-                        apply_data_range=self.apply_data_range,
-                        plot_title="DNN scores (log)",
-                        bins=50,
-                        range=(0, 1),
-                        scale_sig=True,
-                        density=self.plot_density,
-                        log_scale=True,
-                        save_plot=True,
-                        save_dir=save_dir,
-                        save_file_name="DNN_scores_log_" + identifier,
-                    )
+                    if self.book_mc_data_compare:
+                        print(">> Making data/mc scores distributions plots")
+                        evaluate.plot_scores_separate_root(
+                            self.model_wrapper,
+                            self.plot_bkg_list,
+                            apply_data=self.apply_data,
+                            apply_data_range=self.apply_data_range,
+                            plot_title="DNN scores",
+                            bins=50,
+                            x_range=(0, 1),
+                            scale_sig=True,
+                            density=self.plot_density,
+                            save_plot=True,
+                            save_dir=save_dir,
+                            save_file_name="DNN_scores_" + identifier,
+                        )
                     # show kinemetics at different dnn cut
                     if self.book_cut_kine_study:
+                        print(">> Making kinematic plots with different DNN cut")
                         for dnn_cut in self.dnn_cut_list:
                             evaluate.plot_input_distributions(
                                 self.model_wrapper,
@@ -534,6 +567,23 @@ class job_executor(object):
                         )
                         # restore original model wrapper
                         self.model_wrapper = temp_model_wrapper
+                    if self.book_fit_ntup:
+                        save_region = self.fit_ntup_region
+                        if save_region is None:
+                            save_region = self.region
+                        ntup_dir = (
+                            self.ntup_save_dir + "/" + self.campaign + "/" + save_region
+                        )
+                        feedbox = self.model_wrapper.feedbox
+                        keras_model = self.model_wrapper.get_model()
+                        # dump signal ntuple
+                        train_utils.dump_fit_ntup(
+                            feedbox,
+                            keras_model,
+                            self.fit_ntup_branches,
+                            self.output_bkg_node_names,
+                            ntup_dir=ntup_dir,
+                        )
 
         if self.save_pdf_report:
             self.fig_dnn_scores_lin_path = save_dir + "/DNN_scores_lin_final.png"
@@ -669,6 +719,7 @@ class job_executor(object):
             hypers = {}
             hypers["layers"] = self.layers
             hypers["nodes"] = self.nodes
+            hypers["output_bkg_node_names"] = self.output_bkg_node_names
             hypers["learn_rate"] = self.learn_rate
             hypers["decay"] = self.learn_rate_decay
             hypers["dropout_rate"] = self.dropout_rate
@@ -687,9 +738,10 @@ class job_executor(object):
                 data_key=self.data_key,
             )
             # Set up training or loading model
-            bkg_dict = get_arrays.get_npy_individuals(
+            bkg_dict = root_io.get_npy_individuals(
                 self.npy_path,
                 self.campaign,
+                self.region,
                 self.channel,
                 self.bkg_list,
                 self.selected_features,
@@ -698,9 +750,10 @@ class job_executor(object):
                 cut_values=self.cut_values,
                 cut_types=self.cut_types,
             )
-            sig_dict = get_arrays.get_npy_individuals(
+            sig_dict = root_io.get_npy_individuals(
                 self.npy_path,
                 self.campaign,
+                self.region,
                 self.channel,
                 self.sig_list,
                 self.selected_features,
@@ -710,9 +763,10 @@ class job_executor(object):
                 cut_types=self.cut_types,
             )
             if self.apply_data:
-                data_dict = get_arrays.get_npy_individuals(
+                data_dict = root_io.get_npy_individuals(
                     self.npy_path,
                     self.campaign,
+                    self.region,
                     self.channel,
                     self.data_list,
                     self.selected_features,
@@ -801,14 +855,17 @@ class job_executor(object):
         config = ConfigParser()
         config.read(ini_path)
         # Check whether need to import other (default) ini file first
-        default_ini_path = None
+        import_ini_path = None
+        import_ini_path_list = []
         try:
-            default_ini_path = config.get("config", "include")
+            import_ini_path = config.get("config", "include")
+            import_ini_path_list = import_ini_path.replace(" ", "").split(",")
         except:
             pass
-        if default_ini_path is not None:
-            print("Including:", default_ini_path)
-            self.get_config(default_ini_path)
+        if import_ini_path is not None:
+            for ini_path in import_ini_path_list:
+                print("Including:", ini_path)
+                self.get_config(ini_path)
         # Load [job] section
         self.try_parse_str("job_name", config, "job", "job_name")
         self.try_parse_str("job_type", config, "job", "job_type")
@@ -818,6 +875,7 @@ class job_executor(object):
         # Load [array] section
         self.try_parse_str("arr_version", config, "array", "arr_version")
         self.try_parse_str("campaign", config, "array", "campaign")
+        self.try_parse_str("region", config, "array", "region")
         self.try_parse_str("arr_path", config, "array", "arr_path")
         self.npy_path = self.arr_path + "/" + self.arr_version
         self.try_parse_str("bkg_key", config, "array", "bkg_key")
@@ -839,7 +897,7 @@ class job_executor(object):
         self.try_parse_bool("reset_feature", config, "array", "reset_feature")
         self.try_parse_str("reset_feature_name", config, "array", "reset_feature_name")
         self.try_parse_bool(
-            "rm_negative_weight_events", config, "model", "rm_negative_weight_events"
+            "rm_negative_weight_events", config, "array", "rm_negative_weight_events"
         )
         self.try_parse_list("cut_features", config, "array", "cut_features")
         self.try_parse_list("cut_values", config, "array", "cut_values")
@@ -849,6 +907,9 @@ class job_executor(object):
         self.try_parse_str("model_class", config, "model", "model_class")
         self.try_parse_int("layers", config, "model", "layers")
         self.try_parse_int("nodes", config, "model", "nodes")
+        self.try_parse_list(
+            "output_bkg_node_names", config, "model", "output_bkg_node_names"
+        )
         self.try_parse_float("dropout_rate", config, "model", "dropout_rate")
         self.try_parse_float("momentum", config, "model", "momentum")
         self.try_parse_bool("nesterov", config, "model", "nesterov")
@@ -895,19 +956,32 @@ class job_executor(object):
         self.try_parse_bool("apply_data", config, "report", "apply_data")
         self.try_parse_list("apply_data_range", config, "report", "apply_data_range")
         self.try_parse_str("kine_cfg", config, "report", "kine_cfg")
+        self.try_parse_bool("book_roc", config, "report", "book_roc")
+        self.try_parse_bool(
+            "book_train_test_compare", config, "report", "book_train_test_compare"
+        )
         self.try_parse_bool(
             "book_importance_study", config, "report", "book_importance_study"
         )
         self.try_parse_bool(
+            "book_mc_data_compare", config, "report", "book_mc_data_compare"
+        )
+        self.try_parse_bool("book_kine_study", config, "report", "book_kine_study")
+        self.try_parse_bool(
             "book_cut_kine_study", config, "report", "book_cut_kine_study"
         )
         self.try_parse_list("dnn_cut_list", config, "report", "dnn_cut_list")
+        self.try_parse_bool("book_cor_matrix", config, "report", "book_cor_matrix")
         self.try_parse_bool(
             "book_significance_scan", config, "report", "book_significance_scan"
         )
         self.try_parse_bool(
             "book_2d_significance_scan", config, "report", "book_2d_significance_scan"
         )
+        self.try_parse_bool("book_fit_ntup", config, "report", "book_fit_ntup")
+        self.try_parse_list("fit_ntup_branches", config, "report", "fit_ntup_branches")
+        self.try_parse_str("fit_ntup_region", config, "report", "fit_ntup_region")
+        self.try_parse_str("ntup_save_dir", config, "report", "ntup_save_dir")
         self.try_parse_str("significance_algo", config, "report", "significance_algo")
         self.try_parse_list(
             "significance_cut_ranges_dn", config, "report", "significance_cut_ranges_dn"
@@ -1162,22 +1236,22 @@ class job_executor(object):
         reports.append(Paragraph(ptext, styles["Justify"]))
         ptext = "-" * 80
         reports.append(Paragraph(ptext, styles["Justify"]))
-        fig = self.fig_performance_path
-        im = Image(fig, 6.4 * inch, 7.2 * inch)
-        reports.append(im)
+        # fig = self.fig_performance_path
+        # im = Image(fig, 6.4 * inch, 7.2 * inch)
+        # reports.append(im)
         # show total weights of sig/bkg/data
-        ptext = "sig total weight  : " + str(self.model_wrapper.total_weight_sig)
-        reports.append(Paragraph(ptext, styles["Justify"]))
-        ptext = "bkg total weight  : " + str(self.model_wrapper.total_weight_bkg)
-        reports.append(Paragraph(ptext, styles["Justify"]))
-        ptext = "data total weight : " + str(self.model_wrapper.total_weight_data)
-        reports.append(Paragraph(ptext, styles["Justify"]))
+        # ptext = "sig total weight  : " + str(self.model_wrapper.total_weight_sig)
+        # reports.append(Paragraph(ptext, styles["Justify"]))
+        # ptext = "bkg total weight  : " + str(self.model_wrapper.total_weight_bkg)
+        # reports.append(Paragraph(ptext, styles["Justify"]))
+        # ptext = "data total weight : " + str(self.model_wrapper.total_weight_data)
+        # reports.append(Paragraph(ptext, styles["Justify"]))
         # dnn scores
-        fig = self.fig_dnn_scores_lin_path
-        im1 = Image(fig, 3.2 * inch, 2.4 * inch)
-        fig = self.fig_dnn_scores_log_path
-        im2 = Image(fig, 3.2 * inch, 2.4 * inch)
-        reports.append(Table([[im1, im2]]))
+        # fig = self.fig_dnn_scores_lin_path
+        # im1 = Image(fig, 3.2 * inch, 2.4 * inch)
+        # fig = self.fig_dnn_scores_log_path
+        # im2 = Image(fig, 3.2 * inch, 2.4 * inch)
+        # reports.append(Table([[im1, im2]]))
         # significance scan and feature importance
         if self.book_importance_study:
             fig = self.fig_feature_importance_path
@@ -1188,11 +1262,113 @@ class job_executor(object):
             im = Image(fig, 3.2 * inch, 2.4 * inch)
             reports.append(im)
         # correlation matrix
-        fig = self.fig_correlation_matrix_path
-        im = Image(fig, 6.4 * inch, 3.2 * inch)
-        reports.append(im)
+        if self.book_cor_matrix:
+            fig = self.fig_correlation_matrix_path
+            im = Image(fig, 6.4 * inch, 3.2 * inch)
+            reports.append(im)
         # build/save
         doc.build(reports)
+
+    def show_configurations(self):
+        print("#" * 80)
+        print("Configurations of this job is listed below:")
+        print("#" * 80)
+        # [job] section
+        print("[job]")
+        print("> job_name:", self.job_name)
+        print("> job_type:", self.job_type)
+        print("> save_dir:", self.save_dir)
+        print("> load_dir:", self.load_dir)
+        print("> load_job_name:", self.load_job_name)
+        # [array] section
+        print("[array]")
+        print("> arr_version:", self.arr_version)
+        print("> campaign:", self.campaign)
+        print("> region:", self.region)
+        print("> arr_path:", self.arr_path)
+        print("> bkg_key:", self.bkg_key)
+        print("> bkg_sumofweight:", self.bkg_sumofweight)
+        print("> sig_key:", self.sig_key)
+        print("> sig_sumofweight:", self.sig_sumofweight)
+        print("> data_key:", self.data_key)
+        print("> data_sumofweight:", self.data_sumofweight)
+        print("> bkg_list:", self.bkg_list)
+        print("> sig_list:", self.sig_list)
+        print("> data_list:", self.data_list)
+        print("> selected_features:", self.selected_features)
+        print("> channel:", self.channel)
+        print("> norm_array:", self.norm_array)
+        print("> reset_feature:", self.reset_feature)
+        print("> reset_feature_name:", self.reset_feature_name)
+        print("> rm_negative_weight_events:", self.rm_negative_weight_events)
+        print("> cut_features:", self.cut_features)
+        print("> cut_values:", self.cut_values)
+        print("> cut_types:", self.cut_types)
+        # [model] section
+        print("[model]")
+        print("> model_name:", self.model_name)
+        print("> model_class:", self.model_class)
+        print("> layers:", self.layers)
+        print("> nodes:", self.nodes)
+        print("> output_bkg_node_names:", self.output_bkg_node_names)
+        print("> dropout_rate:", self.dropout_rate)
+        print("> momentum:", self.momentum)
+        print("> nesterov:", self.nesterov)
+        print("> learn_rate:", self.learn_rate)
+        print("> learn_rate_decay:", self.learn_rate_decay)
+        print("> test_rate:", self.test_rate)
+        print("> batch_size:", self.batch_size)
+        print("> epochs:", self.epochs)
+        print("> val_split:", self.val_split)
+        print("> sig_class_weight:", self.sig_class_weight)
+        print("> bkg_class_weight:", self.bkg_class_weight)
+        print("> train_metrics:", self.train_metrics)
+        print("> train_metrics_weighted:", self.train_metrics_weighted)
+        print("> use_early_stop:", self.use_early_stop)
+        print("> early_stop_monitor:", self.early_stop_monitor)
+        print("> early_stop_min_delta:", self.early_stop_min_delta)
+        print("> early_stop_patience:", self.early_stop_patience)
+        print("> early_stop_mode:", self.early_stop_mode)
+        print(
+            "> early_stop_restore_best_weights:", self.early_stop_restore_best_weights
+        )
+        print("> save_model:", self.save_model)
+        # [para_scan]
+        print("[para_scan]")
+        print("> perform_para_scan:", self.perform_para_scan)
+        print("> max_scan_iterations:", self.max_scan_iterations)
+        print("> scan_loss_type:", self.scan_loss_type)
+        print("> para_scan_cfg:", self.para_scan_cfg)
+        # [report] section
+        print("[report]")
+        print("> plot_bkg_list:", self.plot_bkg_list)
+        print("> plot_density:", self.plot_density)
+        print("> apply_data:", self.apply_data)
+        print("> apply_data_range:", self.apply_data_range)
+        print("> kine_cfg:", self.kine_cfg)
+        print("> book_roc:", self.book_roc)
+        print("> book_train_test_compare:", self.book_train_test_compare)
+        print("> book_importance_study:", self.book_importance_study)
+        print("> book_mc_data_compare:", self.book_mc_data_compare)
+        print("> book_kine_study:", self.book_kine_study)
+        print("> book_cut_kine_study:", self.book_cut_kine_study)
+        print("> dnn_cut_list:", self.dnn_cut_list)
+        print("> book_cor_matrix:", self.book_cor_matrix)
+        print("> book_significance_scan:", self.book_significance_scan)
+        print("> book_2d_significance_scan:", self.book_2d_significance_scan)
+        print("> book_fit_ntup:", self.book_fit_ntup)
+        print("> fit_ntup_branches:", self.fit_ntup_branches)
+        print("> fit_ntup_region:", self.fit_ntup_region)
+        print("> ntup_save_dir:", self.ntup_save_dir)
+        print("> significance_algo:", self.significance_algo)
+        print("> significance_cut_ranges_dn:", self.significance_cut_ranges_dn)
+        print("> significance_cut_ranges_up:", self.significance_cut_ranges_up)
+        print("> show_report:", self.show_report)
+        print("> save_pdf_report:", self.save_pdf_report)
+        print("> save_tb_logs:", self.save_tb_logs)
+        print("> verbose:", self.verbose)
+        print("> check_model_epoch:", self.check_model_epoch)
+        print("#" * 80)
 
     def set_para(self, parsed_val, data_type, config_parser, section, val_name):
         """Sets parameters for training manually."""

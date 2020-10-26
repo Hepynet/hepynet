@@ -29,7 +29,7 @@ from sklearn.metrics import auc, roc_curve
 import ROOT
 from HEPTools.plot_utils import plot_utils, th1_tools
 from lfv_pdnn.common import array_utils, common_utils
-from lfv_pdnn.data_io import get_arrays
+from lfv_pdnn.data_io import root_io
 from lfv_pdnn.train import evaluate, train_utils
 
 
@@ -195,7 +195,7 @@ class Model_Sequential_Base(Model_Base):
 
         """
         performance_meta_dict = {}
-        # try collect sifinifance scan result
+        # try collect significance scan result
         try:
             performance_meta_dict["original_significance"] = self.original_significance
             performance_meta_dict["max_significance"] = self.max_significance
@@ -208,15 +208,17 @@ class Model_Sequential_Base(Model_Base):
             performance_meta_dict["max_significance_threshould"] = "-"
         # try collect auc value
         try:
-            performance_meta_dict["auc_train"] = self.auc_train
-            performance_meta_dict["auc_test"] = self.auc_test
-            performance_meta_dict["auc_train_original"] = self.auc_train_original
-            performance_meta_dict["auc_test_original"] = self.auc_test_original
+            # performance_meta_dict["auc_train"] = self.auc_train
+            # performance_meta_dict["auc_test"] = self.auc_test
+            # performance_meta_dict["auc_train_original"] = self.auc_train_original
+            # performance_meta_dict["auc_test_original"] = self.auc_test_original
+            pass
         except:
-            performance_meta_dict["auc_train"] = "-"
-            performance_meta_dict["auc_test"] = "-"
-            performance_meta_dict["auc_train_original"] = "-"
-            performance_meta_dict["auc_test_original"] = "-"
+            # performance_meta_dict["auc_train"] = "-"
+            # performance_meta_dict["auc_test"] = "-"
+            # performance_meta_dict["auc_train_original"] = "-"
+            # performance_meta_dict["auc_test_original"] = "-"
+            pass
         return performance_meta_dict
 
     def get_corrcoef(self) -> dict:
@@ -370,10 +372,10 @@ class Model_Sequential_Base(Model_Base):
     def show_performance(
         self,
         apply_data=False,
-        figsize=(16, 18),
+        figsize=(12, 9),
         show_fig=True,
         save_fig=False,
-        save_path=None,
+        save_dir=None,
         job_type="train",
     ):
         """Evaluates training result.
@@ -390,34 +392,47 @@ class Model_Sequential_Base(Model_Base):
         if not self.model_is_trained:
             warnings.warn("Model is not trained yet.")
         # Plots
-        fig, ax = plt.subplots(nrows=3, ncols=2, figsize=figsize)
+        if not save_fig:
+            save_dir = None
+        # accuracy curve
         evaluate.plot_accuracy(
-            ax[0, 0], self.train_history_accuracy, self.train_history_val_accuracy
+            self.train_history_accuracy,
+            self.train_history_val_accuracy,
+            figsize=figsize,
+            show_fig=show_fig,
+            save_dir=save_dir,
         )
+        # loss curve
         evaluate.plot_loss(
-            ax[0, 1], self.train_history_loss, self.train_history_val_loss
+            self.train_history_loss,
+            self.train_history_val_loss,
+            figsize=figsize,
+            show_fig=show_fig,
+            save_dir=save_dir,
         )
-        auc_dict = evaluate.plot_train_test_roc(
-            ax[1, 0], self, yscal="linear", ylim=(0, 1)
-        )
-        evaluate.plot_train_test_roc(
-            ax[1, 1], self, yscal="logit", ylim=(0.1, 1 - 1e-4)
-        )
+        # roc curves
+        # auc_dict = evaluate.plot_multi_class_roc(
+        #    self, figsize=figsize, show_fig=show_fig, save_dir=save_dir
+        # )
         # Collect meta data
-        self.auc_train = auc_dict["auc_train"]
-        self.auc_test = auc_dict["auc_test"]
-        self.auc_train_original = auc_dict["auc_train_original"]
-        self.auc_test_original = auc_dict["auc_test_original"]
+        # self.auc_train = auc_dict["auc_train"]
+        # self.auc_test = auc_dict["auc_test"]
+        # self.auc_train_original = auc_dict["auc_train_original"]
+        # self.auc_test_original = auc_dict["auc_test_original"]
+        """
         if job_type == "train" and self.feedbox.reset_mass == True:
-            evaluate.plot_overtrain_check(ax[2, 0], self, bins=50, log=True)
-        evaluate.plot_overtrain_check_original_mass(ax[2, 1], self, bins=50, log=True)
-        fig.tight_layout()
-        if show_fig:
-            plt.show()
-        else:
-            print("(Plots-show skipped according to settings)")
-        if save_fig:
-            fig.savefig(save_path)
+            evaluate.plot_overtrain_check(
+                self,
+                show_fig=False,
+                save_dir=save_dir,
+                bins=50,
+                log=True,
+                reset_mass=True,
+            )
+        evaluate.plot_overtrain_check(
+            self, show_fig=False, save_dir=save_dir, bins=50, log=True, reset_mass=False
+        )
+        """
 
     def train(
         self,
@@ -488,12 +503,6 @@ class Model_Sequential_Base(Model_Base):
             _,
             _,
             _,
-        ) = self.feedbox.get_train_test_arrays(
-            sig_key=sig_key, bkg_key=bkg_key, use_selected=False
-        )
-        (
-            x_train_selected,
-            x_test_selected,
             _,
             _,
             _,
@@ -501,19 +510,29 @@ class Model_Sequential_Base(Model_Base):
             _,
             _,
         ) = self.feedbox.get_train_test_arrays(
-            sig_key=sig_key, bkg_key=bkg_key, use_selected=True
+            sig_key=sig_key,
+            bkg_key=bkg_key,
+            multi_class_bkgs=self.model_hypers["output_bkg_node_names"],
+            use_selected=False,
         )
+        x_train_selected = train_utils.get_valid_feature(x_train)
+        x_test_selected = train_utils.get_valid_feature(x_test)
         if np.isnan(np.sum(x_train_selected)):
             exit(1)
         if np.isnan(np.sum(y_train)):
             exit(1)
+        ####
+        # print("#### output_bkg_node_names", self.model_hypers["output_bkg_node_names"])
+        # print("#### x_train_selected shape", x_train_selected.shape)
+        # print("#### y_train shape", y_train.shape)
+        self.get_model().summary()
         self.train_history = self.get_model().fit(
             x_train_selected,
             y_train,
             batch_size=batch_size,
             epochs=epochs,
             validation_split=val_split,
-            class_weight=self.class_weight,
+            #### class_weight=self.class_weight,
             sample_weight=x_train[:, -1],
             callbacks=train_callbacks,
             verbose=verbose,
@@ -586,8 +605,13 @@ class Model_Sequential_Base(Model_Base):
             _,
             _,
             _,
+            _,
+            _,
         ) = self.feedbox.get_train_test_arrays(
-            sig_key=sig_key, bkg_key=bkg_key, use_selected=False
+            sig_key=sig_key,
+            bkg_key=bkg_key,
+            multi_class_bkgs=self.model_hypers["output_bkg_node_names"],
+            use_selected=False,
         )
         num_val = math.ceil(len(y_train) * val_split)
         x_tr = x_train_selected[:-num_val, :]
@@ -724,3 +748,92 @@ class Model_Sequential_Flat(Model_Sequential_Base):
             weighted_metrics=weighted_metrics,
         )
         self.model_is_compiled = True
+
+
+class Model_Sequential_Multi_Class(Model_Sequential_Base):
+    """Sequential model with multiple class"""
+
+    def __init__(
+        self,
+        name,
+        input_features,
+        hypers,
+        sig_key="all",
+        bkg_key="all",
+        data_key="all",
+        save_tb_logs=False,
+        tb_logs_path=None,
+    ):
+        super().__init__(
+            name,
+            input_features,
+            hypers,
+            sig_key="all",
+            bkg_key="all",
+            data_key="all",
+            save_tb_logs=False,
+            tb_logs_path=None,
+        )
+
+        self.model_label = "mod_seq"
+        self.model_note = "Sequential model with multiple class."
+        assert (
+            self.model_hypers["layers"] > 0
+        ), "Model layer quantity should be positive"
+
+    def compile(self):
+        """ Compile model, function to be changed in the future."""
+        # Add layers
+        # input
+        for layer in range(self.model_hypers["layers"]):
+            if layer == 0:
+                self.model.add(
+                    Dense(
+                        self.model_hypers["nodes"],
+                        kernel_initializer="glorot_uniform",
+                        activation="relu",
+                        input_dim=self.model_input_dim,
+                    )
+                )
+            else:
+                self.model.add(
+                    Dense(
+                        self.model_hypers["nodes"],
+                        kernel_initializer="glorot_uniform",
+                        activation="relu",
+                    )
+                )
+            if self.model_hypers["dropout_rate"] != 0:
+                self.model.add(Dropout(self.model_hypers["dropout_rate"]))
+        # output
+        self.model.add(
+            Dense(
+                len(self.model_hypers["output_bkg_node_names"]) + 1,
+                kernel_initializer="glorot_uniform",
+                activation="softmax",
+            )
+        )
+        # Compile
+        # transfer self-defined metrics into real function
+        metrics = copy.deepcopy(self.model_hypers["metrics"])
+        weighted_metrics = copy.deepcopy(self.model_hypers["weighted_metrics"])
+        if "plain_acc" in metrics:
+            index = metrics.index("plain_acc")
+            metrics[index] = plain_acc
+        if "plain_acc" in weighted_metrics:
+            index = weighted_metrics.index("plain_acc")
+            weighted_metrics[index] = plain_acc
+        # compile model
+        self.model.compile(
+            loss="categorical_crossentropy",
+            optimizer=SGD(
+                lr=self.model_hypers["learn_rate"],
+                decay=self.model_hypers["decay"],
+                momentum=self.model_hypers["momentum"],
+                nesterov=self.model_hypers["nesterov"],
+            ),
+            metrics=metrics,
+            weighted_metrics=weighted_metrics,
+        )
+        self.model_is_compiled = True
+
