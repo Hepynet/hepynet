@@ -2,6 +2,7 @@ import glob
 import json
 import math
 import os
+import re
 
 import numpy as np
 from lfv_pdnn.common.logging_cfg import *
@@ -98,27 +99,46 @@ def get_newest_file_version(path_pattern, n_digit=2, ver_num=None, use_existing=
             "path": path_pattern.format(str(ver_num).zfill(n_digit)),
         }
     # otherwise try to find ver_num
-    max_version = int(math.pow(10, n_digit) - 1)
-    ver_num = 0
-    path = path_pattern.format(str(ver_num).zfill(n_digit))
-    while os.path.exists(path):
-        ver_num += 1
-        path = path_pattern.format(str(ver_num).zfill(n_digit))
-    if use_existing:
-        if ver_num < 1:
-            logging.warning("Non existing folder found! Using 0 for the counting.")
-            path = path_pattern.format(str(0).zfill(n_digit))
-        else:
-            path = path_pattern.format(str(ver_num - 1).zfill(n_digit))
-    if ver_num > max_version:
-        logging.warning(
-            "Too much model version detected at same date. \
-      Will only keep maximum {} different versions.".format(
-                max_version
+    path_list = glob.glob(path_pattern.format("*"))
+    path_list = sorted(path_list)
+    if len(path_list) < 1:
+        if use_existing:
+            logging.warning(
+                "Can't find existing file with path pattern:" + path_pattern + ", returning empty."
             )
-        )
-        logging.warning("Version {} will be overwrite!".format(max_version))
-        ver_num = max_version
+            return {}
+        else:
+            ver_num = 0
+            path = path_pattern.format(str(0).zfill(n_digit))
+    else:
+        path = path_list[-1]  # Choose the last match
+        version_tag_search = re.compile("v(" + "\d" * n_digit + ")")
+        ver_num = int(version_tag_search.search(path).group(1))
+        if not use_existing:
+            ver_num += 1
+            path = path_pattern.format(str(ver_num).zfill(n_digit))
+
+    # max_version = int(math.pow(10, n_digit) - 1)
+    # ver_num = 0
+    # path = path_pattern.format(str(ver_num).zfill(n_digit))
+    # while os.path.exists(path):
+    #    ver_num += 1
+    #    path = path_pattern.format(str(ver_num).zfill(n_digit))
+    # if use_existing:
+    #    if ver_num < 1:
+    #        logging.warning("Non existing folder found! Using 0 for the counting.")
+    #        path = path_pattern.format(str(0).zfill(n_digit))
+    #    else:
+    #        path = path_pattern.format(str(ver_num - 1).zfill(n_digit))
+    # if ver_num > max_version:
+    #    logging.warning(
+    #        "Too much model version detected at same date. \
+    # Will only keep maximum {} different versions.".format(
+    #            max_version
+    #        )
+    #    )
+    #    logging.warning("Version {} will be overwrite!".format(max_version))
+    #    ver_num = max_version
     return {
         "ver_num": ver_num,
         "path": path,

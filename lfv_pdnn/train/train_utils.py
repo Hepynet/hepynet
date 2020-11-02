@@ -15,10 +15,10 @@ from math import log, sqrt
 
 import matplotlib.pyplot as plt
 import numpy as np
-from sklearn.metrics import accuracy_score, auc, classification_report
-
 from lfv_pdnn.common import array_utils
+from lfv_pdnn.common.logging_cfg import *
 from lfv_pdnn.data_io import root_io
+from sklearn.metrics import accuracy_score, auc, classification_report
 
 
 def calculate_asimov(sig, bkg):
@@ -71,20 +71,23 @@ def dump_fit_ntup(
         for sample_key in sample_keys:
             dump_branches = fit_ntup_branches + ["weight"]
             # prepare contents
-            dump_array = feedbox.get_array(
-                prefix_map[map_key], "raw", array_key=sample_key, reset_mass=False
+            dump_array, dump_array_weight = feedbox.get_raw(
+                prefix_map[map_key], array_key=sample_key, add_validation_features=True,
             )
-            predict_input = feedbox.get_array(
-                prefix_map[map_key], "selected", array_key=sample_key, reset_mass=False
+            predict_input, _ = feedbox.get_reweight(
+                prefix_map[map_key], array_key=sample_key, reset_mass=False
             )
             predictions = keras_model.predict(predict_input)
             dump_contents = []
             for branch in dump_branches:
                 if branch == "weight":
-                    branch_index = -1
+                    branch_content = dump_array_weight
                 else:
-                    branch_index = feedbox.selected_features.index(branch)
-                branch_content = dump_array[:, branch_index]
+                    feature_list = (
+                        feedbox.selected_features + feedbox.validation_features
+                    )
+                    branch_index = feature_list.index(branch)
+                    branch_content = dump_array[:, branch_index]
                 dump_contents.append(branch_content)
             if len(output_bkg_node_names) == 0:
                 dump_branches.append("dnn_out")
@@ -200,7 +203,9 @@ def norarray_min_max(array, min, max, axis=None):
 
 def split_and_combine(
     xs,
+    xs_weight,
     xb,
+    xb_weight,
     ys=None,
     yb=None,
     test_rate=0.2,
@@ -237,40 +242,64 @@ def split_and_combine(
     if yb is None:
         yb = np.zeros(len(xb)).reshape(-1, 1)
 
-    xs_train, xs_test, ys_train, ys_test = array_utils.shuffle_and_split(
-        xs, ys, split_ratio=1 - test_rate, shuffle_seed=shuffle_seed
+    (
+        xs_train,
+        xs_test,
+        ys_train,
+        ys_test,
+        xs_weight_train,
+        xs_weight_test,
+    ) = array_utils.shuffle_and_split(
+        xs, ys, xs_weight, split_ratio=1 - test_rate, shuffle_seed=shuffle_seed
     )
-    xb_train, xb_test, yb_train, yb_test = array_utils.shuffle_and_split(
-        xb, yb, split_ratio=1 - test_rate, shuffle_seed=shuffle_seed
+    (
+        xb_train,
+        xb_test,
+        yb_train,
+        yb_test,
+        xb_weight_train,
+        xb_weight_test,
+    ) = array_utils.shuffle_and_split(
+        xb, yb, xb_weight, split_ratio=1 - test_rate, shuffle_seed=shuffle_seed
     )
 
     x_train = np.concatenate((xs_train, xb_train))
     y_train = np.concatenate((ys_train, yb_train))
+    wt_train = np.concatenate((xs_weight_train, xb_weight_train))
     x_test = np.concatenate((xs_test, xb_test))
     y_test = np.concatenate((ys_test, yb_test))
+    wt_test = np.concatenate((xs_weight_test, xb_weight_test))
 
     if shuffle_combined_array:
         # shuffle train dataset
         shuffle_index = generate_shuffle_index(len(y_train), shuffle_seed=shuffle_seed)
         x_train = x_train[shuffle_index]
         y_train = y_train[shuffle_index]
+        wt_train = wt_train[shuffle_index]
         # shuffle test dataset
         shuffle_index = generate_shuffle_index(len(y_test), shuffle_seed=shuffle_seed)
         x_test = x_test[shuffle_index]
         y_test = y_test[shuffle_index]
+        wt_test = wt_test[shuffle_index]
 
     return (
         x_train,
         x_test,
         y_train,
         y_test,
+        wt_train,
+        wt_test,
         xs_train,
         xs_test,
         ys_train,
         ys_test,
+        xs_weight_train,
+        xs_weight_test,
         xb_train,
         xb_test,
         yb_train,
         yb_test,
+        xb_weight_train,
+        xb_weight_test,
     )
 

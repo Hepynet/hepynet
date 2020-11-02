@@ -13,28 +13,21 @@ from configparser import ConfigParser
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import ROOT
 import seaborn as sns
 from hyperopt import Trials, fmin, hp, tpe
 from hyperopt.pyll.stochastic import sample
+from lfv_pdnn.common import array_utils, common_utils
+from lfv_pdnn.common.logging_cfg import *
+from lfv_pdnn.data_io import feed_box, root_io
+from lfv_pdnn.train import evaluate, job_utils, model, train_utils
 from reportlab.lib.enums import TA_JUSTIFY
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
-from reportlab.platypus import (
-    Image,
-    PageBreak,
-    Paragraph,
-    SimpleDocTemplate,
-    Spacer,
-    Table,
-    TableStyle,
-)
+from reportlab.platypus import (Image, PageBreak, Paragraph, SimpleDocTemplate,
+                                Spacer, Table, TableStyle)
 from sklearn.metrics import auc, roc_curve
-
-import ROOT
-from lfv_pdnn.common import array_utils, common_utils
-from lfv_pdnn.data_io import feed_box, root_io
-from lfv_pdnn.train import evaluate, job_utils, model, train_utils
 
 SCANNED_PARAS = [
     "scan_learn_rate",
@@ -93,6 +86,7 @@ class job_executor(object):
         self.sig_list = []
         self.data_list = []
         self.selected_features = []
+        self.validation_features = []
         self.input_dim = None
         self.channel = None
         self.norm_array = True
@@ -180,17 +174,35 @@ class job_executor(object):
             dir_pattern = (
                 self.save_dir + "/" + self.datestr + "_" + self.job_name + "_v{}"
             )
-            self.save_sub_dir = common_utils.get_newest_file_version(dir_pattern)[
-                "path"
-            ]
+            output_match = common_utils.get_newest_file_version(dir_pattern)
+            self.save_sub_dir = output_match["path"]
         elif self.job_type == "apply":
             # use same directory as input "train" directory for "apply" type jobs
             dir_pattern = (
                 self.save_dir + "/" + self.datestr + "_" + self.load_job_name + "_v{}"
             )
-            self.save_sub_dir = common_utils.get_newest_file_version(
+            output_match = common_utils.get_newest_file_version(
                 dir_pattern, use_existing=True
-            )["path"]
+            )
+            if output_match:
+                self.save_sub_dir = output_match["path"]
+            else:
+                logging.warning(
+                    "Can't find existing train folder matched with date"
+                    + self.datestr
+                    + ", trying to search without specifying the date."
+                )
+                dir_pattern = self.save_dir + "/*_" + self.load_job_name + "_v{}"
+                output_match = common_utils.get_newest_file_version(
+                    dir_pattern, use_existing=True
+                )
+                if output_match:
+                    self.save_sub_dir = output_match["path"]
+                else:
+                    logging.error(
+                        "Can't find existing train folder matched pattern, please check the settings."
+                    )
+
         # Suppress inevitably ROOT warnings in python
         ROOT.gROOT.ProcessLine("gErrorIgnoreLevel = 2001;")
         # Execute job(s)
@@ -264,6 +276,7 @@ class job_executor(object):
             self.model_name,
             self.selected_features,
             hypers,
+            validation_features=self.validation_features,
             sig_key=self.sig_key,
             bkg_key=self.bkg_key,
             data_key=self.data_key,
@@ -271,39 +284,39 @@ class job_executor(object):
             tb_logs_path=self.save_tb_logs_path_subdir,
         )
         # Set up training or loading model
-        bkg_dict = root_io.get_npy_individuals(
+        bkg_dict = root_io.load_npy_arrays(
             self.npy_path,
             self.campaign,
             self.region,
             self.channel,
             self.bkg_list,
             self.selected_features,
-            "bkg",
+            validation_features=self.validation_features,
             cut_features=self.cut_features,
             cut_values=self.cut_values,
             cut_types=self.cut_types,
         )
-        sig_dict = root_io.get_npy_individuals(
+        sig_dict = root_io.load_npy_arrays(
             self.npy_path,
             self.campaign,
             self.region,
             self.channel,
             self.sig_list,
             self.selected_features,
-            "sig",
+            validation_features=self.validation_features,
             cut_features=self.cut_features,
             cut_values=self.cut_values,
             cut_types=self.cut_types,
         )
         if self.apply_data:
-            data_dict = root_io.get_npy_individuals(
+            data_dict = root_io.load_npy_arrays(
                 self.npy_path,
                 self.campaign,
                 self.region,
                 self.channel,
                 self.data_list,
                 self.selected_features,
-                "data",
+            validation_features=self.validation_features,
                 cut_features=self.cut_features,
                 cut_values=self.cut_values,
                 cut_types=self.cut_types,
@@ -320,6 +333,7 @@ class job_executor(object):
                 bkg_dict,
                 xd_dict=data_dict,
                 selected_features=self.selected_features,
+                validation_features=self.validation_features,
                 apply_data=self.apply_data,
                 reshape_array=self.norm_array,
                 reset_mass=self.reset_feature,
@@ -335,11 +349,14 @@ class job_executor(object):
             )
             self.model_wrapper.set_inputs(feedbox, apply_data=self.apply_data)
         else:
+            logging.debug(f"Selected_features quantity: {len(self.selected_features)}")
+            logging.debug(f"Selected_features: {self.selected_features}")
             feedbox = feed_box.Feedbox(
                 sig_dict,
                 bkg_dict,
                 xd_dict=data_dict,
                 selected_features=self.selected_features,
+                validation_features=self.validation_features,
                 apply_data=self.apply_data,
                 reshape_array=self.norm_array,
                 reset_mass=self.reset_feature,
@@ -387,14 +404,12 @@ class job_executor(object):
                 evaluate.plot_input_distributions(
                     self.model_wrapper,
                     apply_data=False,
-                    figsize=(8, 6),
                     style_cfg_path=self.kine_cfg,
                     save_dir=self.save_sub_dir + "/kinematics/raw",
                 )
                 evaluate.plot_input_distributions(
                     self.model_wrapper,
                     apply_data=False,
-                    figsize=(8, 6),
                     style_cfg_path=self.kine_cfg,
                     save_dir=self.save_sub_dir + "/kinematics/processed",
                     show_reshaped=True,
@@ -455,8 +470,6 @@ class job_executor(object):
                         print(">> Making roc curve plot")
                         evaluate.plot_multi_class_roc(
                             self.model_wrapper,
-                            figsize=(12, 9),
-                            show_fig=self.pop_plots,
                             save_dir=save_dir,
                         )
                     if self.book_train_test_compare:
@@ -467,7 +480,6 @@ class job_executor(object):
                         ):
                             evaluate.plot_overtrain_check(
                                 self.model_wrapper,
-                                show_fig=False,
                                 save_dir=save_dir,
                                 bins=50,
                                 log=True,
@@ -475,7 +487,6 @@ class job_executor(object):
                             )
                         evaluate.plot_overtrain_check(
                             self.model_wrapper,
-                            show_fig=False,
                             save_dir=save_dir,
                             bins=50,
                             log=True,
@@ -703,6 +714,7 @@ class job_executor(object):
             fig.savefig(save_dir_evo + "/" + hyper + "_evo.png")
             plt.close("all")
 
+    '''
     def execute_tuning_job(self, params, loss_type="val_loss"):
         """Execute one quick DNN training for hyperparameter tuning."""
         print("+ {}".format(params))
@@ -752,39 +764,36 @@ class job_executor(object):
                 data_key=self.data_key,
             )
             # Set up training or loading model
-            bkg_dict = root_io.get_npy_individuals(
+            bkg_dict = root_io.load_npy_arrays(
                 self.npy_path,
                 self.campaign,
                 self.region,
                 self.channel,
                 self.bkg_list,
                 self.selected_features,
-                "bkg",
                 cut_features=self.cut_features,
                 cut_values=self.cut_values,
                 cut_types=self.cut_types,
             )
-            sig_dict = root_io.get_npy_individuals(
+            sig_dict = root_io.load_npy_arrays(
                 self.npy_path,
                 self.campaign,
                 self.region,
                 self.channel,
                 self.sig_list,
                 self.selected_features,
-                "sig",
                 cut_features=self.cut_features,
                 cut_values=self.cut_values,
                 cut_types=self.cut_types,
             )
             if self.apply_data:
-                data_dict = root_io.get_npy_individuals(
+                data_dict = root_io.load_npy_arrays(
                     self.npy_path,
                     self.campaign,
                     self.region,
                     self.channel,
                     self.data_list,
                     self.selected_features,
-                    "data",
                     cut_features=self.cut_features,
                     cut_values=self.cut_values,
                     cut_types=self.cut_types,
@@ -855,6 +864,7 @@ class job_executor(object):
             raise ValueError("Unsupported loss_type")
         print(">>> loss: {}".format(loss_value))
         return loss_value
+    '''
 
     def get_config(self, path=None):
         """Retrieves configurations from ini file."""
@@ -907,6 +917,7 @@ class job_executor(object):
             self.input_dim = len(self.selected_features)
         else:
             self.input_dim = None
+        self.try_parse_list("validation_features", config, "array", "validation_features")
         self.try_parse_str("channel", config, "array", "channel")
         self.try_parse_bool("norm_array", config, "array", "norm_array")
         self.try_parse_bool("reset_feature", config, "array", "reset_feature")
@@ -1171,6 +1182,8 @@ class job_executor(object):
         reports.append(Paragraph(ptext, styles["Justify"]))
         ptext = "selected features                : " + str(self.selected_features)
         reports.append(Paragraph(ptext, styles["Justify"]))
+        ptext = "validation features              : " + str(self.validation_features)
+        reports.append(Paragraph(ptext, styles["Justify"]))
         ptext = "reset feature                    : " + str(self.reset_feature)
         reports.append(Paragraph(ptext, styles["Justify"]))
         ptext = "reset feature name             : " + str(self.reset_feature_name)
@@ -1314,6 +1327,7 @@ class job_executor(object):
         print("> sig_list:", self.sig_list)
         print("> data_list:", self.data_list)
         print("> selected_features:", self.selected_features)
+        print("> validation_features:", self.validation_features)
         print("> channel:", self.channel)
         print("> norm_array:", self.norm_array)
         print("> reset_feature:", self.reset_feature)

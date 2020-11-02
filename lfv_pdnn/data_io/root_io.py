@@ -1,33 +1,30 @@
 """Loads arrays for training.
 
 Note:
-  1. Arrays organized by dictionary, each key is corresponding to on type of
-  signal or background. For example: "top", "rpv_1000"
-  2. Special key names that can be used for training:
-    * all: all sig/bkg concatenated directly
-    * all_norm: (sig only) with each mass point array's weight normed and then
-    concatenated.
+  1. Arrays organized by dictionary, each key is corresponding to a sample component
+  2. Each sample component is a sub-dictionary, each key is corresponding to a input feature's array 
 
 """
+
 import array
 import os
 from pathlib import Path
 
 import numpy as np
-
 import ROOT
 import uproot
 from lfv_pdnn.common import array_utils
+from lfv_pdnn.common.logging_cfg import *
 
 
-def get_npy_individuals(
-    npy_path,
+def load_npy_arrays(
+    directory,
     campaign,
     region,
     channel,
-    npy_list,
+    samples,
     selected_features,
-    npy_prefix,
+    validation_features=[],
     cut_features=[],
     cut_values=[],
     cut_types=[],
@@ -35,221 +32,76 @@ def get_npy_individuals(
 ):
     """Gets individual npy arrays with given info.
 
-  Return:
-    A dict of individual npy arrays.
-    Example: signal dict of rpv_500 rpv_1000 rpv_2000
+    Arguments:
+        sample: can be a string (or list of string) of input sample name(s)
+        sample_combine_method: can be
+            "norm": to norm each input sample and combine together
+            None(default): use original weight to directly combine
 
-  """
-    return_dict = {}
-    # Load individual npy array
-    added_weights = 0
-    for npy in npy_list:
-        if campaign in ["run2", "all"]:
-            npy_array = None
-            try:
-                directory = npy_path
-                for feature in selected_features + [channel, "weight"]:
-                    temp_array1 = np.load(
-                        directory
-                        + "/mc16a/"
-                        + region
-                        + "/"
-                        + npy_prefix
-                        + "_"
-                        + npy
-                        + "_"
-                        + feature
-                        + ".npy"
-                    )
-                    temp_array1 = np.reshape(temp_array1, (-1, 1))
-                    temp_array2 = np.load(
-                        directory
-                        + "/mc16d/"
-                        + region
-                        + "/"
-                        + npy_prefix
-                        + "_"
-                        + npy
-                        + "_"
-                        + feature
-                        + ".npy"
-                    )
-                    temp_array2 = np.reshape(temp_array2, (-1, 1))
-                    temp_array3 = np.load(
-                        directory
-                        + "/mc16e/"
-                        + region
-                        + "/"
-                        + npy_prefix
-                        + "_"
-                        + npy
-                        + "_"
-                        + feature
-                        + ".npy"
-                    )
-                    temp_array3 = np.reshape(temp_array3, (-1, 1))
-                    temp_array = np.concatenate(
-                        (temp_array1, temp_array2, temp_array3), axis=0
-                    )
-                    if npy_array is None:
-                        npy_array = temp_array
-                    else:
-                        npy_array = np.concatenate((npy_array, temp_array), axis=1)
-            except:
-                print(
-                    "Failed to get arrays from mc16a/d/e folders, trying to consider run2/all as folder name."
-                )
-                directory = npy_path + "/" + campaign + "/" + region
-                for feature in selected_features + [channel, "weight"]:
-                    temp_array = np.load(
-                        directory
-                        + "/"
-                        + npy_prefix
-                        + "_"
-                        + npy
-                        + "_"
-                        + feature
-                        + ".npy"
-                    )
-                    temp_array = np.reshape(temp_array, (-1, 1))
-                    if npy_array is None:
-                        npy_array = temp_array
-                    else:
-                        npy_array = np.concatenate((npy_array, temp_array), axis=1)
-        else:
-            directory = npy_path + "/" + campaign + "/" + region
-            npy_array = None
-            for feature in selected_features + [channel, "weight"]:
+    Return:
+        A dict of different variables
+        Example: signal dict of rpv_500 rpv_1000 rpv_2000
+
+    """
+
+    # check different situation
+    if type(samples) != list:
+        sample_list = [samples]
+    else:
+        sample_list = samples
+    if campaign in ["run2", "all"]:
+        campaign_list = ["mc16a", "mc16d", "mc16e"]
+    else:
+        campaign_list = [campaign]
+    # load arrays
+    included_features = selected_features[:]
+    included_features = list(set().union(included_features, validation_features, ["weight"]))
+    cut_features += [channel]
+    cut_values += [1]
+    cut_types += ["="]
+    out_dict = {}
+    for sample_component in sample_list:
+        sample_array_dict = {}
+        cut_array_dict = {}
+        for feature in set().union(included_features, cut_features):
+            feature_array = None
+            for campaign in campaign_list:
                 temp_array = np.load(
-                    directory + "/" + npy_prefix + "_" + npy + "_" + feature + ".npy"
+                    f"{directory}/{campaign}/{region}/{sample_component}_{feature}.npy"
                 )
                 temp_array = np.reshape(temp_array, (-1, 1))
-                if npy_array is None:
-                    npy_array = temp_array
+                if feature_array is None:
+                    feature_array = temp_array
                 else:
-                    npy_array = np.concatenate((npy_array, temp_array), axis=1)
-        if weight_scale != 1:
-            npy_array[:, -1] = npy_array[:, -1] * weight_scale
-        total_weights = np.sum(npy_array[:, -1])
-        print(npy, "shape:", npy_array.shape, "total weights:", total_weights)
-
-        cut_features += [channel]
-        cut_values += [1]
-        cut_types += ["="]
-
-        cut_array = None
-        if campaign in ["run2", "all"]:
-            try:
-                directory = npy_path
-                for feature in cut_features:
-                    temp_array1 = np.load(
-                        directory
-                        + "/mc16a/"
-                        + region
-                        + "/"
-                        + npy_prefix
-                        + "_"
-                        + npy
-                        + "_"
-                        + feature
-                        + ".npy"
-                    )
-                    temp_array1 = np.reshape(temp_array1, (-1, 1))
-                    temp_array2 = np.load(
-                        directory
-                        + "/mc16d/"
-                        + region
-                        + "/"
-                        + npy_prefix
-                        + "_"
-                        + npy
-                        + "_"
-                        + feature
-                        + ".npy"
-                    )
-                    temp_array2 = np.reshape(temp_array2, (-1, 1))
-                    temp_array3 = np.load(
-                        directory
-                        + "/mc16e/"
-                        + region
-                        + "/"
-                        + npy_prefix
-                        + "_"
-                        + npy
-                        + "_"
-                        + feature
-                        + ".npy"
-                    )
-                    temp_array3 = np.reshape(temp_array3, (-1, 1))
-                    temp_array = np.concatenate(
-                        (temp_array1, temp_array2, temp_array3), axis=0
-                    )
-                    if cut_array is None:
-                        cut_array = temp_array
-                    else:
-                        cut_array = np.concatenate((cut_array, temp_array), axis=1)
-            except:
-                directory = npy_path + "/" + campaign + "/" + region
-                for feature in cut_features:
-                    temp_array = np.load(
-                        directory
-                        + "/"
-                        + npy_prefix
-                        + "_"
-                        + npy
-                        + "_"
-                        + feature
-                        + ".npy"
-                    )
-                    temp_array = np.reshape(temp_array, (-1, 1))
-                    if cut_array is None:
-                        cut_array = temp_array
-                    else:
-                        cut_array = np.concatenate((cut_array, temp_array), axis=1)
-        else:
-            directory = npy_path + "/" + campaign + "/" + region
-            cut_array = None
-            for feature in cut_features:
-                temp_array = np.load(
-                    directory + "/" + npy_prefix + "_" + npy + "_" + feature + ".npy"
-                )
-                temp_array = np.reshape(temp_array, (-1, 1))
-                if cut_array is None:
-                    cut_array = temp_array
-                else:
-                    cut_array = np.concatenate((cut_array, temp_array), axis=1)
-        # Get indexes that pass cuts
-        assert len(cut_features) == len(cut_values) and len(cut_features) == len(
-            cut_types
-        ), "cut_features and cut_values and cut_types should have same length."
-        pass_index = None
-        for cut_feature_id, (cut_value, cut_type) in enumerate(
-            zip(cut_values, cut_types)
+                    feature_array = np.concatenate((feature_array, temp_array))
+            if feature in included_features:
+                sample_array_dict[feature] = feature_array
+            if feature in cut_features:
+                cut_array_dict[feature] = feature_array
+        # apply cuts
+        ## Get indexes that pass cuts
+        if not (
+            len(cut_features) == len(cut_values) and len(cut_features) == len(cut_types)
         ):
-            temp_index = array_utils.get_cut_index_value(
-                cut_array[:, cut_feature_id], cut_value, cut_type
+            logging.critical(
+                "cut_features and cut_values and cut_types should have same length"
+            )
+        pass_index = None
+        for cut_feature, cut_value, cut_type in zip(cut_features, cut_values, cut_types):
+            temp_pass_index = array_utils.get_cut_index_value(
+                cut_array_dict[cut_feature], cut_value, cut_type
             )
             if pass_index is None:
-                pass_index = temp_index
+                pass_index = temp_pass_index
             else:
-                pass_index = np.intersect1d(pass_index, temp_index)
-        npy_array = npy_array[pass_index.flatten(), :]
-
-        total_weights = np.sum(npy_array[:, -1])
-        print(
-            npy,
-            "shape:",
-            npy_array.shape,
-            "total weights:",
-            total_weights,
-            "(after cuts)",
-        )
-
-        return_dict[npy] = npy_array
-        added_weights += total_weights
-
-    print("All {} weight together:".format(npy_prefix), added_weights)
-    return return_dict
+                pass_index = np.intersect1d(pass_index, temp_pass_index)
+        ## keep the events that pass the selection
+        for feature in sample_array_dict:
+            sample_array_dict[feature] = sample_array_dict[feature][pass_index.flatten(), :]
+        total_weights = np.sum(sample_array_dict["weight"])
+        logging.info(f"Total input {sample_component} weights: {total_weights}")
+        out_dict[sample_component] = sample_array_dict
+    return out_dict
 
 
 def dump_ntup_from_npy(ntup_name, branch_list, branch_type, contents, out_path):

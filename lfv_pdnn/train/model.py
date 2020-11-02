@@ -134,6 +134,7 @@ class Model_Sequential_Base(Model_Base):
         name,
         input_features,
         hypers,
+        validation_features=[],
         sig_key=None,
         bkg_key=None,
         data_key=None,
@@ -151,12 +152,12 @@ class Model_Sequential_Base(Model_Base):
         # Arrays
         self.array_prepared = False
         self.selected_features = input_features
+        self.validation_features = validation_features
         self.model_meta = {
             "sig_key": sig_key,
             "bkg_key": bkg_key,
             "data_key": data_key,
-            "norm_average": None,
-            "norm_variance": None,
+            "norm_dict": None,
         }
         # Report
         self.save_tb_logs = save_tb_logs
@@ -222,19 +223,15 @@ class Model_Sequential_Base(Model_Base):
         return performance_meta_dict
 
     def get_corrcoef(self) -> dict:
-        d_bkg = pd.DataFrame(
-            data=self.feedbox.get_array(
-                "xb", "selected", array_key="all", reset_mass=False
-            ),
-            columns=list(self.selected_features),
+        bkg_array, _ = self.feedbox.get_reweight(
+            "xb", array_key="all", reset_mass=False
         )
+        d_bkg = pd.DataFrame(data=bkg_array, columns=list(self.selected_features),)
         bkg_matrix = d_bkg.corr()
-        d_sig = pd.DataFrame(
-            data=self.feedbox.get_array(
-                "xs", "selected", array_key="all", reset_mass=False
-            ),
-            columns=list(self.selected_features),
+        sig_array, _ = self.feedbox.get_reweight(
+            "xs", array_key="all", reset_mass=False
         )
+        d_sig = pd.DataFrame(data=sig_array, columns=list(self.selected_features),)
         sig_matrix = d_sig.corr()
         corrcoef_matrix_dict = {}
         corrcoef_matrix_dict["bkg"] = bkg_matrix
@@ -248,6 +245,7 @@ class Model_Sequential_Base(Model_Base):
             load_dir + "/" + date + "_" + job_name + "_" + version + "/models"
         )
         model_dir_list = glob.glob(search_pattern)
+        model_dir_list = sorted(model_dir_list)
         # Choose the newest one
         if len(model_dir_list) < 1:
             raise FileNotFoundError("Model file that matched the pattern not found.")
@@ -366,13 +364,12 @@ class Model_Sequential_Base(Model_Base):
         """Prepares array for training."""
         self.feedbox = feedbox
         self.array_prepared = feedbox.array_prepared
-        self.model_meta["norm_average"] = feedbox.norm_means.tolist()
-        self.model_meta["norm_variance"] = feedbox.norm_variances.tolist()
+        self.model_meta["norm_dict"] = feedbox.norm_dict
 
     def show_performance(
         self,
         apply_data=False,
-        figsize=(12, 9),
+        figsize=(8, 6),
         show_fig=True,
         save_fig=False,
         save_dir=None,
@@ -410,29 +407,6 @@ class Model_Sequential_Base(Model_Base):
             show_fig=show_fig,
             save_dir=save_dir,
         )
-        # roc curves
-        # auc_dict = evaluate.plot_multi_class_roc(
-        #    self, figsize=figsize, show_fig=show_fig, save_dir=save_dir
-        # )
-        # Collect meta data
-        # self.auc_train = auc_dict["auc_train"]
-        # self.auc_test = auc_dict["auc_test"]
-        # self.auc_train_original = auc_dict["auc_train_original"]
-        # self.auc_test_original = auc_dict["auc_test_original"]
-        """
-        if job_type == "train" and self.feedbox.reset_mass == True:
-            evaluate.plot_overtrain_check(
-                self,
-                show_fig=False,
-                save_dir=save_dir,
-                bins=50,
-                log=True,
-                reset_mass=True,
-            )
-        evaluate.plot_overtrain_check(
-            self, show_fig=False, save_dir=save_dir, bins=50, log=True, reset_mass=False
-        )
-        """
 
     def train(
         self,
@@ -507,28 +481,25 @@ class Model_Sequential_Base(Model_Base):
             _,
             _,
             _,
-            _,
-            _,
+            wt_train,
+            wt_test,
         ) = self.feedbox.get_train_test_arrays(
             sig_key=sig_key,
             bkg_key=bkg_key,
             multi_class_bkgs=self.model_hypers["output_bkg_node_names"],
-            use_selected=False,
         )
-        x_train_selected = train_utils.get_valid_feature(x_train)
-        x_test_selected = train_utils.get_valid_feature(x_test)
-        if np.isnan(np.sum(x_train_selected)):
+        if np.isnan(np.sum(x_train)):
             exit(1)
         if np.isnan(np.sum(y_train)):
             exit(1)
         self.get_model().summary()
         self.train_history = self.get_model().fit(
-            x_train_selected,
+            x_train,
             y_train,
             batch_size=batch_size,
             epochs=epochs,
             validation_split=val_split,
-            sample_weight=x_train[:, -1],
+            sample_weight=wt_train,
             callbacks=train_callbacks,
             verbose=verbose,
         )
@@ -536,7 +507,7 @@ class Model_Sequential_Base(Model_Base):
         # Quick evaluation
         print("Quick evaluation:")
         score = self.get_model().evaluate(
-            x_test_selected, y_test, verbose=verbose, sample_weight=x_test[:, -1],
+            x_test, y_test, verbose=verbose, sample_weight=wt_test,
         )
         print("> test loss:", score[0])
         print("> test accuracy:", score[1])
@@ -669,6 +640,7 @@ class Model_Sequential_Flat(Model_Sequential_Base):
         name,
         input_features,
         hypers,
+        validation_features=[],
         sig_key="all",
         bkg_key="all",
         data_key="all",
@@ -679,6 +651,7 @@ class Model_Sequential_Flat(Model_Sequential_Base):
             name,
             input_features,
             hypers,
+            validation_features=validation_features,
             sig_key=sig_key,
             bkg_key=bkg_key,
             data_key=data_key,
@@ -753,6 +726,7 @@ class Model_Sequential_Multi_Class(Model_Sequential_Base):
         name,
         input_features,
         hypers,
+        validation_features=[],
         sig_key="all",
         bkg_key="all",
         data_key="all",
@@ -763,6 +737,7 @@ class Model_Sequential_Multi_Class(Model_Sequential_Base):
             name,
             input_features,
             hypers,
+            validation_features=validation_features,
             sig_key=sig_key,
             bkg_key=bkg_key,
             data_key=data_key,
