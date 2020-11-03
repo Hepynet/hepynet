@@ -51,6 +51,8 @@ def load_npy_arrays(
         sample_list = samples
     if campaign in ["run2", "all"]:
         campaign_list = ["mc16a", "mc16d", "mc16e"]
+    elif "+" in campaign:
+        campaign_list = [camp.strip() for camp in campaign.split("+")]
     else:
         campaign_list = [campaign]
     # load arrays
