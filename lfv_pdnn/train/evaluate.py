@@ -15,7 +15,7 @@ from scipy.special import softmax
 from sklearn.metrics import auc, roc_auc_score, roc_curve
 
 import ROOT
-from HEPTools.plot_utils import plot_utils, th1_tools
+from easy_atlas_plot.plot_utils import plot_utils, th1_tools
 from lfv_pdnn.common import array_utils, common_utils
 from lfv_pdnn.data_io import feed_box, root_io
 from lfv_pdnn.train import train_utils

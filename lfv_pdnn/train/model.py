@@ -27,7 +27,6 @@ from matplotlib.ticker import FixedLocator, NullFormatter
 from sklearn.metrics import auc, roc_curve
 
 import ROOT
-from HEPTools.plot_utils import plot_utils, th1_tools
 from lfv_pdnn.common import array_utils, common_utils
 from lfv_pdnn.data_io import root_io
 from lfv_pdnn.train import evaluate, train_utils
