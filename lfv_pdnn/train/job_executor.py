@@ -25,8 +25,15 @@ from reportlab.lib.enums import TA_JUSTIFY
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
-from reportlab.platypus import (Image, PageBreak, Paragraph, SimpleDocTemplate,
-                                Spacer, Table, TableStyle)
+from reportlab.platypus import (
+    Image,
+    PageBreak,
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
+)
 from sklearn.metrics import auc, roc_curve
 
 SCANNED_PARAS = [
@@ -143,11 +150,14 @@ class job_executor(object):
         self.book_cor_matrix = False
         self.book_significance_scan = False
         self.book_2d_significance_scan = False
+        self.significance_dnn_cut_min = None
+        self.significance_dnn_cut_max = None
+        self.significance_dnn_cut_step = None
         self.book_fit_ntup = False
         self.fit_ntup_branches = []
         self.fit_ntup_region = None
         self.ntup_save_dir = None
-        self.significance_algo = False
+        self.significance_algo = None
         self.significance_cut_ranges_dn = []
         self.significance_cut_ranges_up = []
         self.enable_model_study = None
@@ -316,7 +326,7 @@ class job_executor(object):
                 self.channel,
                 self.data_list,
                 self.selected_features,
-            validation_features=self.validation_features,
+                validation_features=self.validation_features,
                 cut_features=self.cut_features,
                 cut_values=self.cut_values,
                 cut_types=self.cut_types,
@@ -469,8 +479,7 @@ class job_executor(object):
                     if self.book_roc:
                         print(">> Making roc curve plot")
                         evaluate.plot_multi_class_roc(
-                            self.model_wrapper,
-                            save_dir=save_dir,
+                            self.model_wrapper, save_dir=save_dir,
                         )
                     if self.book_train_test_compare:
                         print(">> Making train/test compare plots")
@@ -537,7 +546,7 @@ class job_executor(object):
                             )
                     # Make significance scan plot
                     if self.book_significance_scan:
-                        fig, ax = plt.subplots(figsize=(12, 9))
+                        fig, ax = plt.subplots(figsize=(8, 6))
                         ax.set_title("significance scan")
                         evaluate.plot_significance_scan(
                             ax,
@@ -589,6 +598,9 @@ class job_executor(object):
                             save_file_name="2D_scan_significance_" + identifier,
                             cut_ranges_dn=cut_ranges_dn,
                             cut_ranges_up=cut_ranges_up,
+                            dnn_cut_min=self.significance_dnn_cut_min,
+                            dnn_cut_max=self.significance_dnn_cut_max,
+                            dnn_cut_step=self.significance_dnn_cut_step,
                         )
                         # restore original model wrapper
                         self.model_wrapper = temp_model_wrapper
@@ -917,7 +929,9 @@ class job_executor(object):
             self.input_dim = len(self.selected_features)
         else:
             self.input_dim = None
-        self.try_parse_list("validation_features", config, "array", "validation_features")
+        self.try_parse_list(
+            "validation_features", config, "array", "validation_features"
+        )
         self.try_parse_str("channel", config, "array", "channel")
         self.try_parse_bool("norm_array", config, "array", "norm_array")
         self.try_parse_bool("reset_feature", config, "array", "reset_feature")
@@ -1003,6 +1017,15 @@ class job_executor(object):
         )
         self.try_parse_bool(
             "book_2d_significance_scan", config, "report", "book_2d_significance_scan"
+        )
+        self.try_parse_float(
+            "significance_dnn_cut_min", config, "report", "significance_dnn_cut_min"
+        )
+        self.try_parse_float(
+            "significance_dnn_cut_max", config, "report", "significance_dnn_cut_max"
+        )
+        self.try_parse_float(
+            "significance_dnn_cut_step", config, "report", "significance_dnn_cut_step"
         )
         self.try_parse_bool("book_fit_ntup", config, "report", "book_fit_ntup")
         self.try_parse_list("fit_ntup_branches", config, "report", "fit_ntup_branches")
@@ -1388,6 +1411,9 @@ class job_executor(object):
         print("> book_cor_matrix:", self.book_cor_matrix)
         print("> book_significance_scan:", self.book_significance_scan)
         print("> book_2d_significance_scan:", self.book_2d_significance_scan)
+        print("> significance_dnn_cut_min:", self.significance_dnn_cut_min)
+        print("> significance_dnn_cut_max:", self.significance_dnn_cut_max)
+        print("> significance_dnn_cut_step:", self.significance_dnn_cut_step)
         print("> book_fit_ntup:", self.book_fit_ntup)
         print("> fit_ntup_branches:", self.fit_ntup_branches)
         print("> fit_ntup_region:", self.fit_ntup_region)

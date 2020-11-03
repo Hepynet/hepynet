@@ -69,29 +69,17 @@ class Feedbox(object):
             self.rdm_seed = rdm_seed
         # cut array
         for xs_key in xs_dict.keys():
-            self.xs_dict[xs_key] = cut_array(
-                self.xs_dict[xs_key],
-                selected_features,
-                cut_features,
-                cut_values,
-                cut_types,
+            cut_array(
+                self.xs_dict[xs_key], cut_features, cut_values, cut_types,
             )
         for xb_key in xb_dict.keys():
-            self.xb_dict[xb_key] = cut_array(
-                self.xb_dict[xb_key],
-                selected_features,
-                cut_features,
-                cut_values,
-                cut_types,
+            cut_array(
+                self.xb_dict[xb_key], cut_features, cut_values, cut_types,
             )
         if apply_data:
             for xd_key in xd_dict.keys():
-                self.xd_dict[xd_key] = cut_array(
-                    self.xd_dict[xd_key],
-                    selected_features,
-                    cut_features,
-                    cut_values,
-                    cut_types,
+                cut_array(
+                    self.xd_dict[xd_key], cut_features, cut_values, cut_types,
                 )
 
         # get normalization parameters
@@ -142,7 +130,6 @@ class Feedbox(object):
         else:
             logging.warn("Unknown input type")
             return None
-        logging.debug(f"Selected features quantity: {len(self.selected_features)}")
         if add_validation_features:
             feature_list = self.selected_features + self.validation_features
         else:
@@ -177,7 +164,6 @@ class Feedbox(object):
 
     def get_reshape(self, input_type, array_key="all"):
         x_reshape, weight_reshape = self.get_raw(input_type, array_key=array_key)
-        print("x_reshape shape:", x_reshape.shape)
         norm_means = []
         norm_variances = []
         for feature in self.selected_features:
@@ -373,9 +359,7 @@ class Feedbox(object):
             return full_dict
 
 
-def cut_array(
-    input_array, selected_features, cut_features=[], cut_values=[], cut_types=[]
-):
+def cut_array(input_array, cut_features=[], cut_values=[], cut_types=[]):
     # cut array
     if len(cut_features) > 0:
         # Get indexes that pass cuts
@@ -386,15 +370,16 @@ def cut_array(
         for (cut_feature, cut_value, cut_type) in zip(
             cut_features, cut_values, cut_types
         ):
-            cut_feature_id = selected_features.index(cut_feature)
             # update cut index
             temp_index = array_utils.get_cut_index_value(
-                input_array[:, cut_feature_id], cut_value, cut_type
+                input_array[cut_feature], cut_value, cut_type
             )
             if pass_index_array is None:
                 pass_index_array = temp_index
             else:
                 pass_index_array = np.intersect1d(pass_index_array, temp_index)
-        return input_array[pass_index_array.flatten(), :]
-    else:
-        return input_array.copy()
+        for feature_name in input_array:
+            input_array[feature_name] = input_array[feature_name][
+                pass_index_array.flatten()
+            ]
+

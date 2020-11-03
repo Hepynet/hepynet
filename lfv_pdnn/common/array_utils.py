@@ -99,10 +99,6 @@ def modify_array(
     input_array,
     input_weights,
     remove_negative_weight=False,
-    #select_mass=False,
-    #mass_id=None,
-    #mass_min=None,
-    #mass_max=None,
     reset_mass=False,
     reset_mass_array=None,
     reset_mass_weights=None,
@@ -119,15 +115,6 @@ def modify_array(
             Array to be modified.
         remove_negative_weight: bool, optional (default=False) 
             Whether to remove events with negative weight.
-        select_mass: bool, optional (default=False)
-            Whether to select elements within cerntain mass range.
-            If True, mass_id/mass_min/mass_max shouldn't be None.
-        mass_id: int or None, optional (default=None)
-            Column index of mass id.
-        mass_min: float or None, optional (default=None)
-            Mass lower limit.
-        mass_max: float or None, optional (default=None)
-            Mass higher limit.
         reset_mass: bool, optional (default=None)
             Whether to reset mass with given array's value distribution.
             If set True, reset_mass_array/reset_mass_id shouldn't be None.
@@ -157,14 +144,6 @@ def modify_array(
     if len(new_array) == 0:
         warnings.warn("empty input detected in modify_array, no changes will be made.")
         return new_array
-    # select mass range
-    #if select_mass == True:
-    #    if not common_utils.has_none([mass_id, mass_min, mass_max]):
-    #        for ele in new:
-    #            if ele[mass_id] < mass_min or ele[mass_id] > mass_max:
-    #                ele[-1] = 0
-    #    else:
-    #        print("missing parameters, skipping mass selection...")
     # clean array
     if remove_negative_weight:
         new_weight = clean_negative_weights(new_weight)

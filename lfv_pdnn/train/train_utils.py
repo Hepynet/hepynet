@@ -10,7 +10,6 @@ import glob
 import os
 import sys
 import time
-import warnings
 from math import log, sqrt
 
 import matplotlib.pyplot as plt
@@ -25,18 +24,22 @@ def calculate_asimov(sig, bkg):
     return sqrt(2 * ((sig + bkg) * log(1 + sig / bkg) - sig))
 
 
-def calculate_significance(sig, bkg, sig_total=1, bkg_total=1, algo="asimov"):
+def calculate_significance(sig, bkg, sig_total=None, bkg_total=None, algo="asimov"):
     """Returns asimov significance"""
     # check input
     if sig <= 0 or bkg <= 0 or sig_total <= 0 or bkg_total <= 0:
-        warnings.warn(
+        logging.warn(
             "non-positive value found during significance calculation, using default value 0."
         )
         return 0
     if "_rel" in algo:
-        if sig_total == 1 or bkg_total == 1:
-            warnings.warn(
-                "sig_total or bkg_total value is equal to default 1, please check input."
+        if not sig_total:
+            logging.error(
+                "sig_total or bkg_total value is not specified to calculate relative type significance, please check input."
+            )
+        if not bkg_total:
+            logging.error(
+                "sig_total or bkg_total value is not specified to calculate relative type significance, please check input."
             )
     # calculation
     if algo == "asimov":
@@ -56,7 +59,7 @@ def calculate_significance(sig, bkg, sig_total=1, bkg_total=1, algo="asimov"):
     elif algo == "s_sqrt_sb_rel":
         return (sig / sig_total) / sqrt((bkg + sig) / (sig_total + bkg_total))
     else:
-        warnings.warn("Unrecognized significance algorithm, will use default 'asimov'")
+        logging.warn("Unrecognized significance algorithm, will use default 'asimov'")
         return calculate_asimov(sig, bkg)
 
 
@@ -168,7 +171,7 @@ def get_mean_var(array, axis=None, weights=None):
     average = np.average(array, axis=axis, weights=weights)
     variance = np.average((array - average) ** 2, axis=axis, weights=weights)
     if 0 in variance:
-        warnings.warn("Encountered 0 variance, adding shift value 0.000001")
+        logging.warn("Encountered 0 variance, adding shift value 0.000001")
     return average, variance + 0.000001
 
 

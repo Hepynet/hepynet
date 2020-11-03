@@ -39,8 +39,10 @@ def load_npy_arrays(
             None(default): use original weight to directly combine
 
     Return:
-        A dict of different variables
-        Example: signal dict of rpv_500 rpv_1000 rpv_2000
+        A dict of subdict for different samples
+            example: signal dict of rpv_500 rpv_1000 rpv_2000
+        Each subdict is a dict of different variable
+            examples: pT, eta, phi
 
     """
 
@@ -101,7 +103,7 @@ def load_npy_arrays(
         for feature in sample_array_dict:
             sample_array_dict[feature] = sample_array_dict[feature][pass_index.flatten(), :]
         total_weights = np.sum(sample_array_dict["weight"])
-        logging.info(f"Total input {sample_component} weights: {total_weights}")
+        logging.debug(f"Total input {sample_component} weights: {total_weights}")
         out_dict[sample_component] = sample_array_dict
     return out_dict
 

@@ -9,16 +9,16 @@ import warnings
 
 import matplotlib.pyplot as plt
 import numpy as np
+import ROOT
 import seaborn as sns
+from easy_atlas_plot.plot_utils import plot_utils, th1_tools
+from lfv_pdnn.common import array_utils, common_utils
+from lfv_pdnn.common.logging_cfg import *
+from lfv_pdnn.data_io import feed_box, root_io
+from lfv_pdnn.train import train_utils
 from matplotlib.ticker import NullFormatter
 from scipy.special import softmax
 from sklearn.metrics import auc, roc_auc_score, roc_curve
-
-import ROOT
-from easy_atlas_plot.plot_utils import plot_utils, th1_tools
-from lfv_pdnn.common import array_utils, common_utils
-from lfv_pdnn.data_io import feed_box, root_io
-from lfv_pdnn.train import train_utils
 
 
 def calculate_auc(x_plot, y_plot, weights, model, shuffle_col=None, rm_last_two=False):
@@ -61,34 +61,16 @@ def get_significances(
     model_meta = model_wrapper.model_meta
     # prepare signal
     sig_key = model_meta["sig_key"]
-    sig_arr_temp = feedbox.get_array("xs", "raw", array_key=sig_key)
-    sig_arr_temp[:, 0:-2] = train_utils.norarray(
-        sig_arr_temp[:, 0:-2],
-        average=np.array(model_meta["norm_average"]),
-        variance=np.array(model_meta["norm_variance"]),
-    )
-    sig_selected_arr = train_utils.get_valid_feature(sig_arr_temp)
-    sig_predictions = model_wrapper.get_model().predict(sig_selected_arr)
+    sig_arr, sig_weights = feedbox.get_reshape("xs", array_key=sig_key)
+    sig_predictions = model_wrapper.get_model().predict(sig_arr)
     if sig_predictions.ndim == 2:
         sig_predictions = sig_predictions[:, multi_class_cut_branch]
-    sig_predictions_weights = np.reshape(
-        feedbox.get_array("xs", "reshape", array_key=sig_key)[:, -1], (-1, 1)
-    )
     # prepare background
     bkg_key = model_meta["bkg_key"]
-    bkg_arr_temp = feedbox.get_array("xb", "raw", array_key=bkg_key)
-    bkg_arr_temp[:, 0:-2] = train_utils.norarray(
-        bkg_arr_temp[:, 0:-2],
-        average=np.array(model_meta["norm_average"]),
-        variance=np.array(model_meta["norm_variance"]),
-    )
-    bkg_selected_arr = train_utils.get_valid_feature(bkg_arr_temp)
-    bkg_predictions = model_wrapper.get_model().predict(bkg_selected_arr)
+    bkg_arr, bkg_weights = feedbox.get_reshape("xb", array_key=bkg_key)
+    bkg_predictions = model_wrapper.get_model().predict(bkg_arr)
     if bkg_predictions.ndim == 2:
         bkg_predictions = bkg_predictions[:, multi_class_cut_branch]
-    bkg_predictions_weights = np.reshape(
-        feedbox.get_array("xb", "reshape", array_key=bkg_key)[:, -1], (-1, 1)
-    )
     # prepare thresholds
     bin_array = np.array(range(-1000, 1000))
     thresholds = 1.0 / (1.0 + 1.0 / np.exp(bin_array * 0.02))
@@ -98,13 +80,13 @@ def get_significances(
     plot_thresholds = []
     sig_above_threshold = []
     bkg_above_threshold = []
-    total_sig_weight = np.sum(sig_predictions_weights)
-    total_bkg_weight = np.sum(bkg_predictions_weights)
+    total_sig_weight = np.sum(sig_weights)
+    total_bkg_weight = np.sum(bkg_weights)
     for dnn_cut in thresholds:
         sig_ids_passed = sig_predictions > dnn_cut
-        total_sig_weights_passed = np.sum(sig_predictions_weights[sig_ids_passed])
+        total_sig_weights_passed = np.sum(sig_weights[sig_ids_passed])
         bkg_ids_passed = bkg_predictions > dnn_cut
-        total_bkg_weights_passed = np.sum(bkg_predictions_weights[bkg_ids_passed])
+        total_bkg_weights_passed = np.sum(bkg_weights[bkg_ids_passed])
         if total_bkg_weights_passed > 0 and total_sig_weights_passed > 0:
             plot_thresholds.append(dnn_cut)
             current_significance = train_utils.calculate_significance(
@@ -118,8 +100,8 @@ def get_significances(
             significances.append(current_significance)
             sig_above_threshold.append(total_sig_weights_passed)
             bkg_above_threshold.append(total_bkg_weights_passed)
-    total_sig_weight = np.sum(sig_predictions_weights)
-    total_bkg_weight = np.sum(bkg_predictions_weights)
+    total_sig_weight = np.sum(sig_weights)
+    total_bkg_weight = np.sum(bkg_weights)
     return (plot_thresholds, significances, sig_above_threshold, bkg_above_threshold)
 
 
@@ -1436,23 +1418,16 @@ def plot_2d_density(
     model_meta = model_wrapper.model_meta
     # plot signal
     sig_key = model_meta["sig_key"]
-    sig_arr_original = feedbox.get_array("xs", "raw", array_key=sig_key)
-    sig_arr_temp = feedbox.get_array("xs", "raw", array_key=sig_key)
-    sig_arr_temp[:, 0:-2] = train_utils.norarray(
-        sig_arr_temp[:, 0:-2],
-        average=np.array(model_meta["norm_average"]),
-        variance=np.array(model_meta["norm_variance"]),
-    )
-    selected_arr = train_utils.get_valid_feature(sig_arr_temp)
-    predict_arr = model_wrapper.get_model().predict(selected_arr)
+    sig_arr_raw, _ = feedbox.get_raw("xs", array_key=sig_key)
+    sig_arr, sig_weights = feedbox.get_reshape("xs", array_key=sig_key)
+    predict_arr = model_wrapper.get_model().predict(sig_arr)
     if predict_arr.ndim == 2:
         predict_arr = predict_arr[:, 0]
     mass_index = job_wrapper.selected_features.index(job_wrapper.reset_feature_name)
     x = predict_arr
-    y = sig_arr_original[:, mass_index]
-    w = sig_arr_temp[:, -1]
+    y = sig_arr_raw[:, mass_index]
     ## make plot
-    plot_canvas = ROOT.TCanvas("2d_density_sig", "2d_density_sig", 1200, 900)
+    plot_canvas = ROOT.TCanvas("2d_density_sig", "2d_density_sig", 800, 600)
     hist_sig = th1_tools.TH2FTool(
         "2d_density_sig",
         "2d_density_sig",
@@ -1463,7 +1438,7 @@ def plot_2d_density(
         ylow=min(y),
         yup=max(y),
     )
-    hist_sig.fill_hist(fill_array_x=x, fill_array_y=y, weight_array=w)
+    hist_sig.fill_hist(fill_array_x=x, fill_array_y=y, weight_array=sig_weights)
     hist_sig.set_canvas(plot_canvas)
     hist_sig.set_palette("kBird")
     hist_sig.update_config("hist", "SetStats", 0)
@@ -1473,23 +1448,16 @@ def plot_2d_density(
     hist_sig.save(save_dir=save_dir, save_file_name=save_file_name + "_sig")
     # plot background
     bkg_key = model_meta["bkg_key"]
-    bkg_arr_original = feedbox.get_array("xb", "raw", array_key=bkg_key)
-    bkg_arr_temp = feedbox.get_array("xb", "raw", array_key=bkg_key)
-    bkg_arr_temp[:, 0:-2] = train_utils.norarray(
-        bkg_arr_temp[:, 0:-2],
-        average=np.array(model_meta["norm_average"]),
-        variance=np.array(model_meta["norm_variance"]),
-    )
-    selected_arr = train_utils.get_valid_feature(bkg_arr_temp)
-    predict_arr = model_wrapper.get_model().predict(selected_arr)
+    bkg_arr_raw, _ = feedbox.get_raw("xb", array_key=bkg_key)
+    bkg_arr, bkg_weights = feedbox.get_reshape("xb", array_key=bkg_key)
+    predict_arr = model_wrapper.get_model().predict(bkg_arr)
     if predict_arr.ndim == 2:
         predict_arr = predict_arr[:, 0]
     mass_index = job_wrapper.selected_features.index(job_wrapper.reset_feature_name)
     x = predict_arr
-    y = bkg_arr_original[:, mass_index]
-    w = bkg_arr_temp[:, -1]
+    y = bkg_arr_raw[:, mass_index]
     ## make plot
-    plot_canvas = ROOT.TCanvas("2d_density_bkg", "2d_density_bkg", 1200, 900)
+    plot_canvas = ROOT.TCanvas("2d_density_bkg", "2d_density_bkg", 800, 600)
     hist_bkg = th1_tools.TH2FTool(
         "2d_density_bkg",
         "2d_density_bkg",
@@ -1500,7 +1468,7 @@ def plot_2d_density(
         ylow=min(y),
         yup=max(y),
     )
-    hist_bkg.fill_hist(fill_array_x=x, fill_array_y=y, weight_array=w)
+    hist_bkg.fill_hist(fill_array_x=x, fill_array_y=y, weight_array=bkg_weights)
     hist_bkg.set_canvas(plot_canvas)
     hist_bkg.set_palette("kBird")
     hist_bkg.update_config("hist", "SetStats", 0)
@@ -1517,45 +1485,52 @@ def plot_2d_significance_scan(
     save_file_name="2d_significance",
     cut_ranges_dn=None,
     cut_ranges_up=None,
+    dnn_cut_min=None,
+    dnn_cut_max=None,
+    dnn_cut_step=None,
 ):
     """Makes 2d map of significance"""
-    dnn_cut_list = np.arange(0.8, 1.0, 0.02)
+    if not (dnn_cut_min and dnn_cut_max and dnn_cut_step):
+        logging.warn(
+            "No complete dnn_cut specified, using default (min=0.5, max=1, step=0.05)"
+        )
+        dnn_cut_min = 0.5
+        dnn_cut_max = 1
+        dnn_cut_step = 0.05
+    dnn_cut_list = np.arange(dnn_cut_min, dnn_cut_max, dnn_cut_step)
     w_inputs = []
     print("Making 2d significance scan.")
-    sig_dict = root_io.get_npy_individuals(
+    sig_dict = root_io.load_npy_arrays(
         job_wrapper.npy_path,
         job_wrapper.campaign,
         job_wrapper.region,
         job_wrapper.channel,
         job_wrapper.sig_list,
         job_wrapper.selected_features,
-        "sig",
         cut_features=job_wrapper.cut_features,
         cut_values=job_wrapper.cut_values,
         cut_types=job_wrapper.cut_types,
     )
-    bkg_dict = root_io.get_npy_individuals(
+    bkg_dict = root_io.load_npy_arrays(
         job_wrapper.npy_path,
         job_wrapper.campaign,
         job_wrapper.region,
         job_wrapper.channel,
         job_wrapper.bkg_list,
         job_wrapper.selected_features,
-        "bkg",
         cut_features=job_wrapper.cut_features,
         cut_values=job_wrapper.cut_values,
         cut_types=job_wrapper.cut_types,
     )
     for sig_id, scan_sig_key in enumerate(job_wrapper.sig_list):
-        xs = array_utils.modify_array(sig_dict[scan_sig_key], select_channel=True)
+        xs = sig_dict[scan_sig_key]
         m_cut_name = job_wrapper.reset_feature_name
         if cut_ranges_dn is None or len(cut_ranges_dn) == 0:
             means, variances = train_utils.get_mean_var(
-                xs[:, 0:-2], axis=0, weights=xs[:, -1]
+                xs[m_cut_name], axis=0, weights=xs["weight"]
             )
-            m_index = job_wrapper.selected_features.index(m_cut_name)
-            m_cut_dn = means[m_index] - math.sqrt(variances[m_index])
-            m_cut_up = means[m_index] + math.sqrt(variances[m_index])
+            m_cut_dn = means[0] - math.sqrt(variances[0])
+            m_cut_up = means[0] + math.sqrt(variances[0])
         else:
             m_cut_dn = cut_ranges_dn[sig_id]
             m_cut_up = cut_ranges_up[sig_id]
@@ -1592,22 +1567,28 @@ def plot_2d_significance_scan(
     y = []
     w = []
     for index, w_input in enumerate(w_inputs):
+        new_x = (dnn_cut_list + dnn_cut_step / 2).tolist()
+        new_y = [job_wrapper.sig_list[index]] * len(w_input)
+        new_w = w_input
+        logging.debug(f"new x: {new_x}")
+        logging.debug(f"new y: {new_y}")
+        logging.debug(f"new w: {new_w}")
         if len(x) == 0:
-            x = dnn_cut_list.tolist()
-            y = [job_wrapper.sig_list[index]] * len(w_input)
-            w = w_input
+            x = new_x
+            y = new_y
+            w = new_w
         else:
-            x += dnn_cut_list.tolist()
-            y += [job_wrapper.sig_list[index]] * len(w_input)
-            w += w_input
+            x += new_x
+            y += new_y
+            w += new_w
     # make plot
-    plot_canvas = ROOT.TCanvas("2d_significance_c", "2d_significance_c", 1200, 900)
+    plot_canvas = ROOT.TCanvas("2d_significance_c", "2d_significance_c", 800, 600)
     hist_sig = th1_tools.TH2FTool(
         "2d_significance",
         "2d_significance",
-        nbinx=10,
-        xlow=0.8,
-        xup=1.0,
+        nbinx=len(dnn_cut_list),
+        xlow=dnn_cut_min,
+        xup=dnn_cut_max,
         nbiny=len(job_wrapper.sig_list),
         ylow=0,
         yup=len(job_wrapper.sig_list),
@@ -1615,9 +1596,9 @@ def plot_2d_significance_scan(
     hist_sig_text = th1_tools.TH2FTool(
         "2d_significance_text",
         "2d_significance_text",
-        nbinx=10,
-        xlow=0.8,
-        xup=1.0,
+        nbinx=len(dnn_cut_list),
+        xlow=dnn_cut_min,
+        xup=dnn_cut_max,
         nbiny=len(job_wrapper.sig_list),
         ylow=0,
         yup=len(job_wrapper.sig_list),
