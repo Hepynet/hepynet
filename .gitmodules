@@ -1,6 +1,3 @@
-[submodule "HEPTools"]
-	path = HEPTools
-	url = https://github.com/StarPrecursor/HEPTools.git
 [submodule "easy_atlas_plot"]
 	path = easy_atlas_plot
 	url = git@github.com:HEPTools/easy_atlas_plot.git
