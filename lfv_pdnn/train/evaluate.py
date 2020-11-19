@@ -9,12 +9,12 @@ import warnings
 
 import matplotlib.pyplot as plt
 import numpy as np
-import ROOT
+#import ROOT
 import seaborn as sns
 from easy_atlas_plot.plot_utils import plot_utils, th1_tools
 from lfv_pdnn.common import array_utils, common_utils
 from lfv_pdnn.common.logging_cfg import *
-from lfv_pdnn.data_io import feed_box, root_io
+from lfv_pdnn.data_io import feed_box, numpy_io
 from lfv_pdnn.train import train_utils
 from matplotlib.ticker import NullFormatter
 from scipy.special import softmax
@@ -262,6 +262,7 @@ def plot_input_distributions(
     plot_density=True,
     save_dir=None,
     save_format="png",
+    print_ratio_table=False,
 ):
     """Plots input distributions comparision plots for sig/bkg/data"""
     print("Plotting input distributions.")
@@ -434,6 +435,10 @@ def plot_input_distributions(
                 save_format=save_format,
             )
             plot_canvas.SaveAs(save_dir + "/" + feature + "_bkg." + save_format)
+            if print_ratio_table:
+                ratio_plot.print_ratio(
+                    save_path=f"{save_dir}/{feature}_bkg_ratio_table.txt"
+                )
 
             # sig
             plot_title = "input var: " + feature + "_sig"
@@ -474,6 +479,10 @@ def plot_input_distributions(
             )  ## >> hot fix
             ratio_plot.draw(draw_err=False, draw_base_line=False)
             plot_canvas.SaveAs(save_dir + "/" + feature + "_sig." + save_format)
+            if print_ratio_table:
+                ratio_plot.print_ratio(
+                    save_path=f"{save_dir}/{feature}_sig_ratio_table.txt"
+                )
 
 
 def plot_overtrain_check(
@@ -1500,7 +1509,7 @@ def plot_2d_significance_scan(
     dnn_cut_list = np.arange(dnn_cut_min, dnn_cut_max, dnn_cut_step)
     w_inputs = []
     print("Making 2d significance scan.")
-    sig_dict = root_io.load_npy_arrays(
+    sig_dict = numpy_io.load_npy_arrays(
         job_wrapper.npy_path,
         job_wrapper.campaign,
         job_wrapper.region,
@@ -1511,7 +1520,7 @@ def plot_2d_significance_scan(
         cut_values=job_wrapper.cut_values,
         cut_types=job_wrapper.cut_types,
     )
-    bkg_dict = root_io.load_npy_arrays(
+    bkg_dict = numpy_io.load_npy_arrays(
         job_wrapper.npy_path,
         job_wrapper.campaign,
         job_wrapper.region,

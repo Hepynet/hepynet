@@ -2,7 +2,9 @@ import glob
 import json
 import math
 import os
+import platform
 import re
+import socket
 
 import numpy as np
 from lfv_pdnn.common.logging_cfg import *
@@ -10,11 +12,11 @@ from lfv_pdnn.common.logging_cfg import *
 
 def create_folders(foldernames, parent_path="./"):
     """Checks existence of given folder names, creats if not exsits.
-  
-  Args:
-    foldernames: list of str, folder names to be checked/created.
-    parent_path: str, parent path where to create folders.
-  """
+
+    Args:
+      foldernames: list of str, folder names to be checked/created.
+      parent_path: str, parent path where to create folders.
+    """
     for foldername in foldernames:
         today_dir = os.path.join(parent_path, foldername)
         if not os.path.isdir(today_dir):
@@ -46,20 +48,37 @@ def display_dict(input_dict):
         print("*", key, ":", input_dict[key])
 
 
+def get_current_platform_name() -> str:
+    """Returns the name of the current platform.
+
+    Returns:
+        str: name of current platform
+    """
+    return platform.platform()
+
+def get_current_hostname() -> str:
+    """Returns the hostname of current machine
+
+    Returns:
+        str: current hostname
+    """
+    return socket.gethostname()
+
+
 def get_file_list(directory, search_pattern, out_name_identifier="None"):
     """Gets a full list of file under given directory with given name pattern
 
-  To use:
-  >>> get_file_list("path/to/directory", "*.root", "signal_emu_500_GeV{}")
+    To use:
+    >>> get_file_list("path/to/directory", "*.root", "signal_emu_500_GeV{}")
 
-  Args:
-    directory: str, path to search files
-    search_pattern: str, pattern of files to search
-    out_name_identifier: patter to rename file_name_list with increased number
+    Args:
+      directory: str, path to search files
+      search_pattern: str, pattern of files to search
+      out_name_identifier: patter to rename file_name_list with increased number
 
-  Returns:
-    A list of file absolute path & file name 
-  """
+    Returns:
+      A list of file absolute path & file name
+    """
     # Get absolute path
     absolute_file_list = glob.glob(directory + "/" + search_pattern, recursive=True)
     absolute_file_list.sort()
@@ -88,10 +107,10 @@ def get_file_list(directory, search_pattern, out_name_identifier="None"):
 def get_newest_file_version(path_pattern, n_digit=2, ver_num=None, use_existing=False):
     """Check existed file and return last available file path with version.
 
-  Version range 00 -> 99 (or 999)
-  If reach limit, last available version will be used. 99 (or 999)
+    Version range 00 -> 99 (or 999)
+    If reach limit, last available version will be used. 99 (or 999)
 
-  """
+    """
     # return file path if ver_num is given
     if ver_num is not None:
         return {
@@ -104,7 +123,9 @@ def get_newest_file_version(path_pattern, n_digit=2, ver_num=None, use_existing=
     if len(path_list) < 1:
         if use_existing:
             logging.warning(
-                "Can't find existing file with path pattern:" + path_pattern + ", returning empty."
+                "Can't find existing file with path pattern:"
+                + path_pattern
+                + ", returning empty."
             )
             return {}
         else:
@@ -160,14 +181,14 @@ def get_significant_digits(number, n_digits):
 
 def has_none(list):
     """Checks whether list's element has "None" value element.
-  
-  Args:
-    list: list, input list to be checked.
 
-  Returns:
-    True, if there IS "None" value element.
-    False, if there ISN'T "None" value element.
-  """
+    Args:
+      list: list, input list to be checked.
+
+    Returns:
+      True, if there IS "None" value element.
+      False, if there ISN'T "None" value element.
+    """
     for ele in list:
         if ele is None:
             return True
@@ -177,29 +198,29 @@ def has_none(list):
 def read_dict_from_json(json_input):
     """Reads dict type data from json input
 
-  Args:
-    json_input: json, used to read dict from
+    Args:
+      json_input: json, used to read dict from
 
-  Returns:
-    dict type data of json input
-  """
+    Returns:
+      dict type data of json input
+    """
     pass
 
 
 def read_dict_from_txt(file_path, key_type="str", value_type="str"):
     """Reads dict type data from text file
-  
-  Args:
-    file_path: str, path to the input text file
-    key_type: str, specify type of key of dict
-      use 'str' for string type
-      use 'float' for float value
-    value_type: str, specify type of value of dict
-      available type same as key_type
 
-  Returns:
-    dict type data of text file input
-  """
+    Args:
+      file_path: str, path to the input text file
+      key_type: str, specify type of key of dict
+        use 'str' for string type
+        use 'float' for float value
+      value_type: str, specify type of value of dict
+        available type same as key_type
+
+    Returns:
+      dict type data of text file input
+    """
     dict_output = {}
 
     with open(file_path, "r") as lines:

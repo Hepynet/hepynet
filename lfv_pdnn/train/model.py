@@ -9,28 +9,25 @@ import os
 import time
 import warnings
 
-import eli5
+#import eli5
 import keras
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
-from eli5.sklearn import PermutationImportance
+#from eli5.sklearn import PermutationImportance
 from keras import backend as K
-from keras.callbacks import TensorBoard, callbacks, ModelCheckpoint
 from keras.layers import Concatenate, Dense, Dropout, Input, Layer
 from keras.layers.normalization import BatchNormalization
 from keras.models import Model, Sequential
 from keras.optimizers import SGD, Adagrad, Adam, RMSprop
 from keras.wrappers.scikit_learn import KerasClassifier, KerasRegressor
-from matplotlib.ticker import FixedLocator, NullFormatter
-from sklearn.metrics import auc, roc_curve
-
-import ROOT
 from lfv_pdnn.common import array_utils, common_utils
 from lfv_pdnn.data_io import root_io
 from lfv_pdnn.train import evaluate, train_utils
-
+from matplotlib.ticker import FixedLocator, NullFormatter
+from sklearn.metrics import auc, roc_curve
+from keras.callbacks import TensorBoard, callbacks, ModelCheckpoint
 
 # self-defined metrics functions
 def plain_acc(y_true, y_pred):
@@ -467,26 +464,17 @@ class Model_Sequential_Base(Model_Base):
         )
         train_callbacks.append(checkpoint)
         # check input
-        (
-            x_train,
-            x_test,
-            y_train,
-            y_test,
-            _,
-            _,
-            _,
-            _,
-            _,
-            _,
-            _,
-            _,
-            wt_train,
-            wt_test,
-        ) = self.feedbox.get_train_test_arrays(
+        train_test_dict = self.feedbox.get_train_test_arrays(
             sig_key=sig_key,
             bkg_key=bkg_key,
             multi_class_bkgs=self.model_hypers["output_bkg_node_names"],
         )
+        x_train = train_test_dict["x_train"]
+        x_test = train_test_dict["x_test"]
+        y_train = train_test_dict["y_train"]
+        y_test = train_test_dict["y_test"]
+        wt_train = train_test_dict["wt_train"]
+        wt_test = train_test_dict["wt_test"]
         if np.isnan(np.sum(x_train)):
             exit(1)
         if np.isnan(np.sum(y_train)):
@@ -559,25 +547,15 @@ class Model_Sequential_Base(Model_Base):
         if self.array_prepared == False:
             raise ValueError("Training data is not ready.")
         # separate validation samples
-        (
-            x_train,
-            _,
-            y_train,
-            _,
-            x_train_selected,
-            _,
-            _,
-            _,
-            _,
-            _,
-            _,
-            _,
-        ) = self.feedbox.get_train_test_arrays(
+        train_test_dict = self.feedbox.get_train_test_arrays(
             sig_key=sig_key,
             bkg_key=bkg_key,
             multi_class_bkgs=self.model_hypers["output_bkg_node_names"],
             use_selected=False,
         )
+        x_train = train_test_dict["x_train"]
+        y_train = train_test_dict["y_train"]
+        x_train_selected = train_test_dict["x_train_selected"]
         num_val = math.ceil(len(y_train) * val_split)
         x_tr = x_train_selected[:-num_val, :]
         x_val = x_train_selected[-num_val:, :]

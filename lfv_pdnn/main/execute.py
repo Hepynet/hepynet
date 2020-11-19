@@ -1,7 +1,7 @@
 import os
 import sys
 
-from lfv_pdnn.train import job_executor
+from lfv_pdnn.main import job_executor
 
 # Show tensorflow warnings and errors only
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"

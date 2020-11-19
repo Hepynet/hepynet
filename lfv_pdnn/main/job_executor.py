@@ -13,47 +13,22 @@ from configparser import ConfigParser
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import ROOT
 import seaborn as sns
 from hyperopt import Trials, fmin, hp, tpe
 from hyperopt.pyll.stochastic import sample
 from lfv_pdnn.common import array_utils, common_utils
+from lfv_pdnn.common.hepy_const import *
 from lfv_pdnn.common.logging_cfg import *
-from lfv_pdnn.data_io import feed_box, root_io
-from lfv_pdnn.train import evaluate, job_utils, model, train_utils
+from lfv_pdnn.data_io import feed_box, numpy_io
+from lfv_pdnn.main import job_utils
+from lfv_pdnn.train import evaluate, model, train_utils
 from reportlab.lib.enums import TA_JUSTIFY
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
-from reportlab.platypus import (
-    Image,
-    PageBreak,
-    Paragraph,
-    SimpleDocTemplate,
-    Spacer,
-    Table,
-    TableStyle,
-)
+from reportlab.platypus import (Image, PageBreak, Paragraph, SimpleDocTemplate,
+                                Spacer, Table, TableStyle)
 from sklearn.metrics import auc, roc_curve
-
-SCANNED_PARAS = [
-    "scan_learn_rate",
-    "scan_learn_rate_decay",
-    "scan_dropout_rate",
-    "scan_momentum",
-    "scan_batch_size",
-    "scan_sig_sumofweight",
-    "scan_bkg_sumofweight",
-    "scan_sig_class_weight",
-    "scan_bkg_class_weight",
-    "scan_sig_key",
-    "scan_bkg_key",
-    "scan_channel",
-    "scan_early_stop_patience",
-    "scan_layers",
-    "scan_nodes",
-]
-# possible main directory names, in docker it's "work", otherwise it's "pdnn-lfv"
 
 
 class job_executor(object):
@@ -147,6 +122,7 @@ class job_executor(object):
         self.book_kine_study = False
         self.book_cut_kine_study = False
         self.dnn_cut_list = []
+        self.print_ratio_table = False
         self.book_cor_matrix = False
         self.book_significance_scan = False
         self.book_2d_significance_scan = False
@@ -214,7 +190,7 @@ class job_executor(object):
                     )
 
         # Suppress inevitably ROOT warnings in python
-        ROOT.gROOT.ProcessLine("gErrorIgnoreLevel = 2001;")
+        # ROOT.gROOT.ProcessLine("gErrorIgnoreLevel = 2001;")
         # Execute job(s)
         if (
             self.perform_para_scan is not True
@@ -294,7 +270,7 @@ class job_executor(object):
             tb_logs_path=self.save_tb_logs_path_subdir,
         )
         # Set up training or loading model
-        bkg_dict = root_io.load_npy_arrays(
+        bkg_dict = numpy_io.load_npy_arrays(
             self.npy_path,
             self.campaign,
             self.region,
@@ -306,7 +282,7 @@ class job_executor(object):
             cut_values=self.cut_values,
             cut_types=self.cut_types,
         )
-        sig_dict = root_io.load_npy_arrays(
+        sig_dict = numpy_io.load_npy_arrays(
             self.npy_path,
             self.campaign,
             self.region,
@@ -319,7 +295,7 @@ class job_executor(object):
             cut_types=self.cut_types,
         )
         if self.apply_data:
-            data_dict = root_io.load_npy_arrays(
+            data_dict = numpy_io.load_npy_arrays(
                 self.npy_path,
                 self.campaign,
                 self.region,
@@ -543,6 +519,7 @@ class job_executor(object):
                                 dnn_cut=dnn_cut,
                                 compare_cut_sb_separated=True,
                                 plot_density=False,
+                                print_ratio_table=self.print_ratio_table,
                             )
                     # Make significance scan plot
                     if self.book_significance_scan:
@@ -776,7 +753,7 @@ class job_executor(object):
                 data_key=self.data_key,
             )
             # Set up training or loading model
-            bkg_dict = root_io.load_npy_arrays(
+            bkg_dict = numpy_io.load_npy_arrays(
                 self.npy_path,
                 self.campaign,
                 self.region,
@@ -787,7 +764,7 @@ class job_executor(object):
                 cut_values=self.cut_values,
                 cut_types=self.cut_types,
             )
-            sig_dict = root_io.load_npy_arrays(
+            sig_dict = numpy_io.load_npy_arrays(
                 self.npy_path,
                 self.campaign,
                 self.region,
@@ -799,7 +776,7 @@ class job_executor(object):
                 cut_types=self.cut_types,
             )
             if self.apply_data:
-                data_dict = root_io.load_npy_arrays(
+                data_dict = numpy_io.load_npy_arrays(
                     self.npy_path,
                     self.campaign,
                     self.region,
@@ -1011,6 +988,7 @@ class job_executor(object):
             "book_cut_kine_study", config, "report", "book_cut_kine_study"
         )
         self.try_parse_list("dnn_cut_list", config, "report", "dnn_cut_list")
+        self.try_parse_bool("print_ratio_table", config, "report", "print_ratio_table")
         self.try_parse_bool("book_cor_matrix", config, "report", "book_cor_matrix")
         self.try_parse_bool(
             "book_significance_scan", config, "report", "book_significance_scan"
@@ -1408,6 +1386,7 @@ class job_executor(object):
         print("> book_kine_study:", self.book_kine_study)
         print("> book_cut_kine_study:", self.book_cut_kine_study)
         print("> dnn_cut_list:", self.dnn_cut_list)
+        print("> print_ratio_table:", self.print_ratio_table)
         print("> book_cor_matrix:", self.book_cor_matrix)
         print("> book_significance_scan:", self.book_significance_scan)
         print("> book_2d_significance_scan:", self.book_2d_significance_scan)
