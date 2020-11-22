@@ -23,7 +23,6 @@ from keras.models import Model, Sequential
 from keras.optimizers import SGD, Adagrad, Adam, RMSprop
 from keras.wrappers.scikit_learn import KerasClassifier, KerasRegressor
 from lfv_pdnn.common import array_utils, common_utils
-from lfv_pdnn.data_io import root_io
 from lfv_pdnn.train import evaluate, train_utils
 from matplotlib.ticker import FixedLocator, NullFormatter
 from sklearn.metrics import auc, roc_curve
@@ -34,6 +33,11 @@ def plain_acc(y_true, y_pred):
     return K.mean(K.less(K.abs(y_pred * 1.0 - y_true * 1.0), 0.5))
     # return 1-K.mean(K.abs(y_pred-y_true))
 
+def get_model_class(model_name: str) -> None:
+    if model_name == "Model_Base":
+        return Model_Base
+    elif model_name == "Model_Sequential_Flat":
+        return Model_Sequential_Flat
 
 class Model_Base(object):
     """Base model of deep neural network for pdnn training.

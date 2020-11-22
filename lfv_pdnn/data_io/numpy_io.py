@@ -6,9 +6,10 @@ Note:
 
 """
 
+import logging
+
 import numpy as np
 from lfv_pdnn.common import array_utils, common_utils, config_utils
-from lfv_pdnn.common.logging_cfg import *
 
 
 def load_npy_arrays(

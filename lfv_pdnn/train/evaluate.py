@@ -4,6 +4,7 @@
 import copy
 import csv
 import json
+import logging
 import math
 import warnings
 
@@ -13,7 +14,6 @@ import numpy as np
 import seaborn as sns
 from easy_atlas_plot.plot_utils import plot_utils, th1_tools
 from lfv_pdnn.common import array_utils, common_utils
-from lfv_pdnn.common.logging_cfg import *
 from lfv_pdnn.data_io import feed_box, numpy_io
 from lfv_pdnn.train import train_utils
 from matplotlib.ticker import NullFormatter

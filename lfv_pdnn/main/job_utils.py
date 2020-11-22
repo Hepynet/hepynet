@@ -1,8 +1,8 @@
 import csv
+import logging
 import os
 
 import lfv_pdnn
-from lfv_pdnn.common.logging_cfg import *
 
 MAIN_DIR_NAMES = ["pdnn-lfv", "work"]
 
@@ -21,7 +21,7 @@ def get_valid_cfg_path(path):
     if os.path.isfile(path):
         return path
     # Check try add share folder prefix
-    lfv_pdnn_dir = os.path.dirname(lfv_pdnn.__file__)
+    lfv_pdnn_dir = os.path.dirname(os.path.dirname(lfv_pdnn.__file__))
     logging.debug(f"Get lfv_pdnn dir: {lfv_pdnn_dir}")
     cfg_path = f"{lfv_pdnn_dir}/{path}"
     if os.path.isfile(cfg_path):

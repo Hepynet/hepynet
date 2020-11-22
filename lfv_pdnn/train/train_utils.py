@@ -7,6 +7,7 @@ manipulation, making plots, evaluation functions and so on.
 """
 
 import glob
+import logging
 import os
 import sys
 import time
@@ -15,7 +16,6 @@ from math import log, sqrt
 import matplotlib.pyplot as plt
 import numpy as np
 from lfv_pdnn.common import array_utils
-from lfv_pdnn.common.logging_cfg import *
 from lfv_pdnn.data_io import root_io
 from sklearn.metrics import accuracy_score, auc, classification_report
 

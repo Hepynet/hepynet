@@ -1,10 +1,10 @@
 import copy
+import logging
 import time
 from sys import getsizeof
 
 import numpy as np
 from lfv_pdnn.common import array_utils
-from lfv_pdnn.common.logging_cfg import *
 from lfv_pdnn.train import train_utils
 
 

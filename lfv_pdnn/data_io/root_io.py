@@ -1,10 +1,11 @@
 import array
+import logging
 import os
 from pathlib import Path
 
-#import ROOT
-#import uproot
-from lfv_pdnn.common.logging_cfg import *
+
+# import ROOT
+# import uproot
 
 
 def dump_ntup_from_npy(ntup_name, branch_list, branch_type, contents, out_path):

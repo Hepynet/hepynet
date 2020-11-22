@@ -1,5 +1,6 @@
 import glob
 import json
+import logging
 import math
 import os
 import platform
@@ -7,7 +8,6 @@ import re
 import socket
 
 import numpy as np
-from lfv_pdnn.common.logging_cfg import *
 
 
 def create_folders(foldernames, parent_path="./"):
@@ -55,6 +55,7 @@ def get_current_platform_name() -> str:
         str: name of current platform
     """
     return platform.platform()
+
 
 def get_current_hostname() -> str:
     """Returns the hostname of current machine

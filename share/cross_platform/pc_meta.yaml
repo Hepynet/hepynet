@@ -1,0 +1,9 @@
+platform_meta:
+  {
+    "DESKTOP-R3IGN1U":
+      {
+        "Linux-4.19.104-microsoft-standard-x86_64-with-debian-buster-sid":
+          { "data_path": "/mnt/d/Data" },
+        "Windows-10-10.0.20262-SP0": { "data_path": "D:/Data" },
+      },
+  }

@@ -1,9 +1,9 @@
+import logging
 import time
 import warnings
 
 import numpy as np
 from lfv_pdnn.common import common_utils
-from lfv_pdnn.common.logging_cfg import *
 
 
 def clean_negative_weights(weights):
