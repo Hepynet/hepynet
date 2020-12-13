@@ -1,0 +1,31 @@
+config:
+    include:
+        - "share/zprime/apply/high_mass_no-69_apply.yaml"
+
+job:
+    job_name: "apply-51"
+    load_job_name: "train-no-69"
+
+input:
+    sig_key: "sig_Zp051"
+    cut_features:
+        - "quadtype"
+        - "mz1"
+        - "mz1"
+    cut_values:
+        - 2
+        - 46.2355
+        - 55.7645
+    cut_types:
+        - "="
+        - ">"
+        - "<"
+
+apply:
+    cfg_fit_ntup:
+        fit_ntup_region:
+        fit_ntup_branches:
+            - "mz1"
+            - "mz2"
+        ntup_save_dir: "zprime/ntuples/fit_ntup_model_51"
+

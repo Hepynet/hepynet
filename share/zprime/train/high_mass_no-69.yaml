@@ -1,0 +1,23 @@
+config:
+    include:
+        - "share/zprime/train/high_mass_all_mass.yaml"
+
+job:
+    job_name: "train-no-69"
+    job_type: "train"
+    save_dir: "run/zprime/high_mass"
+
+input:
+    sig_list:
+        - "sig_Zp042"
+        - "sig_Zp045"
+        - "sig_Zp048"
+        - "sig_Zp051"
+        - "sig_Zp054"
+        - "sig_Zp057"
+        - "sig_Zp060"
+        - "sig_Zp063"
+        - "sig_Zp066"
+#        - "sig_Zp069"
+        - "sig_Zp072"
+        - "sig_Zp075"

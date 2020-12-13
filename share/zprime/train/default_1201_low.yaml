@@ -1,0 +1,34 @@
+## keep settings only related to different version of inputs at here ##
+
+config:
+    include:
+        - "share/zprime/train/default.yaml"
+
+input:
+    arr_path: "zprime/arrays"
+    arr_version: "1117"
+    channel: "dummy_channel"
+    bkg_list:
+        - "bkg_qcd"
+        - "bkg_ggZZ"
+    sig_list:
+        - "sig_Zp005"
+        - "sig_Zp007"
+        - "sig_Zp009"
+        - "sig_Zp011"
+        - "sig_Zp013"
+        - "sig_Zp015"
+        - "sig_Zp017"
+        - "sig_Zp019"
+        - "sig_Zp023"
+        - "sig_Zp027"
+        - "sig_Zp031"
+        - "sig_Zp035"
+        - "sig_Zp039"
+    # basic cuts
+    cut_features:
+        - "quadtype"
+    cut_values:
+        - 2
+    cut_types:
+        - "="

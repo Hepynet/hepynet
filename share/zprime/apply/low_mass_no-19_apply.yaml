@@ -1,0 +1,138 @@
+config:
+    include:
+        - "share/zprime/train/low_mass_no-19.yaml"
+
+job:
+    job_name: "apply-no-19"
+    job_type: "apply"
+    load_job_name: "train-no-19"
+
+input:
+    reset_feature: false
+    # only remove negative events for training
+    rm_negative_weight_events: false
+    sig_list:
+        - "sig_Zp005"
+        - "sig_Zp007"
+        - "sig_Zp009"
+        - "sig_Zp011"
+        - "sig_Zp013"
+        - "sig_Zp015"
+        - "sig_Zp017"
+        - "sig_Zp019"
+        - "sig_Zp023"
+        - "sig_Zp027"
+        - "sig_Zp031"
+        - "sig_Zp035"
+        - "sig_Zp039"
+    selected_features:
+        - "mz1"
+        - "ptl1"
+        - "ptl2"
+        - "ptl3"
+        - "ptl4"
+        - "etal1"
+        - "etal2"
+        - "etal3"
+        - "etal4"
+        - "mz1_mz2"
+        - "ptz1"
+        - "ptz2"
+        - "mzz"
+        - "ptzz"
+        - "deltarl12"
+        - "deltarl34"
+        - "detal12"
+        - "detal34"
+    validation_features:
+        - "mz1"
+        - "mz2"
+        - "etazz"
+
+apply:
+    #check_model_epoch: true
+    pop_plots: false
+    print_report: true
+
+    book_roc: true
+    #book_mc_data_compare: true
+    cfg_mc_data_compare:
+        plot_bkg_list:
+            - "bkg_qcd"
+            - "bkg_ggZZ"
+        apply_data: false
+        apply_data_range:
+        plot_density: true
+
+    #book_train_test_compare: true
+    cfg_train_test_compare:
+        bins: 50
+        x_range: [0, 1]
+        log_scale: false
+
+    #book_kine_study: true
+    cfg_kine_study:
+        mz2_p:
+            range: [0, 50]
+        ptl1:
+            range: [0, 200]
+        ptl2:
+            range: [0, 100]
+        ptl3:
+            range: [0, 100]
+        ptl4:
+            range: [0, 100]
+        ptz1:
+            range: [0, 200]
+        ptz2:
+            range: [0, 100]
+
+    #book_cut_kine_study: true
+    cfg_cut_kine_study:
+        save_ratio_table: true
+    dnn_cut_list:
+        - 0.5
+        - 0.6
+        - 0.8
+    #book_importance_study: true
+    #book_cor_matrix: true
+    book_significance_scan: true
+    cfg_significance_scan:
+        significance_algo: "s_sqrt_b_rel"
+    #book_2d_significance_scan: true
+    #significance_dnn_cut_min: 0.4
+    #significance_dnn_cut_max: 1
+    #significance_dnn_cut_step: 0.05
+    #significance_algo: s_sqrt_b_rel
+    #significance_cut_ranges_dn:
+    #    - 38.0942
+    #    - 40.8080
+    #    - 43.5218
+    #    - 46.2355
+    #    - 48.9493
+    #    - 51.6631
+    #    - 54.3768
+    #    - 57.0906
+    #    - 59.8044
+    #    - 62.5181
+    #    - 65.2319
+    #    - 67.9457
+    #significance_cut_ranges_up:
+    #    - 45.9058
+    #    - 49.1920
+    #    - 52.4782
+    #    - 55.7645
+    #    - 59.0507
+    #    - 62.3369
+    #    - 65.6232
+    #    - 68.9094
+    #    - 72.1956
+    #    - 75.4819
+    #    - 78.7681
+    #    - 82.0543
+    # book_fit_ntup: true
+    # cfg_fit_ntup:
+    #     fit_ntup_region:
+    #     fit_ntup_branches:
+    #         - "mz1_p"
+    #     ntup_save_dir: "zprime/ntuples/fit_ntup"
