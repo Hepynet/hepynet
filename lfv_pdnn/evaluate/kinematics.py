@@ -3,10 +3,52 @@ import pathlib
 
 import matplotlib.pyplot as plt
 import numpy as np
+import seaborn as sns
 from easy_atlas_plot.plot_utils import plot_utils_root, th1_tools
 from lfv_pdnn.common import array_utils, config_utils
 
 logger = logging.getLogger("lfv_pdnn")
+
+try:
+    import ROOT
+except:
+    pass
+
+
+def plot_correlation_matrix(model_wrapper, save_dir="."):
+    save_dir = pathlib.Path(save_dir)
+    save_dir = save_dir.joinpath("kinematics")
+    save_dir.mkdir(parents=True, exist_ok=True)
+    fig, ax = plt.subplots(ncols=2, figsize=(16, 8))
+    ax[0].set_title("bkg correlation")
+    corr_matrix_dict = model_wrapper.get_corrcoef()
+    paint_correlation_matrix(ax[0], corr_matrix_dict, matrix_key="bkg")
+    ax[1].set_title("sig correlation")
+    paint_correlation_matrix(ax[1], corr_matrix_dict, matrix_key="sig")
+    fig_save_path = save_dir.joinpath("correlation_matrix.png")
+    logger.debug(f"Save correlation matrix to: {fig_save_path}")
+    fig.savefig(fig_save_path)
+
+
+def paint_correlation_matrix(ax, corr_matrix_dict, matrix_key="bkg"):
+    # Get matrix
+    corr_matrix = corr_matrix_dict[matrix_key]
+    # Generate a mask for the upper triangle
+    mask = np.triu(np.ones_like(corr_matrix, dtype=np.bool))
+    # Generate a custom diverging colormap
+    cmap = sns.diverging_palette(220, 10, as_cmap=True)
+    # Draw the heatmap with the mask and correct aspect ratio
+    sns.heatmap(
+        corr_matrix,
+        mask=mask,
+        cmap=cmap,
+        vmax=0.3,
+        center=0,
+        square=True,
+        linewidths=0.5,
+        cbar_kws={"shrink": 0.5},
+        ax=ax,
+    )
 
 
 def plot_input_distributions(
@@ -25,6 +67,7 @@ def plot_input_distributions(
     save_dir=None,
     save_format="png",
     print_ratio_table=False,
+    use_root=False,
 ):
     """Plots input distributions comparision plots for sig/bkg/data"""
     print("Plotting input distributions.")
@@ -92,7 +135,7 @@ def plot_input_distributions(
         logger.debug(f"Plotting kinematics for {feature}")
         bkg_fill_array = np.reshape(bkg_array[:, feature_id], (-1, 1))
         sig_fill_array = np.reshape(sig_array[:, feature_id], (-1, 1))
-        if plot_utils_root.HAS_ROOT:
+        if use_root and plot_utils_root.HAS_ROOT:
             plot_range = None
             if feature in config.__dict__.keys():
                 feature_cfg = getattr(config, feature)

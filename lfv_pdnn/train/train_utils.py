@@ -11,7 +11,7 @@ import logging
 import os
 import sys
 import time
-from math import log, sqrt
+from math import sqrt
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -20,49 +20,6 @@ from lfv_pdnn.data_io import root_io
 from sklearn.metrics import accuracy_score, auc, classification_report
 
 logger = logging.getLogger("lfv_pdnn")
-
-
-def calculate_asimov(sig, bkg):
-    return sqrt(2 * ((sig + bkg) * log(1 + sig / bkg) - sig))
-
-
-def calculate_significance(sig, bkg, sig_total=None, bkg_total=None, algo="asimov"):
-    """Returns asimov significance"""
-    # check input
-    if sig <= 0 or bkg <= 0 or sig_total <= 0 or bkg_total <= 0:
-        logger.warn(
-            "non-positive value found during significance calculation, using default value 0."
-        )
-        return 0
-    if "_rel" in algo:
-        if not sig_total:
-            logger.error(
-                "sig_total or bkg_total value is not specified to calculate relative type significance, please check input."
-            )
-        if not bkg_total:
-            logger.error(
-                "sig_total or bkg_total value is not specified to calculate relative type significance, please check input."
-            )
-    # calculation
-    if algo == "asimov":
-        return calculate_asimov(sig, bkg)
-    elif algo == "s_b":
-        return sig / bkg
-    elif algo == "s_sqrt_b":
-        return sig / sqrt(bkg)
-    elif algo == "s_sqrt_sb":
-        return sig / sqrt(sig + bkg)
-    elif algo == "asimov_rel":
-        return calculate_asimov(sig, bkg) / calculate_asimov(sig_total, bkg_total)
-    elif algo == "s_b_rel":
-        return (sig / sig_total) / (bkg / bkg_total)
-    elif algo == "s_sqrt_b_rel":
-        return (sig / sig_total) / sqrt(bkg / bkg_total)
-    elif algo == "s_sqrt_sb_rel":
-        return (sig / sig_total) / sqrt((bkg + sig) / (sig_total + bkg_total))
-    else:
-        logger.warn("Unrecognized significance algorithm, will use default 'asimov'")
-        return calculate_asimov(sig, bkg)
 
 
 def dump_fit_ntup(

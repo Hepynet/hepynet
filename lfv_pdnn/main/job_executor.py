@@ -19,16 +19,24 @@ from hyperopt.pyll.stochastic import sample
 from lfv_pdnn.common import array_utils, common_utils, config_utils
 from lfv_pdnn.common.hepy_const import *
 from lfv_pdnn.data_io import feed_box, numpy_io
-from lfv_pdnn.evaluate import mva_scores, roc, train_history
+from lfv_pdnn.evaluate import kinematics, mva_scores, roc, significance, train_history
 from lfv_pdnn.main import job_utils
 from lfv_pdnn.train import model, train_utils
 from reportlab.lib.enums import TA_JUSTIFY
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
-from reportlab.platypus import (Image, PageBreak, Paragraph, SimpleDocTemplate,
-                                Spacer, Table, TableStyle)
+from reportlab.platypus import (
+    Image,
+    PageBreak,
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
+)
 from sklearn.metrics import auc, roc_curve
+
 
 logger = logging.getLogger("lfv_pdnn")
 
@@ -109,7 +117,7 @@ class job_executor(object):
         elif jc.job_type == "apply":
             # setup save parameters if reports need to be saved
             fig_save_path = None
-            rc.save_dir = f"{rc.save_sub_dir}/reports/{jc.job_name}"
+            rc.save_dir = f"{rc.save_sub_dir}/apply/{jc.job_name}"
             if not os.path.exists(rc.save_dir):
                 os.makedirs(rc.save_dir)
 
@@ -122,40 +130,31 @@ class job_executor(object):
             # save kinematic plots
             if ac.book_kine_study:
                 print(">> Making input distribution plots")
-                evaluate.plot_input_distributions(
+                kinematics.plot_input_distributions(
                     self.model_wrapper,
                     sig_key=ic.sig_key,
                     bkg_key=ic.bkg_key,
                     apply_data=False,
                     style_cfg_path=ac.kine_cfg,
-                    plot_cfgs=ac.cfg_kine_study,
+                    plot_cfg=ac.cfg_kine_study,
                     save_dir=f"{rc.save_sub_dir}/kinematics/raw",
                 )
-                evaluate.plot_input_distributions(
+                kinematics.plot_input_distributions(
                     self.model_wrapper,
                     sig_key=ic.sig_key,
                     bkg_key=ic.bkg_key,
                     apply_data=False,
                     style_cfg_path=ac.kine_cfg,
-                    plot_cfgs=ac.cfg_kine_study,
+                    plot_cfg=ac.cfg_kine_study,
                     save_dir=f"{rc.save_sub_dir}/kinematics/processed",
                     show_reshaped=True,
                 )
             # Make correlation plot
             if ac.book_cor_matrix:
                 print(">> Making correlation plot")
-                fig, ax = plt.subplots(ncols=2, figsize=(16, 8))
-                ax[0].set_title("bkg correlation")
-                evaluate.plot_correlation_matrix(
-                    ax[0], self.model_wrapper.get_corrcoef(), matrix_key="bkg"
+                kinematics.plot_correlation_matrix(
+                    self.model_wrapper, save_dir=rc.save_sub_dir
                 )
-                ax[1].set_title("sig correlation")
-                evaluate.plot_correlation_matrix(
-                    ax[1], self.model_wrapper.get_corrcoef(), matrix_key="sig"
-                )
-                fig_save_path = save_dir + "/correlation_matrix.png"
-                self.fig_correlation_matrix_path = fig_save_path
-                fig.savefig(fig_save_path)
 
             # Check models in different epochs, check only final if not specified
             model_path_list = ["_final"]
@@ -226,6 +225,7 @@ class job_executor(object):
                                 apply_data=False,
                                 figsize=(8, 6),
                                 style_cfg_path=ac.kine_cfg,
+                                plot_cfg=ac.cfg_kine_study,
                                 save_dir=f"{rc.save_sub_dir}/kinematics/model_{identifier}_cut_p{dnn_cut * 100}",
                                 dnn_cut=dnn_cut,
                                 compare_cut_sb_separated=True,
@@ -238,15 +238,13 @@ class job_executor(object):
                     if ac.book_significance_scan:
                         fig, ax = plt.subplots(figsize=(8, 6))
                         ax.set_title("significance scan")
-                        evaluate.plot_significance_scan(
+                        significance.plot_significance_scan(
                             ax,
                             self.model_wrapper,
                             ic.sig_key,
                             ic.bkg_key,
                             save_dir=rc.save_dir,
-                            significance_algo=ac.cfg_significance_scan[
-                                "significance_algo"
-                            ],
+                            significance_algo=ac.cfg_significance_scan.significance_algo,
                             suffix="_" + identifier,
                         )
                         fig_save_path = (
@@ -271,7 +269,7 @@ class job_executor(object):
                             )
                         scan_model_wrapper.set_inputs(temp_model_wrapper.feedbox)
                         self.model_wrapper = scan_model_wrapper
-                        save_dir = f"{rc.save_sub_dir}/reports/{jc.job_name}"
+                        save_dir = f"{rc.save_sub_dir}/apply/{jc.job_name}"
                         if not os.path.exists(save_dir):
                             os.makedirs(save_dir)
                         cut_ranges_dn = ac.cfg_2d_significance_scan[
@@ -663,7 +661,7 @@ class job_executor(object):
         hypers["metrics"] = tc.train_metrics
         hypers["weighted_metrics"] = tc.train_metrics_weighted
         hypers["use_early_stop"] = tc.use_early_stop
-        hypers["early_stop_paras"] = tc.early_stop_paras
+        hypers["early_stop_paras"] = tc.early_stop_paras.get_config_dict()
         hypers["momentum"] = tc.momentum
         hypers["nesterov"] = tc.nesterov
         self.job_config.run.hypers = hypers
