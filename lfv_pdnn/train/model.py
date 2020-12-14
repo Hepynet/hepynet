@@ -9,14 +9,31 @@ import os
 import time
 import warnings
 
-#import eli5
+# import eli5
 import keras
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
-#from eli5.sklearn import PermutationImportance
+
+# fix tensorflow 2.2 issue
+import tensorflow as tf
+
+gpus = tf.config.experimental.list_physical_devices("GPU")
+if gpus:
+    try:
+        # Currently, memory growth needs to be the same across GPUs
+        for gpu in gpus:
+            tf.config.experimental.set_memory_growth(gpu, True)
+        logical_gpus = tf.config.experimental.list_logical_devices("GPU")
+        print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
+    except RuntimeError as e:
+        # Memory growth must be set before GPUs have been initialized
+        print(e)
+
+# from eli5.sklearn import PermutationImportance
 from keras import backend as K
+from keras.callbacks import ModelCheckpoint, TensorBoard, callbacks
 from keras.layers import Concatenate, Dense, Dropout, Input, Layer
 from keras.layers.normalization import BatchNormalization
 from keras.models import Model, Sequential
@@ -26,18 +43,20 @@ from lfv_pdnn.common import array_utils, common_utils
 from lfv_pdnn.train import evaluate, train_utils
 from matplotlib.ticker import FixedLocator, NullFormatter
 from sklearn.metrics import auc, roc_curve
-from keras.callbacks import TensorBoard, callbacks, ModelCheckpoint
+
 
 # self-defined metrics functions
 def plain_acc(y_true, y_pred):
     return K.mean(K.less(K.abs(y_pred * 1.0 - y_true * 1.0), 0.5))
     # return 1-K.mean(K.abs(y_pred-y_true))
 
+
 def get_model_class(model_name: str) -> None:
     if model_name == "Model_Base":
         return Model_Base
     elif model_name == "Model_Sequential_Flat":
         return Model_Sequential_Flat
+
 
 class Model_Base(object):
     """Base model of deep neural network for pdnn training.
