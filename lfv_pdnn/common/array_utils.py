@@ -4,6 +4,7 @@ import warnings
 
 import numpy as np
 from lfv_pdnn.common import common_utils
+logger = logging.getLogger("lfv_pdnn")
 
 
 def clean_negative_weights(weights):
@@ -18,10 +19,10 @@ def clean_negative_weights(weights):
         cleaned new numpy array.
     """
     # Start
-    logging.debug("Cleaning array elements with negative weights...")
+    logger.debug("Cleaning array elements with negative weights...")
     new_weights = weights.copy()
     new_weights = np.clip(new_weights, a_min=0, a_max=None)
-    logging.debug(f"Shape before clean negative: {weights.shape}, shape after: {new_weights.shape}")
+    logger.debug(f"Shape before clean negative: {weights.shape}, shape after: {new_weights.shape}")
     return new_weights
 
 

@@ -3,8 +3,7 @@ import logging
 import os
 import sys
 
-from lfv_pdnn.main import job_executor
-
+logger = logging.getLogger("lfv_pdnn")
 # Show tensorflow warnings and errors only
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"
 
@@ -31,23 +30,27 @@ def execute():
     else:
         # set debug level
         if args.debug:  # DEBUG, INFO, WARNING, ERROR, CRITICAL
-            logging.getLogger().setLevel(logging.DEBUG)
+            logging.getLogger("lfv_pdnn").setLevel(logging.DEBUG)
             if args.verbose:
                 logging_format = "%(asctime)s,%(msecs)03d %(levelname)7s %(message)s, file %(filename)s, line %(lineno)d"
             else:
                 logging_format = "%(asctime)s,%(msecs)03d %(levelname)7s %(message)s"
+
             logging.basicConfig(
                 format=logging_format, datefmt="%Y-%m-%d:%H:%M:%S",
             )
         else:
-            logging.getLogger().setLevel(logging.INFO)
-            logging.basicConfig(format="[%(levelname)s] %(message)s")
+            logging.getLogger("lfv_pdnn").setLevel(logging.INFO)
+            logging.basicConfig(format="%(levelname)s %(message)s")
+
+        from lfv_pdnn.main import job_executor
+
         for yaml_cfg in args.yaml_configs:
-            print("#" * 80)
-            print("Executing: ", yaml_cfg)
+            logger.info("#" * 80)
+            logger.info(f"Executing: {yaml_cfg}")
             ex_test = job_executor.job_executor(yaml_cfg)
             ex_test.execute_jobs()
-        print("#" * 80)
-        print("Done!")
-        print("#" * 80)
+        logger.info("#" * 80)
+        logger.info("Done!")
+        logger.info("#" * 80)
 

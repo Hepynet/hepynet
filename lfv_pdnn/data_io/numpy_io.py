@@ -11,6 +11,8 @@ import logging
 import numpy as np
 from lfv_pdnn.common import array_utils, common_utils, config_utils
 
+logger = logging.getLogger("lfv_pdnn")
+
 
 def load_npy_arrays(
     directory,
@@ -61,18 +63,13 @@ def load_npy_arrays(
     cut_values += [1]
     cut_types += ["="]
     out_dict = {}
-    platform_meta = config_utils.load_pc_meta()["platform_meta"]
-    current_hostname = common_utils.get_current_hostname()
-    current_platform = common_utils.get_current_platform_name()
-    data_directory = None
-    if current_hostname in platform_meta:
-        if current_platform in platform_meta[current_hostname]:
-            data_directory = platform_meta[current_hostname][current_platform][
-                "data_path"
-            ]
+    platform_meta = config_utils.load_current_platform_meta()
+    data_directory = platform_meta["data_path"]
     if not data_directory:
-        logging.critical(
-            f"No meta data found for current host {current_hostname} with platform {current_platform}, please update the config at share/cross_platform/pc_meta.yaml"
+        current_hostname = common_utils.get_current_hostname()
+        current_platform = common_utils.get_current_platform_name()
+        logger.critical(
+            f"Can't find data_path setting for current host {current_hostname} with platform {current_platform}, please update the config at share/cross_platform/pc_meta.yaml"
         )
         exit(1)
     for sample_component in sample_list:
@@ -98,7 +95,7 @@ def load_npy_arrays(
         if not (
             len(cut_features) == len(cut_values) and len(cut_features) == len(cut_types)
         ):
-            logging.critical(
+            logger.critical(
                 "cut_features and cut_values and cut_types should have same length"
             )
         pass_index = None
@@ -118,6 +115,6 @@ def load_npy_arrays(
                 pass_index.flatten(), :
             ]
         total_weights = np.sum(sample_array_dict["weight"])
-        logging.debug(f"Total input {sample_component} weights: {total_weights}")
+        logger.debug(f"Total input {sample_component} weights: {total_weights}")
         out_dict[sample_component] = sample_array_dict
     return out_dict

@@ -7,6 +7,8 @@ import numpy as np
 from lfv_pdnn.common import array_utils
 from lfv_pdnn.train import train_utils
 
+logger = logging.getLogger("lfv_pdnn")
+
 
 class Feedbox(object):
     """DNN inputs management class."""
@@ -103,7 +105,7 @@ class Feedbox(object):
                 mean = np.average(feature_array, weights=weight_array)
                 variance = np.average((feature_array - mean) ** 2, weights=weight_array)
                 norm_dict[feature] = {"mean": mean, "variance": variance}
-                logging.debug(f"Feature {feature} mean: {mean}, variance: {variance}")
+                logger.debug(f"Feature {feature} mean: {mean}, variance: {variance}")
         else:
             norm_dict = model_meta["norm_dict"]
 
@@ -123,12 +125,12 @@ class Feedbox(object):
             if self.apply_data:
                 array_dict = self.xd_dict
             else:
-                logging.warn(
+                logger.warn(
                     "Trying to get data array as apply_data option is set to False"
                 )
                 return None
         else:
-            logging.warn("Unknown input type")
+            logger.warn("Unknown input type")
             return None
         if add_validation_features:
             feature_list = self.selected_features + self.validation_features
@@ -139,7 +141,7 @@ class Feedbox(object):
                 [array_dict[array_key][feature] for feature in feature_list], axis=1,
             )
             weight_out = array_dict[array_key]["weight"]
-        elif array_key == "all" or "all_norm":
+        elif array_key == "all" or array_key == "all_norm":
             array_components = []
             weight_components = []
             for temp_key in array_dict.keys():
@@ -148,7 +150,7 @@ class Feedbox(object):
                 )
                 array_components.append(temp_array)
                 weight_component = array_dict[temp_key]["weight"]
-                if array_key == "all_norm":
+                if array_key == "all":
                     weight_components.append(weight_component)
                 else:
                     sumofweights = np.sum(weight_component)
@@ -156,7 +158,7 @@ class Feedbox(object):
             array_out = np.concatenate(array_components)
             weight_out = np.concatenate(weight_components)
         else:
-            logging.warn("Unknown array_key")
+            logger.warn("Unknown array_key")
             return None
         if self.remove_negative_weight:
             weight_out = array_utils.clean_negative_weights(weight_out)
@@ -167,6 +169,16 @@ class Feedbox(object):
         norm_means = []
         norm_variances = []
         for feature in self.selected_features:
+            if feature not in self.norm_dict:
+                feature_array = np.concatenate(
+                    [sample_dict[feature] for sample_dict in self.xb_dict.values()]
+                )
+                weight_array = np.concatenate(
+                    [sample_dict["weight"] for sample_dict in self.xb_dict.values()]
+                )
+                mean = np.average(feature_array, weights=weight_array)
+                variance = np.average((feature_array - mean) ** 2, weights=weight_array)
+                self.norm_dict[feature] = {"mean": mean, "variance": variance}
             norm_means.append(self.norm_dict[feature]["mean"])
             norm_variances.append(self.norm_dict[feature]["variance"])
         x_reshape = train_utils.norarray(
@@ -236,7 +248,7 @@ class Feedbox(object):
                 sumofweight=self.data_weight,
             )
         else:
-            logging.warn("Unknown input_type")
+            logger.warn("Unknown input_type")
             return None
 
     def get_train_test_arrays(
@@ -254,7 +266,7 @@ class Feedbox(object):
         xs_reweight, xs_weight_reweight = self.get_reweight(
             "xs", array_key=sig_key, reset_mass=reset_mass, reset_array_key=sig_key
         )
-        logging.debug(f"xs_weight_reweight shape: {xs_weight_reweight.shape}")
+        logger.debug(f"xs_weight_reweight shape: {xs_weight_reweight.shape}")
         xb_reweight = None
         xb_weight_reweight = None
         ys = None

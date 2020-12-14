@@ -7,6 +7,8 @@ import numpy as np
 import ROOT
 import uproot
 
+logger = logging.getLogger("lfv_pdnn")
+
 
 def dump_flat_ntuple_individual(
     root_path: str,
@@ -49,9 +51,9 @@ def save_array(array, directory_path, file_name, dump_empty=False):
     save_path = directory_path + "/" + file_name + ".npy"
     if array.size == 0:
         if dump_empty:
-            logging.warning("Empty array detected! Will save empty array as specified.")
+            logger.warning("Empty array detected! Will save empty array as specified.")
         else:
-            logging.warning(
+            logger.warning(
                 "Empty array detected! Skipping saving current array to: " + save_path
             )
             return

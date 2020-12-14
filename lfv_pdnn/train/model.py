@@ -245,6 +245,10 @@ class Model_Sequential_Base(Model_Base):
             load_dir + "/" + date + "_" + job_name + "_" + version + "/models"
         )
         model_dir_list = glob.glob(search_pattern)
+        if not model_dir_list:
+            search_pattern = "/work/" + search_pattern
+            print("search pattern:", search_pattern)
+            model_dir_list = glob.glob(search_pattern)
         model_dir_list = sorted(model_dir_list)
         # Choose the newest one
         if len(model_dir_list) < 1:
@@ -365,48 +369,6 @@ class Model_Sequential_Base(Model_Base):
         self.feedbox = feedbox
         self.array_prepared = feedbox.array_prepared
         self.model_meta["norm_dict"] = feedbox.norm_dict
-
-    def show_performance(
-        self,
-        apply_data=False,
-        figsize=(8, 6),
-        show_fig=True,
-        save_fig=False,
-        save_dir=None,
-        job_type="train",
-    ):
-        """Evaluates training result.
-
-        Args:
-            figsize: tuple
-                Defines plot size.
-
-        """
-        # Check input
-        assert isinstance(self, Model_Base)
-        print("Model performance:")
-        # Check
-        if not self.model_is_trained:
-            warnings.warn("Model is not trained yet.")
-        # Plots
-        if not save_fig:
-            save_dir = None
-        # accuracy curve
-        evaluate.plot_accuracy(
-            self.train_history_accuracy,
-            self.train_history_val_accuracy,
-            figsize=figsize,
-            show_fig=show_fig,
-            save_dir=save_dir,
-        )
-        # loss curve
-        evaluate.plot_loss(
-            self.train_history_loss,
-            self.train_history_val_loss,
-            figsize=figsize,
-            show_fig=show_fig,
-            save_dir=save_dir,
-        )
 
     def train(
         self,

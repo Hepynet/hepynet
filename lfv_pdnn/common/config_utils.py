@@ -1,11 +1,15 @@
 import argparse
+import collections
+import copy
 import logging
 import os
 from typing import Any
 
 import lfv_pdnn
 import yaml
+from lfv_pdnn.common import common_utils
 
+logger = logging.getLogger("lfv_pdnn")
 
 DEFAULT_CFG = {"input": {"region": ""}, "train": {"output_bkg_node_names": []}}
 
@@ -32,10 +36,10 @@ class Hepy_Config(object):
             elif value is None:
                 pass
             else:
-                logging.critical(
+                logger.critical(
                     f"Expect section {key} must has dict type value or None, please check the input."
                 )
-                exit(1)
+                raise ValueError
 
     def update(self, config: dict) -> None:
         """Updates configs with given config dict, overwrite if exists
@@ -52,32 +56,48 @@ class Hepy_Config(object):
             elif value is None:
                 pass
             else:
-                logging.critical(
+                logger.critical(
                     f"Expect section {key} has dict type value or None, please check the input."
                 )
-                exit(1)
+                raise ValueError
 
     def print(self) -> None:
         """Shows all configs
         """
-        logging.info("")
-        logging.info("Config details >>> ")
+        logger.info("")
+        logger.info("Config details " + ">" * 80)
         for key, value in self.__dict__.items():
-            logging.info(f"[{key}]")
+            logger.info(f"[{key}]")
             value.print()
-        logging.info("Config ends <<< ")
+        logger.info("Config ends " + "<" * 83)
+        logger.info("")
 
 
 class Hepy_Config_Section(object):
     """Helper class to handle job configs in a section"""
 
     def __init__(self, section_config_dict: dict) -> None:
+        self._config_dict = section_config_dict
         for key, value in section_config_dict.items():
-            setattr(self, key, value)
+            if type(value) is dict:
+                setattr(self, key, Hepy_Config_Section(value))
+            else:
+                setattr(self, key, value)
+
+    def __deepcopy__(self, memo):
+        clone_obj = Hepy_Config_Section(self.get_config_dict())
+        return clone_obj
 
     def __getattr__(self, item):
         """Called when an attribute lookup has not found the attribute in the usual places"""
         return None
+
+    def clone(self):
+        return copy.deepcopy(self)
+
+    def get_config_dict(self) -> dict:
+        """ Returns config in dict format """
+        return self._config_dict
 
     def update(self, cfg_dict: dict) -> None:
         """Updates the section config dict with new dict, overwrite if exists
@@ -85,14 +105,68 @@ class Hepy_Config_Section(object):
         Args:
             cfg_dict (dict): new section config dict for update
         """
+        dict_merge(self._config_dict, cfg_dict)
         for key, value in cfg_dict.items():
-            setattr(self, key, value)
+            if type(value) is dict:
+                if key in self.__dict__.keys() and key != "_config_dict":
+                    getattr(self, key).update(value)
+                else:
+                    setattr(self, key, Hepy_Config_Section(value))
+            else:
+                setattr(self, key, value)
 
-    def print(self) -> None:
+    def print(self, tabs=0) -> None:
         """Shows all section configs
         """
         for key, value in self.__dict__.items():
-            logging.info(f"    {key} : {value}")
+            if key != "_config_dict":
+                if isinstance(value, Hepy_Config_Section):
+                    logger.info(f"{' '*4*tabs}    {key} :")
+                    for sub_key, sub_value in value.__dict__.items():
+                        if sub_key != "_config_dict":
+                            if isinstance(sub_value, Hepy_Config_Section):
+                                sub_value.print(tabs=tabs + 1)
+                            else:
+                                logger.info(
+                                    f"{' '*4*tabs}        {sub_key} : {sub_value}"
+                                )
+                elif isinstance(value, list):
+                    logger.info(f"{' '*4*tabs}    {key} :")
+                    for ele in value:
+                        logger.info(f"{' '*4*tabs}        - {ele}")
+                else:
+                    logger.info(f"{' '*4*tabs}    {key} : {value}")
+
+
+def dict_merge(my_dict, merge_dict):
+    """ Recursive dict merge """
+    for key in merge_dict.keys():
+        if (
+            key in my_dict
+            and isinstance(my_dict[key], dict)
+            and isinstance(merge_dict[key], collections.Mapping)
+        ):
+            dict_merge(my_dict[key], merge_dict[key])
+        else:
+            my_dict[key] = merge_dict[key]
+
+
+def load_current_platform_meta() -> dict:
+    """Loads meta data for current platform
+
+    Returns:
+        dict: meta data dict of current platform
+    """
+    platform_meta = load_pc_meta()["platform_meta"]
+    current_hostname = common_utils.get_current_hostname()
+    current_platform = common_utils.get_current_platform_name()
+    if current_hostname in platform_meta:
+        if current_platform in platform_meta[current_hostname]:
+            return platform_meta[current_hostname][current_platform]
+    logger.critical(
+        f"No meta data found for current host {current_hostname} with platform {current_platform}, please update the config at share/cross_platform/pc_meta.yaml"
+    )
+    raise KeyError
 
 
 def load_pc_meta() -> dict:
@@ -102,18 +176,18 @@ def load_pc_meta() -> dict:
         dict: meta information dictionary
     """
     lfv_pdnn_dir = os.path.dirname(lfv_pdnn.__file__)
-    logging.debug(f"Found lfv_pdnn root directory at: {lfv_pdnn_dir}")
+    logger.debug(f"Found lfv_pdnn root directory at: {lfv_pdnn_dir}")
     pc_meta_cfg_path = f"{lfv_pdnn_dir}/../share/cross_platform/pc_meta.yaml"
     try:
         with open(pc_meta_cfg_path) as pc_meta_file:
             pc_meta_dict = yaml.load(pc_meta_file, Loader=yaml.FullLoader)
-            logging.debug(f"pc_meta config loaded: \n {pc_meta_dict}")
+            logger.debug(f"pc_meta config loaded: \n {pc_meta_dict}")
             return pc_meta_dict
     except:
-        logging.critical(
+        logger.critical(
             "Can't load pc_meta config file, please check: share/cross_platform/pc_meta.yaml"
         )
-        exit(1)
+        raise FileNotFoundError
 
 
 def load_yaml_dict(yaml_path) -> dict:
@@ -121,5 +195,5 @@ def load_yaml_dict(yaml_path) -> dict:
         yaml_file = open(yaml_path, "r")
         return yaml.load(yaml_file, Loader=yaml.FullLoader)
     except:
-        logging.critical(f"Can't open yaml config: {yaml_path}")
-        exit(1)
+        logger.critical(f"Can't open yaml config: {yaml_path}")
+        raise FileNotFoundError

@@ -15,9 +15,11 @@ from math import log, sqrt
 
 import matplotlib.pyplot as plt
 import numpy as np
-from lfv_pdnn.common import array_utils
+from lfv_pdnn.common import array_utils, config_utils
 from lfv_pdnn.data_io import root_io
 from sklearn.metrics import accuracy_score, auc, classification_report
+
+logger = logging.getLogger("lfv_pdnn")
 
 
 def calculate_asimov(sig, bkg):
@@ -28,17 +30,17 @@ def calculate_significance(sig, bkg, sig_total=None, bkg_total=None, algo="asimo
     """Returns asimov significance"""
     # check input
     if sig <= 0 or bkg <= 0 or sig_total <= 0 or bkg_total <= 0:
-        logging.warn(
+        logger.warn(
             "non-positive value found during significance calculation, using default value 0."
         )
         return 0
     if "_rel" in algo:
         if not sig_total:
-            logging.error(
+            logger.error(
                 "sig_total or bkg_total value is not specified to calculate relative type significance, please check input."
             )
         if not bkg_total:
-            logging.error(
+            logger.error(
                 "sig_total or bkg_total value is not specified to calculate relative type significance, please check input."
             )
     # calculation
@@ -59,7 +61,7 @@ def calculate_significance(sig, bkg, sig_total=None, bkg_total=None, algo="asimo
     elif algo == "s_sqrt_sb_rel":
         return (sig / sig_total) / sqrt((bkg + sig) / (sig_total + bkg_total))
     else:
-        logging.warn("Unrecognized significance algorithm, will use default 'asimov'")
+        logger.warn("Unrecognized significance algorithm, will use default 'asimov'")
         return calculate_asimov(sig, bkg)
 
 
@@ -101,10 +103,13 @@ def dump_fit_ntup(
                     dump_branches.append("dnn_out_" + out_node)
                     dump_contents.append(predictions[:, i])
             # dump
-            ntup_path = ntup_dir + "/" + map_key + "_" + sample_key + ".root"
+            platform_meta = config_utils.load_current_platform_meta()
+            data_path = platform_meta["data_path"]
+            ntup_path = f"{data_path}/{ntup_dir}/{sample_key}.root"
             root_io.dump_ntup_from_npy(
                 "ntup", dump_branches, "f", dump_contents, ntup_path,
             )
+            logger.info(f"Ntuples saved to: {ntup_path}")
 
 
 def get_mass_range(mass_array, weights, nsig=1):
@@ -171,7 +176,7 @@ def get_mean_var(array, axis=None, weights=None):
     average = np.average(array, axis=axis, weights=weights)
     variance = np.average((array - average) ** 2, axis=axis, weights=weights)
     if 0 in variance:
-        logging.warn("Encountered 0 variance, adding shift value 0.000001")
+        logger.warn("Encountered 0 variance, adding shift value 0.000001")
     return average, variance + 0.000001
 
 

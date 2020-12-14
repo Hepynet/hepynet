@@ -3,10 +3,11 @@ import logging
 import os
 from pathlib import Path
 
-
-# import ROOT
-# import uproot
-
+try:
+    import ROOT
+    import uproot
+except:
+    logging.info("Can't import ROOT or uproot, root_io module can't be used")
 
 def dump_ntup_from_npy(ntup_name, branch_list, branch_type, contents, out_path):
     """Generates ntuples from numpy arrays."""

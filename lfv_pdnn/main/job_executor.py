@@ -19,23 +19,18 @@ from hyperopt.pyll.stochastic import sample
 from lfv_pdnn.common import array_utils, common_utils, config_utils
 from lfv_pdnn.common.hepy_const import *
 from lfv_pdnn.data_io import feed_box, numpy_io
+from lfv_pdnn.evaluate import mva_scores, roc, train_history
 from lfv_pdnn.main import job_utils
-from lfv_pdnn.train import evaluate, model, train_utils
-from lfv_pdnn.evaluate import dnn_scores
+from lfv_pdnn.train import model, train_utils
 from reportlab.lib.enums import TA_JUSTIFY
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
-from reportlab.platypus import (
-    Image,
-    PageBreak,
-    Paragraph,
-    SimpleDocTemplate,
-    Spacer,
-    Table,
-    TableStyle,
-)
+from reportlab.platypus import (Image, PageBreak, Paragraph, SimpleDocTemplate,
+                                Spacer, Table, TableStyle)
 from sklearn.metrics import auc, roc_curve
+
+logger = logging.getLogger("lfv_pdnn")
 
 
 class job_executor(object):
@@ -61,8 +56,8 @@ class job_executor(object):
             # self.get_scan_space()
             # self.execute_tuning_jobs()
             # # Perform final training with best hyperparmaters
-            # logging.info("#" * 80)
-            # logging.info("Performing final training with best hyper parameter set")
+            # logger.info("#" * 80)
+            # logger.info("Performing final training with best hyper parameter set")
             # keys = list(self.best_hyper_set.keys())
             # for key in keys:
             #     value = self.best_hyper_set[key]
@@ -112,15 +107,19 @@ class job_executor(object):
                     save_dir=mod_save_path, file_name=model_save_name
                 )
         elif jc.job_type == "apply":
-            # Performance plots
-            self.fig_performance_path = None
-            self.report_path = None
             # setup save parameters if reports need to be saved
             fig_save_path = None
             rc.save_dir = f"{rc.save_sub_dir}/reports/{jc.job_name}"
             if not os.path.exists(rc.save_dir):
                 os.makedirs(rc.save_dir)
-            # show and save according to setting
+
+            # save accuracy and loss curve
+            if ac.book_history:
+                train_history.plot_history(
+                    self.model_wrapper, ac.cfg_history, save_dir=rc.save_dir
+                )
+
+            # save kinematic plots
             if ac.book_kine_study:
                 print(">> Making input distribution plots")
                 evaluate.plot_input_distributions(
@@ -184,20 +183,10 @@ class job_executor(object):
                     if model_path != "_final":
                         identifier = "epoch{:02d}".format(model_num)
                         self.model_wrapper.load_model_with_path(model_path)
-                    # Make performance plots
-                    print(">> Making performance plots")
-                    rc.fig_performance_path = fig_save_path
-                    self.model_wrapper.show_performance(
-                        apply_data=False,  # don't apply data in training performance
-                        show_fig=jc.pop_plots,
-                        save_fig=True,
-                        save_dir=rc.save_dir,
-                        job_type=jc.job_type,
-                    )
                     # Overtrain check
                     if ac.book_roc:
                         print(">> Making roc curve plot")
-                        evaluate.plot_multi_class_roc(
+                        roc.plot_multi_class_roc(
                             self.model_wrapper,
                             save_dir=rc.save_dir,
                             sig_key=ic.sig_key,
@@ -205,13 +194,8 @@ class job_executor(object):
                         )
                     if ac.book_train_test_compare:
                         print(">> Making train/test compare plots")
-                        evaluate.plot_overtrain_check(
-                            self.model_wrapper,
-                            save_dir=rc.save_dir,
-                            bins=ac.cfg_train_test_compare["bins"],
-                            x_range=ac.cfg_train_test_compare["x_range"],
-                            log=ac.cfg_train_test_compare["log_scale"],
-                            reset_mass=False,
+                        mva_scores.plot_train_test_compare(
+                            self.model_wrapper, ac.cfg_train_test_compare, rc.save_dir,
                         )
                     # Make feature importance check
                     if ac.book_importance_study:
@@ -225,10 +209,11 @@ class job_executor(object):
                     # Extra plots (use model on non-mass-reset arrays)
                     if ac.book_mva_scores_data_mc:
                         print(">> Making data/mc scores distributions plots")
-                        dnn_scores.plot_mva_scores(
+                        mva_scores.plot_mva_scores(
                             self.model_wrapper,
                             ac.cfg_mva_scores_data_mc,
-                            save_path=f"{rc.save_dir}/mva_scores_{identifier}",
+                            save_dir=rc.save_dir,
+                            file_name=f"mva_scores_{identifier}",
                         )
                     # show kinemetics at different dnn cut
                     if ac.book_cut_kine_study:
@@ -330,7 +315,7 @@ class job_executor(object):
                         feedbox = self.model_wrapper.feedbox
                         keras_model = self.model_wrapper.get_model()
                         # dump signal ntuple
-                        logging.info("Dumping ntuples for fitting.")
+                        logger.info("Dumping ntuples for fitting.")
                         train_utils.dump_fit_ntup(
                             feedbox,
                             keras_model,
@@ -339,7 +324,7 @@ class job_executor(object):
                             ntup_dir=ntup_dir,
                         )
 
-        if ac.print_report:
+        if ac.book_history:
             self.fig_dnn_scores_lin_path = rc.save_dir + "/DNN_scores_lin_final.png"
             self.fig_dnn_scores_log_path = rc.save_dir + "/DNN_scores_log_final.png"
             pdf_save_path = rc.save_dir + "/summary_report.pdf"
@@ -598,8 +583,8 @@ class job_executor(object):
         """Retrieves configurations from yaml file."""
         cfg_path = job_utils.get_valid_cfg_path(yaml_path)
         if not os.path.isfile(cfg_path):
-            logging.error("No vallid configuration file path provided.")
-            exit(1)
+            logger.error("No vallid configuration file path provided.")
+            raise FileNotFoundError
         yaml_dict = config_utils.load_yaml_dict(cfg_path)
         job_config_temp = config_utils.Hepy_Config(yaml_dict)
         # Check whether need to import other (default) ini file first
@@ -609,7 +594,7 @@ class job_executor(object):
                 if import_ini_path_list:
                     for cfg_path in import_ini_path_list:
                         self.get_config(cfg_path)
-                        logging.info(f"Included config: {cfg_path}")
+                        logger.info(f"Included config: {cfg_path}")
         if self.job_config:
             self.job_config.update(yaml_dict)
         else:
@@ -740,8 +725,8 @@ class job_executor(object):
             )
         else:
             data_dict = None
-        logging.debug(f"Selected_features quantity: {len(ic.selected_features)}")
-        logging.debug(f"Selected_features: {ic.selected_features}")
+        logger.debug(f"Selected_features quantity: {len(ic.selected_features)}")
+        logger.debug(f"Selected_features: {ic.selected_features}")
         if jc.job_type == "apply":
             self.model_wrapper.load_model(
                 rc.load_dir, tc.model_name, job_name=jc.load_job_name,
@@ -807,7 +792,7 @@ class job_executor(object):
             if output_match:
                 rc.save_sub_dir = output_match["path"]
             else:
-                logging.warning(
+                logger.warning(
                     f"Can't find existing train folder matched with date {rc.datestr}, trying to search without specifying the date."
                 )
                 dir_pattern = f"{jc.save_dir}/*_{jc.load_job_name}_v{{}}"
@@ -817,6 +802,6 @@ class job_executor(object):
                 if output_match:
                     rc.save_sub_dir = output_match["path"]
                 else:
-                    logging.error(
+                    logger.error(
                         "Can't find existing train folder matched pattern, please check the settings."
                     )

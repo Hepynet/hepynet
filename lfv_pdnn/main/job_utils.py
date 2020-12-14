@@ -4,6 +4,8 @@ import os
 
 import lfv_pdnn
 
+logger = logging.getLogger("lfv_pdnn")
+
 MAIN_DIR_NAMES = ["pdnn-lfv", "work"]
 
 
@@ -22,17 +24,17 @@ def get_valid_cfg_path(path):
         return path
     # Check try add share folder prefix
     lfv_pdnn_dir = os.path.dirname(os.path.dirname(lfv_pdnn.__file__))
-    logging.debug(f"Get lfv_pdnn dir: {lfv_pdnn_dir}")
+    logger.debug(f"Get lfv_pdnn dir: {lfv_pdnn_dir}")
     cfg_path = f"{lfv_pdnn_dir}/{path}"
     if os.path.isfile(cfg_path):
         return cfg_path
     elif os.path.isdir(cfg_path):
-        logging.critical(
+        logger.critical(
             f"Expect a config file path but get directory path: {cfg_path}, please check .ini file."
         )
         exit()
     else:
-        logging.critical(
+        logger.critical(
             f"No valid config file found at path {cfg_path}, please check .ini file."
         )
         exit()
