@@ -19,7 +19,14 @@ from hyperopt.pyll.stochastic import sample
 from lfv_pdnn.common import array_utils, common_utils, config_utils
 from lfv_pdnn.common.hepy_const import *
 from lfv_pdnn.data_io import feed_box, numpy_io
-from lfv_pdnn.evaluate import kinematics, mva_scores, roc, significance, train_history
+from lfv_pdnn.evaluate import (
+    importance,
+    kinematics,
+    mva_scores,
+    roc,
+    significance,
+    train_history,
+)
 from lfv_pdnn.main import job_utils
 from lfv_pdnn.train import model, train_utils
 from reportlab.lib.enums import TA_JUSTIFY
@@ -36,7 +43,6 @@ from reportlab.platypus import (
     TableStyle,
 )
 from sklearn.metrics import auc, roc_curve
-
 
 logger = logging.getLogger("lfv_pdnn")
 
@@ -199,7 +205,7 @@ class job_executor(object):
                     # Make feature importance check
                     if ac.book_importance_study:
                         print(">> Checking input feature importance")
-                        evaluate.plot_feature_importance(
+                        importance.plot_feature_importance(
                             self.model_wrapper,
                             rc.save_dir,
                             identifier=identifier,
@@ -306,10 +312,10 @@ class job_executor(object):
                         # restore original model wrapper
                         self.model_wrapper = temp_model_wrapper
                     if ac.book_fit_ntup:
-                        save_region = ac.cfg_fit_ntup["fit_ntup_region"]
+                        save_region = ac.cfg_fit_ntup.fit_ntup_region
                         if save_region is None:
                             save_region = ic.region
-                        ntup_dir = f"{ac.cfg_fit_ntup['ntup_save_dir']}/{ic.campaign}/{save_region}"
+                        ntup_dir = f"{ac.cfg_fit_ntup.ntup_save_dir}/{ic.campaign}/{save_region}"
                         feedbox = self.model_wrapper.feedbox
                         keras_model = self.model_wrapper.get_model()
                         # dump signal ntuple
@@ -317,16 +323,10 @@ class job_executor(object):
                         train_utils.dump_fit_ntup(
                             feedbox,
                             keras_model,
-                            ac.cfg_fit_ntup["fit_ntup_branches"],
+                            ac.cfg_fit_ntup.fit_ntup_branches,
                             tc.output_bkg_node_names,
                             ntup_dir=ntup_dir,
                         )
-
-        if ac.book_history:
-            self.fig_dnn_scores_lin_path = rc.save_dir + "/DNN_scores_lin_final.png"
-            self.fig_dnn_scores_log_path = rc.save_dir + "/DNN_scores_log_final.png"
-            pdf_save_path = rc.save_dir + "/summary_report.pdf"
-            self.report_path = pdf_save_path
 
         # post procedure
         plt.close("all")
