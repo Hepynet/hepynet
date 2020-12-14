@@ -77,7 +77,7 @@ class Hepy_Config_Section(object):
     """Helper class to handle job configs in a section"""
 
     def __init__(self, section_config_dict: dict) -> None:
-        self._config_dict = section_config_dict
+        self._config_dict = copy.deepcopy(section_config_dict)
         for key, value in section_config_dict.items():
             if type(value) is dict:
                 setattr(self, key, Hepy_Config_Section(value))
