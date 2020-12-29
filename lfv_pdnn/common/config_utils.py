@@ -3,6 +3,7 @@ import collections
 import copy
 import logging
 import os
+import re
 from typing import Any
 
 import lfv_pdnn
@@ -122,14 +123,7 @@ class Hepy_Config_Section(object):
             if key != "_config_dict":
                 if isinstance(value, Hepy_Config_Section):
                     logger.info(f"{' '*4*tabs}    {key} :")
-                    for sub_key, sub_value in value.__dict__.items():
-                        if sub_key != "_config_dict":
-                            if isinstance(sub_value, Hepy_Config_Section):
-                                sub_value.print(tabs=tabs + 1)
-                            else:
-                                logger.info(
-                                    f"{' '*4*tabs}        {sub_key} : {sub_value}"
-                                )
+                    value.print(tabs=tabs + 1)
                 elif isinstance(value, list):
                     logger.info(f"{' '*4*tabs}    {key} :")
                     for ele in value:
@@ -160,13 +154,15 @@ def load_current_platform_meta() -> dict:
     platform_meta = load_pc_meta()["platform_meta"]
     current_hostname = common_utils.get_current_hostname()
     current_platform = common_utils.get_current_platform_name()
-    if current_hostname in platform_meta:
-        if current_platform in platform_meta[current_hostname]:
-            return platform_meta[current_hostname][current_platform]
+    for my_host in platform_meta.keys():
+        if re.match(f"({my_host})", current_hostname):
+            for my_platform in platform_meta[my_host]:
+                if re.match(f"({my_platform})", current_platform):
+                    return platform_meta[my_host][my_platform]
     logger.critical(
         f"No meta data found for current host {current_hostname} with platform {current_platform}, please update the config at share/cross_platform/pc_meta.yaml"
     )
-    raise KeyError
+    exit(1)
 
 
 def load_pc_meta() -> dict:
@@ -195,5 +191,7 @@ def load_yaml_dict(yaml_path) -> dict:
         yaml_file = open(yaml_path, "r")
         return yaml.load(yaml_file, Loader=yaml.FullLoader)
     except:
-        logger.critical(f"Can't read yaml config: {yaml_path}, please check whether input yaml config exists and the syntax is correct")
+        logger.critical(
+            f"Can't read yaml config: {yaml_path}, please check whether input yaml config exists and the syntax is correct"
+        )
         raise IOError
