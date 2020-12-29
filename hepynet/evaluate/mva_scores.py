@@ -3,9 +3,9 @@ import copy
 import matplotlib.pyplot as plt
 import numpy as np
 from easy_atlas_plot.plot_utils import plot_utils_root, plot_utils_plt, th1_tools
-from lfv_pdnn.evaluate import evaluate_utils
+from hepynet.evaluate import evaluate_utils
 
-logger = logging.getLogger("lfv_pdnn")
+logger = logging.getLogger("hepynet")
 
 def plot_mva_scores(model_wrapper, plot_config, save_dir, file_name="mva_scores"):
     # initialize

@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from lfv_pdnn.evaluate import roc
+from hepynet.evaluate import roc
 
 
 def plot_feature_importance(

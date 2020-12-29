@@ -6,11 +6,11 @@ import os
 import re
 from typing import Any
 
-import lfv_pdnn
+import hepynet
 import yaml
-from lfv_pdnn.common import common_utils
+from hepynet.common import common_utils
 
-logger = logging.getLogger("lfv_pdnn")
+logger = logging.getLogger("hepynet")
 
 DEFAULT_CFG = {"input": {"region": ""}, "train": {"output_bkg_node_names": []}}
 
@@ -171,9 +171,9 @@ def load_pc_meta() -> dict:
     Returns:
         dict: meta information dictionary
     """
-    lfv_pdnn_dir = os.path.dirname(lfv_pdnn.__file__)
-    logger.debug(f"Found lfv_pdnn root directory at: {lfv_pdnn_dir}")
-    pc_meta_cfg_path = f"{lfv_pdnn_dir}/../share/cross_platform/pc_meta.yaml"
+    hepynet_dir = os.path.dirname(hepynet.__file__)
+    logger.debug(f"Found hepynet root directory at: {hepynet_dir}")
+    pc_meta_cfg_path = f"{hepynet_dir}/../share/cross_platform/pc_meta.yaml"
     try:
         with open(pc_meta_cfg_path) as pc_meta_file:
             pc_meta_dict = yaml.load(pc_meta_file, Loader=yaml.FullLoader)

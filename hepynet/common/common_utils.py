@@ -9,7 +9,7 @@ import socket
 
 import numpy as np
 
-logger = logging.getLogger("lfv_pdnn")
+logger = logging.getLogger("hepynet")
 
 
 def create_folders(foldernames, parent_path="./"):

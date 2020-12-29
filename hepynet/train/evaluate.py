@@ -11,9 +11,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 from easy_atlas_plot.plot_utils import plot_utils_root, th1_tools
-from lfv_pdnn.common import array_utils, common_utils
-from lfv_pdnn.data_io import feed_box, numpy_io
-from lfv_pdnn.train import train_utils
+from hepynet.common import array_utils, common_utils
+from hepynet.data_io import feed_box, numpy_io
+from hepynet.train import train_utils
 from scipy.special import softmax
 from sklearn.metrics import auc, roc_auc_score, roc_curve
 

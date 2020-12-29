@@ -1,4 +1,4 @@
-"""Collection of constants for this hepynet(lfv_pdnn) module"""
+"""Collection of constants for this hepynet(hepynet) module"""
 
 
 SCANNED_PARAS = [

@@ -7,7 +7,7 @@ import numpy as np
 import ROOT
 import uproot
 
-logger = logging.getLogger("lfv_pdnn")
+logger = logging.getLogger("hepynet")
 
 
 def dump_flat_ntuple_individual(

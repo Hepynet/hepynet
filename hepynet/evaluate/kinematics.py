@@ -6,9 +6,9 @@ import matplotlib.gridspec as gridspec
 import numpy as np
 import seaborn as sns
 from easy_atlas_plot.plot_utils import plot_utils_root, th1_tools
-from lfv_pdnn.common import array_utils, config_utils
+from hepynet.common import array_utils, config_utils
 
-logger = logging.getLogger("lfv_pdnn")
+logger = logging.getLogger("hepynet")
 
 try:
     import ROOT

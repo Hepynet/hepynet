@@ -15,11 +15,11 @@ from math import sqrt
 
 import matplotlib.pyplot as plt
 import numpy as np
-from lfv_pdnn.common import array_utils, config_utils
-from lfv_pdnn.data_io import root_io
+from hepynet.common import array_utils, config_utils
+from hepynet.data_io import root_io
 from sklearn.metrics import accuracy_score, auc, classification_report
 
-logger = logging.getLogger("lfv_pdnn")
+logger = logging.getLogger("hepynet")
 
 
 def dump_fit_ntup(

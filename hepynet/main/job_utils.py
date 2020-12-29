@@ -2,9 +2,9 @@ import csv
 import logging
 import os
 
-import lfv_pdnn
+import hepynet
 
-logger = logging.getLogger("lfv_pdnn")
+logger = logging.getLogger("hepynet")
 
 MAIN_DIR_NAMES = ["pdnn-lfv", "work"]
 
@@ -23,9 +23,9 @@ def get_valid_cfg_path(path):
     if os.path.isfile(path):
         return path
     # Check try add share folder prefix
-    lfv_pdnn_dir = os.path.dirname(os.path.dirname(lfv_pdnn.__file__))
-    logger.debug(f"Get lfv_pdnn dir: {lfv_pdnn_dir}")
-    cfg_path = f"{lfv_pdnn_dir}/{path}"
+    hepynet_dir = os.path.dirname(os.path.dirname(hepynet.__file__))
+    logger.debug(f"Get hepynet dir: {hepynet_dir}")
+    cfg_path = f"{hepynet_dir}/{path}"
     if os.path.isfile(cfg_path):
         return cfg_path
     elif os.path.isdir(cfg_path):

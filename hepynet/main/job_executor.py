@@ -16,10 +16,10 @@ import pandas as pd
 import seaborn as sns
 from hyperopt import Trials, fmin, hp, tpe
 from hyperopt.pyll.stochastic import sample
-from lfv_pdnn.common import array_utils, common_utils, config_utils
-from lfv_pdnn.common.hepy_const import *
-from lfv_pdnn.data_io import feed_box, numpy_io
-from lfv_pdnn.evaluate import (
+from hepynet.common import array_utils, common_utils, config_utils
+from hepynet.common.hepy_const import *
+from hepynet.data_io import feed_box, numpy_io
+from hepynet.evaluate import (
     importance,
     kinematics,
     mva_scores,
@@ -27,8 +27,8 @@ from lfv_pdnn.evaluate import (
     significance,
     train_history,
 )
-from lfv_pdnn.main import job_utils
-from lfv_pdnn.train import model, train_utils
+from hepynet.main import job_utils
+from hepynet.train import model, train_utils
 from reportlab.lib.enums import TA_JUSTIFY
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
@@ -44,7 +44,7 @@ from reportlab.platypus import (
 )
 from sklearn.metrics import auc, roc_curve
 
-logger = logging.getLogger("lfv_pdnn")
+logger = logging.getLogger("hepynet")
 
 
 class job_executor(object):

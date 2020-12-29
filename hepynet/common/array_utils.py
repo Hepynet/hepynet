@@ -3,8 +3,8 @@ import time
 import warnings
 
 import numpy as np
-from lfv_pdnn.common import common_utils
-logger = logging.getLogger("lfv_pdnn")
+from hepynet.common import common_utils
+logger = logging.getLogger("hepynet")
 
 
 def clean_negative_weights(weights):

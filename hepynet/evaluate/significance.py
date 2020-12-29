@@ -4,10 +4,10 @@ import csv
 
 import matplotlib.pyplot as plt
 import numpy as np
-from lfv_pdnn.common import common_utils
+from hepynet.common import common_utils
 from matplotlib.ticker import NullFormatter
 
-logger = logging.getLogger("lfv_pdnn")
+logger = logging.getLogger("hepynet")
 
 
 def calculate_asimov(sig, bkg):

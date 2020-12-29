@@ -9,9 +9,9 @@ import logging
 import pathlib
 
 import numpy as np
-from lfv_pdnn.common import array_utils, common_utils, config_utils
+from hepynet.common import array_utils, common_utils, config_utils
 
-logger = logging.getLogger("lfv_pdnn")
+logger = logging.getLogger("hepynet")
 
 
 def load_npy_arrays(

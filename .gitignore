@@ -5,7 +5,7 @@ apply/*
 backups/*
 test/*
 run/*
-pdnn_lfv.egg-info/*
+hepynet.egg-info/*
 env_setup/*
 
 # Side files that are not needed to be saved #
@@ -33,4 +33,4 @@ share/zprime/apply/loop_mass_point.sh
 
 # dynamic ignores
 docker/backup_Dockerfile
-pdnn_lfv.egg-info/dependency_links.txt
+hepynet.egg-info/dependency_links.txt

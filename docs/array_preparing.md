@@ -8,7 +8,7 @@ branch.
 ## Example code
 ```python
 import os
-from lfv_pdnn.make_array.make_array import dump_flat_ntuple_individual
+from hepynet.make_array.make_array import dump_flat_ntuple_individual
 
 # Constants
 ntuple_name = "Emutau"

@@ -2,7 +2,7 @@ import logging
 
 import matplotlib.pyplot as plt
 
-logger = logging.getLogger("lfv_pdnn")
+logger = logging.getLogger("hepynet")
 
 
 def plot_history(

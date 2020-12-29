@@ -39,8 +39,8 @@ from keras.layers.normalization import BatchNormalization
 from keras.models import Model, Sequential
 from keras.optimizers import SGD, Adagrad, Adam, RMSprop
 from keras.wrappers.scikit_learn import KerasClassifier, KerasRegressor
-from lfv_pdnn.common import array_utils, common_utils
-from lfv_pdnn.train import evaluate, train_utils
+from hepynet.common import array_utils, common_utils
+from hepynet.train import evaluate, train_utils
 from matplotlib.ticker import FixedLocator, NullFormatter
 from sklearn.metrics import auc, roc_curve
 

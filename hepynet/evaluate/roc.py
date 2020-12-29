@@ -2,11 +2,11 @@ import logging
 
 import matplotlib.pyplot as plt
 import numpy as np
-from lfv_pdnn.common import array_utils
+from hepynet.common import array_utils
 from matplotlib.ticker import NullFormatter
 from sklearn.metrics import auc, roc_auc_score, roc_curve
 
-logger = logging.getLogger("lfv_pdnn")
+logger = logging.getLogger("hepynet")
 
 
 def calculate_auc(x_plot, y_plot, weights, model, shuffle_col=None, rm_last_two=False):
