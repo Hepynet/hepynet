@@ -1,0 +1,23 @@
+config:
+    include:
+        - "share/zprime/apply/low_mass_no-19_apply.yaml"
+
+job:
+    job_name: "apply-7"
+    load_job_name: "train-no-19"
+
+input:
+    sig_key: "sig_Zp007"
+    cut_features:
+        - "quadtype"
+        - "mz2"
+        - "mz2"
+    cut_values:
+        - 2
+        - 6.433606
+        - 7.566394
+    cut_types:
+        - "="
+        - ">"
+        - "<"
+

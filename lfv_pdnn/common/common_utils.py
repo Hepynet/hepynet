@@ -1,19 +1,24 @@
 import glob
 import json
+import logging
 import math
 import os
+import platform
+import re
+import socket
 
 import numpy as np
-from lfv_pdnn.common.logging_cfg import *
+
+logger = logging.getLogger("lfv_pdnn")
 
 
 def create_folders(foldernames, parent_path="./"):
     """Checks existence of given folder names, creats if not exsits.
-  
-  Args:
-    foldernames: list of str, folder names to be checked/created.
-    parent_path: str, parent path where to create folders.
-  """
+
+    Args:
+      foldernames: list of str, folder names to be checked/created.
+      parent_path: str, parent path where to create folders.
+    """
     for foldername in foldernames:
         today_dir = os.path.join(parent_path, foldername)
         if not os.path.isdir(today_dir):
@@ -45,25 +50,43 @@ def display_dict(input_dict):
         print("*", key, ":", input_dict[key])
 
 
+def get_current_platform_name() -> str:
+    """Returns the name of the current platform.
+
+    Returns:
+        str: name of current platform
+    """
+    return platform.platform()
+
+
+def get_current_hostname() -> str:
+    """Returns the hostname of current machine
+
+    Returns:
+        str: current hostname
+    """
+    return socket.gethostname()
+
+
 def get_file_list(directory, search_pattern, out_name_identifier="None"):
     """Gets a full list of file under given directory with given name pattern
 
-  To use:
-  >>> get_file_list("path/to/directory", "*.root", "signal_emu_500_GeV{}")
+    To use:
+    >>> get_file_list("path/to/directory", "*.root", "signal_emu_500_GeV{}")
 
-  Args:
-    directory: str, path to search files
-    search_pattern: str, pattern of files to search
-    out_name_identifier: patter to rename file_name_list with increased number
+    Args:
+      directory: str, path to search files
+      search_pattern: str, pattern of files to search
+      out_name_identifier: patter to rename file_name_list with increased number
 
-  Returns:
-    A list of file absolute path & file name 
-  """
+    Returns:
+      A list of file absolute path & file name
+    """
     # Get absolute path
     absolute_file_list = glob.glob(directory + "/" + search_pattern, recursive=True)
     absolute_file_list.sort()
     if len(absolute_file_list) == 0:
-        logging.warning("Empty file list, please check input.")
+        logger.warning("Empty file list, please check input.")
     # Get file name match the pattern
     file_name_list = [os.path.basename(path) for path in absolute_file_list]
     # Rename file_name_list if out_name_identifier is specified
@@ -80,17 +103,17 @@ def get_file_list(directory, search_pattern, out_name_identifier="None"):
             if name == name_check:
                 num_same_name += 1
         if num_same_name > 1:
-            logging.warning("Same file name detected.")
+            logger.warning("Same file name detected.")
     return absolute_file_list, file_name_list
 
 
 def get_newest_file_version(path_pattern, n_digit=2, ver_num=None, use_existing=False):
     """Check existed file and return last available file path with version.
 
-  Version range 00 -> 99 (or 999)
-  If reach limit, last available version will be used. 99 (or 999)
+    Version range 00 -> 99 (or 999)
+    If reach limit, last available version will be used. 99 (or 999)
 
-  """
+    """
     # return file path if ver_num is given
     if ver_num is not None:
         return {
@@ -98,27 +121,27 @@ def get_newest_file_version(path_pattern, n_digit=2, ver_num=None, use_existing=
             "path": path_pattern.format(str(ver_num).zfill(n_digit)),
         }
     # otherwise try to find ver_num
-    max_version = int(math.pow(10, n_digit) - 1)
-    ver_num = 0
-    path = path_pattern.format(str(ver_num).zfill(n_digit))
-    while os.path.exists(path):
-        ver_num += 1
-        path = path_pattern.format(str(ver_num).zfill(n_digit))
-    if use_existing:
-        if ver_num < 1:
-            logging.warning("Non existing folder found! Using 0 for the counting.")
-            path = path_pattern.format(str(0).zfill(n_digit))
-        else:
-            path = path_pattern.format(str(ver_num - 1).zfill(n_digit))
-    if ver_num > max_version:
-        logging.warning(
-            "Too much model version detected at same date. \
-      Will only keep maximum {} different versions.".format(
-                max_version
+    path_list = glob.glob(path_pattern.format("*"))
+    path_list = sorted(path_list)
+    if len(path_list) < 1:
+        if use_existing:
+            logger.debug(
+                "Can't find existing file with path pattern:"
+                + path_pattern
+                + ", returning empty."
             )
-        )
-        logging.warning("Version {} will be overwrite!".format(max_version))
-        ver_num = max_version
+            return {}
+        else:
+            ver_num = 0
+            path = path_pattern.format(str(0).zfill(n_digit))
+    else:
+        path = path_list[-1]  # Choose the last match
+        version_tag_search = re.compile("v(" + "\d" * n_digit + ")")
+        ver_num = int(version_tag_search.search(path).group(1))
+        if not use_existing:
+            ver_num += 1
+            path = path_pattern.format(str(ver_num).zfill(n_digit))
+
     return {
         "ver_num": ver_num,
         "path": path,
@@ -140,14 +163,14 @@ def get_significant_digits(number, n_digits):
 
 def has_none(list):
     """Checks whether list's element has "None" value element.
-  
-  Args:
-    list: list, input list to be checked.
 
-  Returns:
-    True, if there IS "None" value element.
-    False, if there ISN'T "None" value element.
-  """
+    Args:
+      list: list, input list to be checked.
+
+    Returns:
+      True, if there IS "None" value element.
+      False, if there ISN'T "None" value element.
+    """
     for ele in list:
         if ele is None:
             return True
@@ -157,29 +180,29 @@ def has_none(list):
 def read_dict_from_json(json_input):
     """Reads dict type data from json input
 
-  Args:
-    json_input: json, used to read dict from
+    Args:
+      json_input: json, used to read dict from
 
-  Returns:
-    dict type data of json input
-  """
+    Returns:
+      dict type data of json input
+    """
     pass
 
 
 def read_dict_from_txt(file_path, key_type="str", value_type="str"):
     """Reads dict type data from text file
-  
-  Args:
-    file_path: str, path to the input text file
-    key_type: str, specify type of key of dict
-      use 'str' for string type
-      use 'float' for float value
-    value_type: str, specify type of value of dict
-      available type same as key_type
 
-  Returns:
-    dict type data of text file input
-  """
+    Args:
+      file_path: str, path to the input text file
+      key_type: str, specify type of key of dict
+        use 'str' for string type
+        use 'float' for float value
+      value_type: str, specify type of value of dict
+        available type same as key_type
+
+    Returns:
+      dict type data of text file input
+    """
     dict_output = {}
 
     with open(file_path, "r") as lines:
@@ -195,14 +218,14 @@ def read_dict_from_txt(file_path, key_type="str", value_type="str"):
                     key = eval(content1)
                 except ZeroDivisionError:
                     key_error = True
-                    logging.warning("Float division by zero.")
+                    logger.warning("Float division by zero.")
                     continue  # skip invalid key
                 except:
                     key_error = True
-                    logging.warning("Unknown evaluation error.")
+                    logger.warning("Unknown evaluation error.")
                     continue  # skip invalid key
             else:
-                logging.warning("Unrecognized key type.")
+                logger.warning("Unrecognized key type.")
             # get value
             if value_type == "str":
                 value = content2.strip()
@@ -212,16 +235,16 @@ def read_dict_from_txt(file_path, key_type="str", value_type="str"):
                 except ZeroDivisionError:
                     value_error = True
                     value = 0  # set default value
-                    logging.warning("Float division by zero.")
+                    logger.warning("Float division by zero.")
                 except:
                     value_error = True
                     value = 0  # set default value
-                    logging.warning("Unknown evaluation error.")
+                    logger.warning("Unknown evaluation error.")
             else:
-                logging.warning("Unrecognized value type.")
+                logger.warning("Unrecognized value type.")
             # save dict item
             if key in dict_output:
-                logging.warning("Key already exists, overwriting value...")
+                logger.warning("Key already exists, overwriting value...")
                 if value_error == True:
                     continue  # skip invalid value if value of key already exists
             dict_output[key] = value

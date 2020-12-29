@@ -1,12 +1,13 @@
+import logging
 import time
 import warnings
 
 import numpy as np
-
 from lfv_pdnn.common import common_utils
+logger = logging.getLogger("lfv_pdnn")
 
 
-def clean_negative_weights(array, weight_id, verbose=False):
+def clean_negative_weights(weights):
     """removes elements with negative weight.
 
     Args:
@@ -18,16 +19,11 @@ def clean_negative_weights(array, weight_id, verbose=False):
         cleaned new numpy array.
     """
     # Start
-    if verbose:
-        print("cleaning array elements with negative weights...")
-    # Clean
-    # create new array for output to avoid direct operation on input array
-    new = array.copy()
-    new[:, weight_id] = np.clip(new[:, weight_id], a_min=0, a_max=None)
-    # Output
-    if verbose:
-        print("shape before", array.shape, "shape after", new.shape)
-    return new
+    logger.debug("Cleaning array elements with negative weights...")
+    new_weights = weights.copy()
+    new_weights = np.clip(new_weights, a_min=0, a_max=None)
+    logger.debug(f"Shape before clean negative: {weights.shape}, shape after: {new_weights.shape}")
+    return new_weights
 
 
 def clean_zero_weights(array, weight_id, verbose=False):
@@ -88,6 +84,8 @@ def get_cut_index_value(array, cut_value, cut_type):
         cut_feature: str
         cut_bool: bool
     """
+    logger.debug("Cutting input array")
+    logger.debug(f"Input shape: {array.shape}")
     # Make cuts
     if cut_type == "=":
         pass_index = np.argwhere(array == cut_value)
@@ -102,14 +100,11 @@ def get_cut_index_value(array, cut_value, cut_type):
 
 def modify_array(
     input_array,
+    input_weights,
     remove_negative_weight=False,
-    select_channel=False,
-    select_mass=False,
-    mass_id=None,
-    mass_min=None,
-    mass_max=None,
     reset_mass=False,
     reset_mass_array=None,
+    reset_mass_weights=None,
     reset_mass_id=None,
     norm=False,
     sumofweight=1000,
@@ -123,18 +118,6 @@ def modify_array(
             Array to be modified.
         remove_negative_weight: bool, optional (default=False) 
             Whether to remove events with negative weight.
-        select_channel: bool, optional (default=False) 
-            Whether to select specific channel. 
-            If True, channel will be selected by checking index -2
-        select_mass: bool, optional (default=False)
-            Whether to select elements within cerntain mass range.
-            If True, mass_id/mass_min/mass_max shouldn't be None.
-        mass_id: int or None, optional (default=None)
-            Column index of mass id.
-        mass_min: float or None, optional (default=None)
-            Mass lower limit.
-        mass_max: float or None, optional (default=None)
-            Mass higher limit.
         reset_mass: bool, optional (default=None)
             Whether to reset mass with given array's value distribution.
             If set True, reset_mass_array/reset_mass_id shouldn't be None.
@@ -147,7 +130,7 @@ def modify_array(
         sumofweight: float or None, optional (default=None)
             Total normalized weight.
         shuffle: bool, optional (default=None)
-            Whether to randomlize the output array.
+            Whether to randomize the output array.
         shuffle_seed: int or None, optional (default=None)
             Seed for randomization process.
             Set to None to use current time as seed.
@@ -159,44 +142,32 @@ def modify_array(
 
   """
     # Modify
-    new = input_array.copy()  # copy data to avoid original data operation
-    if len(new) == 0:
+    new_array = input_array.copy()  # copy data to avoid original data operation
+    new_weight = input_weights.copy()
+    if len(new_array) == 0:
         warnings.warn("empty input detected in modify_array, no changes will be made.")
-        return new
-    # select channel
-    if select_channel == True:
-        for ele in new:
-            if ele[-2] != 1.0:
-                ele[-1] = 0
-    # select mass range
-    if select_mass == True:
-        if not common_utils.has_none([mass_id, mass_min, mass_max]):
-            for ele in new:
-                if ele[mass_id] < mass_min or ele[mass_id] > mass_max:
-                    ele[-1] = 0
-        else:
-            print("missing parameters, skipping mass selection...")
+        return new_array
     # clean array
     if remove_negative_weight:
-        new = clean_negative_weights(new, -1)
+        new_weight = clean_negative_weights(new_weight)
     # reset mass
     if reset_mass == True:
         if not common_utils.has_none([reset_mass_array, reset_mass_id]):
-            new = reset_col(
-                new, reset_mass_array, reset_mass_array[:, -1], col=reset_mass_id
+            new_array = reset_col(
+                new_array, reset_mass_array, reset_mass_weights, col=reset_mass_id
             )
         else:
             print("missing parameters, skipping mass reset...")
     # normalize weight
     if norm == True:
-        new[:, -1] = norweight(new[:, -1], norm=sumofweight)
+        new_weight = norweight(new_weight, norm=sumofweight)
     # shuffle array
     if shuffle == True:
-        new, _, _, _ = shuffle_and_split(
-            new, np.zeros(len(new)), split_ratio=0.0, shuffle_seed=shuffle_seed
+        new_array, _, _, _ = shuffle_and_split(
+            new_array, np.zeros(len(new_array)), split_ratio=0.0, shuffle_seed=shuffle_seed
         )
     # return result
-    return new
+    return new_array, new_weight
 
 
 def norweight(weight_array, norm=1000):
@@ -237,13 +208,13 @@ def reset_col(reset_array, ref_array, ref_weights, col=0, shuffle_seed=None):
         warnings.warn("Non-positive weights detected, set to zero")
     sump = sum(positive_weights)
     reset_list = np.random.choice(
-        ref_array[:, col], size=total_events, p=(1 / sump) * positive_weights
+        ref_array[:, col], size=total_events, p=(1 / sump) * positive_weights.reshape((-1,))
     )
     new[:, col] = reset_list
     return new
 
 
-def shuffle_and_split(x, y, split_ratio=0.0, shuffle_seed=None):
+def shuffle_and_split(x, y, wt, split_ratio=0.0, shuffle_seed=None):
     """Self defined function to replace train_test_split in sklearn to allow
     more flexibility.
     """
@@ -260,6 +231,8 @@ def shuffle_and_split(x, y, split_ratio=0.0, shuffle_seed=None):
     last_part_index = np.setdiff1d(np.array(range(array_len)), first_part_index)
     first_part_x = x[first_part_index]
     first_part_y = y[first_part_index]
+    first_part_wt = wt[first_part_index]
     last_part_x = x[last_part_index]
     last_part_y = y[last_part_index]
-    return first_part_x, last_part_x, first_part_y, last_part_y
+    last_part_wt = wt[last_part_index]
+    return first_part_x, last_part_x, first_part_y, last_part_y, first_part_wt, last_part_wt

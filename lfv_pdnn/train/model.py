@@ -9,34 +9,53 @@ import os
 import time
 import warnings
 
-import eli5
+# import eli5
 import keras
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
-from eli5.sklearn import PermutationImportance
+
+# fix tensorflow 2.2 issue
+import tensorflow as tf
+
+gpus = tf.config.experimental.list_physical_devices("GPU")
+if gpus:
+    try:
+        # Currently, memory growth needs to be the same across GPUs
+        for gpu in gpus:
+            tf.config.experimental.set_memory_growth(gpu, True)
+        logical_gpus = tf.config.experimental.list_logical_devices("GPU")
+        print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
+    except RuntimeError as e:
+        # Memory growth must be set before GPUs have been initialized
+        print(e)
+
+# from eli5.sklearn import PermutationImportance
 from keras import backend as K
-from keras.callbacks import TensorBoard, callbacks, ModelCheckpoint
+from keras.callbacks import ModelCheckpoint, TensorBoard, callbacks
 from keras.layers import Concatenate, Dense, Dropout, Input, Layer
 from keras.layers.normalization import BatchNormalization
 from keras.models import Model, Sequential
 from keras.optimizers import SGD, Adagrad, Adam, RMSprop
 from keras.wrappers.scikit_learn import KerasClassifier, KerasRegressor
+from lfv_pdnn.common import array_utils, common_utils
+from lfv_pdnn.train import evaluate, train_utils
 from matplotlib.ticker import FixedLocator, NullFormatter
 from sklearn.metrics import auc, roc_curve
-
-import ROOT
-from HEPTools.plot_utils import plot_utils, th1_tools
-from lfv_pdnn.common import array_utils, common_utils
-from lfv_pdnn.data_io import root_io
-from lfv_pdnn.train import evaluate, train_utils
 
 
 # self-defined metrics functions
 def plain_acc(y_true, y_pred):
     return K.mean(K.less(K.abs(y_pred * 1.0 - y_true * 1.0), 0.5))
     # return 1-K.mean(K.abs(y_pred-y_true))
+
+
+def get_model_class(model_name: str) -> None:
+    if model_name == "Model_Base":
+        return Model_Base
+    elif model_name == "Model_Sequential_Flat":
+        return Model_Sequential_Flat
 
 
 class Model_Base(object):
@@ -134,6 +153,7 @@ class Model_Sequential_Base(Model_Base):
         name,
         input_features,
         hypers,
+        validation_features=[],
         sig_key=None,
         bkg_key=None,
         data_key=None,
@@ -151,12 +171,12 @@ class Model_Sequential_Base(Model_Base):
         # Arrays
         self.array_prepared = False
         self.selected_features = input_features
+        self.validation_features = validation_features
         self.model_meta = {
             "sig_key": sig_key,
             "bkg_key": bkg_key,
             "data_key": data_key,
-            "norm_average": None,
-            "norm_variance": None,
+            "norm_dict": None,
         }
         # Report
         self.save_tb_logs = save_tb_logs
@@ -222,19 +242,15 @@ class Model_Sequential_Base(Model_Base):
         return performance_meta_dict
 
     def get_corrcoef(self) -> dict:
-        d_bkg = pd.DataFrame(
-            data=self.feedbox.get_array(
-                "xb", "selected", array_key="all", reset_mass=False
-            ),
-            columns=list(self.selected_features),
+        bkg_array, _ = self.feedbox.get_reweight(
+            "xb", array_key="all", reset_mass=False
         )
+        d_bkg = pd.DataFrame(data=bkg_array, columns=list(self.selected_features),)
         bkg_matrix = d_bkg.corr()
-        d_sig = pd.DataFrame(
-            data=self.feedbox.get_array(
-                "xs", "selected", array_key="all", reset_mass=False
-            ),
-            columns=list(self.selected_features),
+        sig_array, _ = self.feedbox.get_reweight(
+            "xs", array_key="all", reset_mass=False
         )
+        d_sig = pd.DataFrame(data=sig_array, columns=list(self.selected_features),)
         sig_matrix = d_sig.corr()
         corrcoef_matrix_dict = {}
         corrcoef_matrix_dict["bkg"] = bkg_matrix
@@ -248,6 +264,11 @@ class Model_Sequential_Base(Model_Base):
             load_dir + "/" + date + "_" + job_name + "_" + version + "/models"
         )
         model_dir_list = glob.glob(search_pattern)
+        if not model_dir_list:
+            search_pattern = "/work/" + search_pattern
+            print("search pattern:", search_pattern)
+            model_dir_list = glob.glob(search_pattern)
+        model_dir_list = sorted(model_dir_list)
         # Choose the newest one
         if len(model_dir_list) < 1:
             raise FileNotFoundError("Model file that matched the pattern not found.")
@@ -366,73 +387,7 @@ class Model_Sequential_Base(Model_Base):
         """Prepares array for training."""
         self.feedbox = feedbox
         self.array_prepared = feedbox.array_prepared
-        self.model_meta["norm_average"] = feedbox.norm_means.tolist()
-        self.model_meta["norm_variance"] = feedbox.norm_variances.tolist()
-
-    def show_performance(
-        self,
-        apply_data=False,
-        figsize=(12, 9),
-        show_fig=True,
-        save_fig=False,
-        save_dir=None,
-        job_type="train",
-    ):
-        """Evaluates training result.
-
-        Args:
-            figsize: tuple
-                Defines plot size.
-
-        """
-        # Check input
-        assert isinstance(self, Model_Base)
-        print("Model performance:")
-        # Check
-        if not self.model_is_trained:
-            warnings.warn("Model is not trained yet.")
-        # Plots
-        if not save_fig:
-            save_dir = None
-        # accuracy curve
-        evaluate.plot_accuracy(
-            self.train_history_accuracy,
-            self.train_history_val_accuracy,
-            figsize=figsize,
-            show_fig=show_fig,
-            save_dir=save_dir,
-        )
-        # loss curve
-        evaluate.plot_loss(
-            self.train_history_loss,
-            self.train_history_val_loss,
-            figsize=figsize,
-            show_fig=show_fig,
-            save_dir=save_dir,
-        )
-        # roc curves
-        # auc_dict = evaluate.plot_multi_class_roc(
-        #    self, figsize=figsize, show_fig=show_fig, save_dir=save_dir
-        # )
-        # Collect meta data
-        # self.auc_train = auc_dict["auc_train"]
-        # self.auc_test = auc_dict["auc_test"]
-        # self.auc_train_original = auc_dict["auc_train_original"]
-        # self.auc_test_original = auc_dict["auc_test_original"]
-        """
-        if job_type == "train" and self.feedbox.reset_mass == True:
-            evaluate.plot_overtrain_check(
-                self,
-                show_fig=False,
-                save_dir=save_dir,
-                bins=50,
-                log=True,
-                reset_mass=True,
-            )
-        evaluate.plot_overtrain_check(
-            self, show_fig=False, save_dir=save_dir, bins=50, log=True, reset_mass=False
-        )
-        """
+        self.model_meta["norm_dict"] = feedbox.norm_dict
 
     def train(
         self,
@@ -481,6 +436,7 @@ class Model_Sequential_Base(Model_Base):
             )
             train_callbacks.append(early_stop_callback)
         # set up check point to save model in each epoch
+        print("#### set check point")
         if save_dir is None:
             save_dir = "./models"
         if not os.path.exists(save_dir):
@@ -494,54 +450,45 @@ class Model_Sequential_Base(Model_Base):
         )
         train_callbacks.append(checkpoint)
         # check input
-        (
-            x_train,
-            x_test,
-            y_train,
-            y_test,
-            _,
-            _,
-            _,
-            _,
-            _,
-            _,
-            _,
-            _,
-            _,
-            _,
-        ) = self.feedbox.get_train_test_arrays(
+        print("#### check input")
+        train_test_dict = self.feedbox.get_train_test_arrays(
             sig_key=sig_key,
             bkg_key=bkg_key,
             multi_class_bkgs=self.model_hypers["output_bkg_node_names"],
-            use_selected=False,
         )
-        x_train_selected = train_utils.get_valid_feature(x_train)
-        x_test_selected = train_utils.get_valid_feature(x_test)
-        if np.isnan(np.sum(x_train_selected)):
-            exit(1)
-        if np.isnan(np.sum(y_train)):
-            exit(1)
+        x_train = train_test_dict["x_train"]
+        x_test = train_test_dict["x_test"]
+        y_train = train_test_dict["y_train"]
+        y_test = train_test_dict["y_test"]
+        wt_train = train_test_dict["wt_train"]
+        wt_test = train_test_dict["wt_test"]
+        # if np.isnan(np.sum(x_train)):
+        #    exit(1)
+        # if np.isnan(np.sum(y_train)):
+        #    exit(1)
         self.get_model().summary()
         self.train_history = self.get_model().fit(
-            x_train_selected,
+            x_train,
             y_train,
             batch_size=batch_size,
             epochs=epochs,
             validation_split=val_split,
-            sample_weight=x_train[:, -1],
+            sample_weight=wt_train,
             callbacks=train_callbacks,
             verbose=verbose,
         )
         print("Training finished.")
+
         # Quick evaluation
-        print("Quick evaluation:")
-        score = self.get_model().evaluate(
-            x_test_selected, y_test, verbose=verbose, sample_weight=x_test[:, -1],
-        )
-        print("> test loss:", score[0])
-        print("> test accuracy:", score[1])
-        print(self.get_model().metrics_names)
-        print(score)
+        # print("Quick evaluation:")
+        # score = self.get_model().evaluate(
+        #     x_test, y_test, verbose=verbose, sample_weight=wt_test,
+        # )
+        # print("> test loss:", score[0])
+        # print("> test accuracy:", score[1])
+        # print(self.get_model().metrics_names)
+        # print(score)
+
         # Save train history
         # save accuracy history
         self.train_history_accuracy = [
@@ -589,25 +536,15 @@ class Model_Sequential_Base(Model_Base):
         if self.array_prepared == False:
             raise ValueError("Training data is not ready.")
         # separate validation samples
-        (
-            x_train,
-            _,
-            y_train,
-            _,
-            x_train_selected,
-            _,
-            _,
-            _,
-            _,
-            _,
-            _,
-            _,
-        ) = self.feedbox.get_train_test_arrays(
+        train_test_dict = self.feedbox.get_train_test_arrays(
             sig_key=sig_key,
             bkg_key=bkg_key,
             multi_class_bkgs=self.model_hypers["output_bkg_node_names"],
             use_selected=False,
         )
+        x_train = train_test_dict["x_train"]
+        y_train = train_test_dict["y_train"]
+        x_train_selected = train_test_dict["x_train_selected"]
         num_val = math.ceil(len(y_train) * val_split)
         x_tr = x_train_selected[:-num_val, :]
         x_val = x_train_selected[-num_val:, :]
@@ -669,6 +606,7 @@ class Model_Sequential_Flat(Model_Sequential_Base):
         name,
         input_features,
         hypers,
+        validation_features=[],
         sig_key="all",
         bkg_key="all",
         data_key="all",
@@ -679,6 +617,7 @@ class Model_Sequential_Flat(Model_Sequential_Base):
             name,
             input_features,
             hypers,
+            validation_features=validation_features,
             sig_key=sig_key,
             bkg_key=bkg_key,
             data_key=data_key,
@@ -717,8 +656,16 @@ class Model_Sequential_Flat(Model_Sequential_Base):
             if self.model_hypers["dropout_rate"] != 0:
                 self.model.add(Dropout(self.model_hypers["dropout_rate"]))
         # output
+        if self.model_hypers["output_bkg_node_names"]:
+            num_nodes_out = len(self.model_hypers["output_bkg_node_names"]) + 1
+        else:
+            num_nodes_out = 1
         self.model.add(
-            Dense(1, kernel_initializer="glorot_uniform", activation="sigmoid")
+            Dense(
+                num_nodes_out,
+                kernel_initializer="glorot_uniform",
+                activation="sigmoid",
+            )
         )
         # Compile
         # transfer self-defined metrics into real function
@@ -753,6 +700,7 @@ class Model_Sequential_Multi_Class(Model_Sequential_Base):
         name,
         input_features,
         hypers,
+        validation_features=[],
         sig_key="all",
         bkg_key="all",
         data_key="all",
@@ -763,6 +711,7 @@ class Model_Sequential_Multi_Class(Model_Sequential_Base):
             name,
             input_features,
             hypers,
+            validation_features=validation_features,
             sig_key=sig_key,
             bkg_key=bkg_key,
             data_key=data_key,

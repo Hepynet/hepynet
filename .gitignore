@@ -5,7 +5,7 @@ apply/*
 backups/*
 test/*
 run/*
-lfv_pdnn.egg-info/*
+pdnn_lfv.egg-info/*
 env_setup/*
 
 # Side files that are not needed to be saved #
@@ -15,7 +15,6 @@ env_setup/*
 *.png
 *.pyc
 *.tex
-*.yaml
 *.root
 *.xml
 TRexFitter/*/*
@@ -34,3 +33,4 @@ share/zprime/apply/loop_mass_point.sh
 
 # dynamic ignores
 docker/backup_Dockerfile
+pdnn_lfv.egg-info/dependency_links.txt

@@ -1,0 +1,68 @@
+config:
+    include:
+        - "share/zprime/train/default_1201_low.yaml"
+
+job:
+    job_name: "train-all-mass"
+    job_type: "train"
+    save_dir: "run/zprime/low_mass"
+
+input:
+    norm_array: true
+    bkg_key: "all"
+    sig_key: "all_norm"
+    # all features
+    selected_features:
+        - "mz2_p"
+        - "ptl1"
+        - "ptl2"
+        - "ptl3"
+        - "ptl4"
+        - "etal1"
+        - "etal2"
+        - "etal3"
+        - "etal4"
+        - "mz1_mz2"
+        - "ptz1"
+        - "ptz2"
+        - "mzz"
+        - "ptzz"
+        - "deltarl12"
+        - "deltarl34"
+        - "detal12"
+        - "detal34"
+    validation_features:
+        - "mz1"
+        - "mz2"
+    reset_feature: true
+    reset_feature_name: "mz2_p"
+    rm_negative_weight_events: true
+
+train:
+    model_name: "zprime_pdnn_model"
+    model_class: "Model_Sequential_Flat"
+    layers: 5
+    nodes: 128
+    dropout_rate: 0
+    momentum: 0.5
+    nesterov: true
+    test_rate: .2
+    val_split: .25
+    learn_rate: 0.0003
+    learn_rate_decay: 1.e-5
+    batch_size: 128
+    epochs: 30
+    sig_class_weight: 1.
+    bkg_class_weight: 1.
+    # early stop setups
+    use_early_stop: true
+    early_stop_paras:
+        monitor: "val_loss"
+        min_delta: 0
+        patience: 3
+        mode: "min"
+        restore_best_weights: true
+    # save model or not
+    save_model: true
+
+    verbose: 1

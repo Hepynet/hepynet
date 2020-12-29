@@ -7,57 +7,19 @@ manipulation, making plots, evaluation functions and so on.
 """
 
 import glob
+import logging
 import os
 import sys
 import time
-import warnings
-from math import log, sqrt
+from math import sqrt
 
 import matplotlib.pyplot as plt
 import numpy as np
+from lfv_pdnn.common import array_utils, config_utils
+from lfv_pdnn.data_io import root_io
 from sklearn.metrics import accuracy_score, auc, classification_report
 
-from lfv_pdnn.common import array_utils
-from lfv_pdnn.data_io import root_io
-
-
-def calculate_asimov(sig, bkg):
-    return sqrt(2 * ((sig + bkg) * log(1 + sig / bkg) - sig))
-
-
-def calculate_significance(sig, bkg, sig_total=1, bkg_total=1, algo="asimov"):
-    """Returns asimov significance"""
-    # check input
-    if sig <= 0 or bkg <= 0 or sig_total <= 0 or bkg_total <= 0:
-        warnings.warn(
-            "non-positive value found during significance calculation, using default value 0."
-        )
-        return 0
-    if "_rel" in algo:
-        if sig_total == 1 or bkg_total == 1:
-            warnings.warn(
-                "sig_total or bkg_total value is equal to default 1, please check input."
-            )
-    # calculation
-    if algo == "asimov":
-        return calculate_asimov(sig, bkg)
-    elif algo == "s_b":
-        return sig / bkg
-    elif algo == "s_sqrt_b":
-        return sig / sqrt(bkg)
-    elif algo == "s_sqrt_sb":
-        return sig / sqrt(sig + bkg)
-    elif algo == "asimov_rel":
-        return calculate_asimov(sig, bkg) / calculate_asimov(sig_total, bkg_total)
-    elif algo == "s_b_rel":
-        return (sig / sig_total) / (bkg / bkg_total)
-    elif algo == "s_sqrt_b_rel":
-        return (sig / sig_total) / sqrt(bkg / bkg_total)
-    elif algo == "s_sqrt_sb_rel":
-        return (sig / sig_total) / sqrt((bkg + sig) / (sig_total + bkg_total))
-    else:
-        warnings.warn("Unrecognized significance algorithm, will use default 'asimov'")
-        return calculate_asimov(sig, bkg)
+logger = logging.getLogger("lfv_pdnn")
 
 
 def dump_fit_ntup(
@@ -71,20 +33,27 @@ def dump_fit_ntup(
         for sample_key in sample_keys:
             dump_branches = fit_ntup_branches + ["weight"]
             # prepare contents
-            dump_array = feedbox.get_array(
-                prefix_map[map_key], "raw", array_key=sample_key, reset_mass=False
+            dump_array, dump_array_weight = feedbox.get_raw(
+                prefix_map[map_key], array_key=sample_key, add_validation_features=True,
             )
-            predict_input = feedbox.get_array(
-                prefix_map[map_key], "selected", array_key=sample_key, reset_mass=False
+            predict_input, _ = feedbox.get_reweight(
+                prefix_map[map_key], array_key=sample_key, reset_mass=False
             )
             predictions = keras_model.predict(predict_input)
             dump_contents = []
             for branch in dump_branches:
                 if branch == "weight":
-                    branch_index = -1
+                    branch_content = dump_array_weight
                 else:
-                    branch_index = feedbox.selected_features.index(branch)
-                branch_content = dump_array[:, branch_index]
+                    if feedbox.validation_features is None:
+                        validation_features = []
+                    else:
+                        validation_features = feedbox.validation_features
+                    feature_list = (
+                        feedbox.selected_features + validation_features
+                    )
+                    branch_index = feature_list.index(branch)
+                    branch_content = dump_array[:, branch_index]
                 dump_contents.append(branch_content)
             if len(output_bkg_node_names) == 0:
                 dump_branches.append("dnn_out")
@@ -95,10 +64,13 @@ def dump_fit_ntup(
                     dump_branches.append("dnn_out_" + out_node)
                     dump_contents.append(predictions[:, i])
             # dump
-            ntup_path = ntup_dir + "/" + map_key + "_" + sample_key + ".root"
+            platform_meta = config_utils.load_current_platform_meta()
+            data_path = platform_meta["data_path"]
+            ntup_path = f"{data_path}/{ntup_dir}/{sample_key}.root"
             root_io.dump_ntup_from_npy(
                 "ntup", dump_branches, "f", dump_contents, ntup_path,
             )
+            logger.info(f"Ntuples saved to: {ntup_path}")
 
 
 def get_mass_range(mass_array, weights, nsig=1):
@@ -165,7 +137,7 @@ def get_mean_var(array, axis=None, weights=None):
     average = np.average(array, axis=axis, weights=weights)
     variance = np.average((array - average) ** 2, axis=axis, weights=weights)
     if 0 in variance:
-        warnings.warn("Encountered 0 variance, adding shift value 0.000001")
+        logger.warn("Encountered 0 variance, adding shift value 0.000001")
     return average, variance + 0.000001
 
 
@@ -200,7 +172,9 @@ def norarray_min_max(array, min, max, axis=None):
 
 def split_and_combine(
     xs,
+    xs_weight,
     xb,
+    xb_weight,
     ys=None,
     yb=None,
     test_rate=0.2,
@@ -237,40 +211,64 @@ def split_and_combine(
     if yb is None:
         yb = np.zeros(len(xb)).reshape(-1, 1)
 
-    xs_train, xs_test, ys_train, ys_test = array_utils.shuffle_and_split(
-        xs, ys, split_ratio=1 - test_rate, shuffle_seed=shuffle_seed
+    (
+        xs_train,
+        xs_test,
+        ys_train,
+        ys_test,
+        xs_weight_train,
+        xs_weight_test,
+    ) = array_utils.shuffle_and_split(
+        xs, ys, xs_weight, split_ratio=1 - test_rate, shuffle_seed=shuffle_seed
     )
-    xb_train, xb_test, yb_train, yb_test = array_utils.shuffle_and_split(
-        xb, yb, split_ratio=1 - test_rate, shuffle_seed=shuffle_seed
+    (
+        xb_train,
+        xb_test,
+        yb_train,
+        yb_test,
+        xb_weight_train,
+        xb_weight_test,
+    ) = array_utils.shuffle_and_split(
+        xb, yb, xb_weight, split_ratio=1 - test_rate, shuffle_seed=shuffle_seed
     )
 
     x_train = np.concatenate((xs_train, xb_train))
     y_train = np.concatenate((ys_train, yb_train))
+    wt_train = np.concatenate((xs_weight_train, xb_weight_train))
     x_test = np.concatenate((xs_test, xb_test))
     y_test = np.concatenate((ys_test, yb_test))
+    wt_test = np.concatenate((xs_weight_test, xb_weight_test))
 
     if shuffle_combined_array:
         # shuffle train dataset
         shuffle_index = generate_shuffle_index(len(y_train), shuffle_seed=shuffle_seed)
         x_train = x_train[shuffle_index]
         y_train = y_train[shuffle_index]
+        wt_train = wt_train[shuffle_index]
         # shuffle test dataset
         shuffle_index = generate_shuffle_index(len(y_test), shuffle_seed=shuffle_seed)
         x_test = x_test[shuffle_index]
         y_test = y_test[shuffle_index]
+        wt_test = wt_test[shuffle_index]
 
     return (
         x_train,
         x_test,
         y_train,
         y_test,
+        wt_train,
+        wt_test,
         xs_train,
         xs_test,
         ys_train,
         ys_test,
+        xs_weight_train,
+        xs_weight_test,
         xb_train,
         xb_test,
         yb_train,
         yb_test,
+        xb_weight_train,
+        xb_weight_test,
     )
 

@@ -1,0 +1,31 @@
+config:
+    include:
+        - "share/zprime/apply/high_mass_all-mass_apply.yaml"
+
+job:
+    job_name: "high-mass-all-mass-apply-63"
+    load_job_name: "train-all-mass"
+
+input:
+    sig_key: "sig_Zp063"
+    cut_features:
+        - "quadtype"
+        - "mz1"
+        - "mz1"
+    cut_values:
+        - 2
+        - 57.0906
+        - 68.9094
+    cut_types:
+        - "="
+        - ">"
+        - "<"
+
+apply:
+    cfg_fit_ntup:
+        fit_ntup_region:
+        fit_ntup_branches:
+            - "mz1"
+            - "mz2"
+        ntup_save_dir: "zprime/ntuples/fit_ntup_model_63"
+
