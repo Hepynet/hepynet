@@ -1,0 +1,63 @@
+# default settings, you can change values but don't delete any items
+# please follow the syntax instruction here:
+# https://docs.python.org/3/library/configparser.html#supported-ini-file-structure
+# Warning: Use "" in string list. '' will not be recognized correctly
+
+## keep general settings that shouldn't change with inputs' version ##
+
+job:
+    job_name: "train-job-default"
+    job_type: "train"
+    save_dir: "/work/run/lfv/default"
+    pop_plots: false
+    verbose: 2
+
+input:
+    campaign: 
+    norm_array: true
+    bkg_sumofweight: 1000
+    sig_sumofweight: 1000
+    # pre-processing
+    reset_feature: true
+    reset_feature_name: "m_ll"
+    rm_negative_weight_events: true
+
+train:
+    model_name: "pdnn_model"
+    model_class: "Model_Sequential_Flat"
+    layers: 5
+    nodes: 256
+    dropout_rate: 0
+    momentum: 0.5
+    nesterov: true
+    test_rate: .2
+    val_split: .2
+    learn_rate: 0.005
+    learn_rate_decay: 1.e-5
+    batch_size: 16
+    epochs: 200
+    sig_class_weight: 1.
+    bkg_class_weight: 1.
+    # early stop setups
+    use_early_stop: true
+    early_stop_monitor: "val_loss"
+    early_stop_min_delta: 0
+    early_stop_patience: 5
+    early_stop_mode: "min"
+    early_stop_restore_best_weights: true
+    # in older tensorflow version may use "acc"
+    train_metrics:
+        - "plain_acc"
+    train_metrics_weighted:
+        - "accuracy"
+        - "mean_squared_error"
+    # save model or not
+    save_model: true
+    verbose: 1
+
+para_scan:
+    perform_para_scan: false
+
+apply:
+    show_report: false
+    save_pdf_report: false

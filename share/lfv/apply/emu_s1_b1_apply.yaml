@@ -1,0 +1,36 @@
+config:
+    include:
+        - "share/lfv/train/emu_s1_b1.yaml"
+        - "share/lfv/apply/default_apply.yaml"
+
+job:
+    job_name: "emu-s1_b1-apply"
+    job_type: "apply"
+    load_job_name: "emu-s1_b1"
+
+apply:
+
+    book_history: true
+
+    book_roc: true
+
+    book_mva_scores_data_mc: true
+
+    book_train_test_compare: true
+
+    book_kine_study: true
+
+    #book_importance_study: true
+
+    book_cor_matrix: true
+
+    book_significance_scan: true
+
+    ## TODO ## book_fit_ntup: true
+    book_fit_ntup: true
+    cfg_fit_ntup:
+        fit_ntup_region:
+        fit_ntup_branches:
+            - "m_ll"
+        ntup_save_dir: "lfv/fit_ntup/s1_b1"
+
