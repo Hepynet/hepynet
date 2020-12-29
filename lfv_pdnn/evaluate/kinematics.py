@@ -2,6 +2,7 @@ import logging
 import pathlib
 
 import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
 import numpy as np
 import seaborn as sns
 from easy_atlas_plot.plot_utils import plot_utils_root, th1_tools
@@ -62,24 +63,14 @@ def plot_input_distributions(
     dnn_cut=None,
     multi_class_cut_branch=0,
     compare_cut_sb_separated=False,
-    plot_density=True,
-    plot_cfg={},
+    plot_cfg=config_utils.Hepy_Config_Section({}),
     save_dir=None,
     save_format="png",
-    print_ratio_table=False,
     use_root=False,
 ):
     """Plots input distributions comparision plots for sig/bkg/data"""
     print("Plotting input distributions.")
     config = plot_cfg.clone()
-    # config = {}
-    # if style_cfg_path is not None:
-    #    with open(style_cfg_path) as plot_config_file:
-    #        config = json.load(plot_config_file)
-
-    model_meta = model_wrapper.model_meta
-    # sig_key = model_meta["sig_key"]
-    # bkg_key = model_meta["bkg_key"]
     feedbox = model_wrapper.feedbox
     if show_reshaped:  # validation features not supported in get_reshape yet
         plot_feature_list = model_wrapper.selected_features
@@ -95,9 +86,10 @@ def plot_input_distributions(
         sig_array, sig_fill_weights = feedbox.get_raw(
             "xs", array_key=sig_key, add_validation_features=True
         )
-    if plot_density:
+    if plot_cfg.density:
         bkg_fill_weights = bkg_fill_weights / np.sum(bkg_fill_weights)
         sig_fill_weights = sig_fill_weights / np.sum(sig_fill_weights)
+
     # get fill weights with dnn cut
     if dnn_cut is not None:
         assert dnn_cut >= 0 and dnn_cut <= 1, "dnn_cut out or range."
@@ -122,12 +114,24 @@ def plot_input_distributions(
         bkg_fill_weights_dnn = bkg_fill_weights.copy()
         bkg_fill_weights_dnn[bkg_cut_index] = 0
         # normalize weights for density plots
-        if plot_density:
-            bkg_fill_weights_dnn = bkg_fill_weights_dnn / np.sum(bkg_fill_weights_dnn)
-            sig_fill_weights_dnn = sig_fill_weights_dnn / np.sum(sig_fill_weights_dnn)
+        if plot_cfg.density:
+            bkg_fill_weights_dnn = bkg_fill_weights_dnn / np.sum(bkg_fill_weights)
+            sig_fill_weights_dnn = sig_fill_weights_dnn / np.sum(sig_fill_weights)
     else:
         bkg_fill_weights_dnn = None
         sig_fill_weights_dnn = None
+
+    # remove 0 weight events
+    bkg_non_0_ids = np.argwhere(bkg_fill_weights != 0).flatten()
+    bkg_array = bkg_array[bkg_non_0_ids]
+    bkg_fill_weights = bkg_fill_weights[bkg_non_0_ids].reshape((-1, 1))
+    sig_non_0_ids = np.argwhere(sig_fill_weights != 0).flatten()
+    sig_array = sig_array[sig_non_0_ids]
+    sig_fill_weights = sig_fill_weights[sig_non_0_ids].reshape((-1, 1))
+    if dnn_cut is not None:
+        bkg_fill_weights_dnn = bkg_fill_weights_dnn[bkg_non_0_ids].reshape((-1, 1))
+        sig_fill_weights_dnn = sig_fill_weights_dnn[sig_non_0_ids].reshape((-1, 1))
+
     # plot
     save_dir = pathlib.Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
@@ -152,49 +156,283 @@ def plot_input_distributions(
                 config={},
                 compare_cut_sb_separated=compare_cut_sb_separated,
                 plot_range=plot_range,
-                plot_density=plot_density,
+                plot_density=plot_cfg.density,
                 save_dir=save_dir,
                 save_format=save_format,
-                print_ratio_table=print_ratio_table,
+                print_ratio_table=plot_cfg.save_ratio_table,
             )
         else:
-            fig, ax = plt.subplots(figsize=(8, 6))
-            feature_cfg = config.clone()
-            if feature in config.__dict__.keys():
-                feature_cfg_tmp = getattr(config, feature)
-                feature_cfg.update(feature_cfg_tmp.get_config_dict())
-            # plot sig
-            feature_cfg.update({"color": "tomato", "label": "signal"})
-            plot_inputs_plt(
-                ax, sig_fill_array, sig_fill_weights, feature_cfg,
-            )
-            # plot bkg
-            feature_cfg.update({"color": "royalblue", "label": "background"})
-            plot_inputs_plt(
-                ax, bkg_fill_array, bkg_fill_weights, feature_cfg,
-            )
-            ax.legend(loc="upper right")
-            fig.suptitle(feature, fontsize=16)
-            fig.savefig(f"{save_dir}/{feature}.{config.save_format}")
-            plt.close()
+            if dnn_cut is None:
+                plot_input_distributions_plt(
+                    feature,
+                    sig_fill_array,
+                    sig_fill_weights,
+                    bkg_fill_array,
+                    bkg_fill_weights,
+                    plot_config=config,
+                    save_dir=save_dir,
+                )
+            else:
+                plot_input_distributions_cut_dnn_plt(
+                    feature,
+                    sig_fill_array,
+                    sig_fill_weights,
+                    sig_fill_weights_dnn,
+                    bkg_fill_array,
+                    bkg_fill_weights,
+                    bkg_fill_weights_dnn,
+                    plot_config=config,
+                    save_dir=save_dir,
+                )
 
 
-def plot_inputs_plt(
+def plot_hist_plt(
     ax, values, weights, plot_cfg,
 ):
-    config = plot_cfg.clone()
     ax.hist(
         values,
-        bins=config.bins,
-        range=config.range,
-        density=config.density,
+        bins=plot_cfg.bins,
+        range=plot_cfg.range,
         weights=weights,
-        histtype=config.histtype,
-        color=config.color,
-        label=config.label,
-        alpha=config.alpha,
-        hatch=config.hatch,
+        histtype=plot_cfg.histtype,
+        facecolor=plot_cfg.facecolor,
+        edgecolor=plot_cfg.edgecolor,
+        label=plot_cfg.label,
+        alpha=plot_cfg.alpha,
+        hatch=plot_cfg.hatch,
     )
+
+
+def plot_hist_ratio_plt(
+    ax,
+    numerator_values,
+    numerator_weights,
+    denominator_values,
+    denominator_weights,
+    plot_cfg,
+):
+    numerator_ys, bin_edges = np.histogram(
+        numerator_values,
+        bins=plot_cfg.bins,
+        range=plot_cfg.range,
+        weights=numerator_weights,
+    )
+    denominator_ys, _ = np.histogram(
+        denominator_values,
+        bins=plot_cfg.bins,
+        range=plot_cfg.range,
+        weights=denominator_weights,
+    )
+    # Only plot ratio when bin is not 0.
+    bin_centers = np.array([])
+    bin_ys = np.array([])
+    for i, (y1, y2) in enumerate(zip(numerator_ys, denominator_ys)):
+        if y1 != 0:
+            ele_center = np.array([0.5 * (bin_edges[i] + bin_edges[i + 1])])
+            bin_centers = np.concatenate((bin_centers, ele_center))
+            ele_y = np.array([y1 / y2])
+            bin_ys = np.concatenate((bin_ys, ele_y))
+    # plot ratio
+    bin_size = bin_edges[1] - bin_edges[0]
+    ax.set_ylim([0, 1])
+    ax.errorbar(
+        bin_centers,
+        bin_ys,
+        xerr=bin_size / 2.0,
+        yerr=None,
+        fmt="_",
+        color=plot_cfg.edgecolor,
+        markerfacecolor=plot_cfg.edgecolor,
+        markeredgecolor=plot_cfg.edgecolor,
+    )
+
+
+def plot_input_distributions_plt(
+    feature,
+    sig_fill_array,
+    sig_fill_weights,
+    bkg_fill_array,
+    bkg_fill_weights,
+    plot_config=config_utils.Hepy_Config_Section({}),
+    save_dir=".",
+):
+    # prepare config of chosen feature
+    feature_cfg = plot_config.clone()
+    if feature in plot_config.__dict__.keys():
+        feature_cfg_tmp = getattr(plot_config, feature)
+        feature_cfg.update(feature_cfg_tmp.get_config_dict())
+    # make plot
+    if plot_config.separate_sig_bkg:
+        # plot sig
+        fig, ax = plt.subplots(figsize=(8, 6))
+        feature_cfg.update(
+            {"facecolor": plot_config.sig_color, "edgecolor": "none", "label": "signal"}
+        )
+        plot_hist_plt(
+            ax, sig_fill_array, sig_fill_weights, feature_cfg,
+        )
+        ax.legend(loc="upper right")
+        fig.suptitle(feature, fontsize=16)
+        fig.savefig(f"{save_dir}/{feature}_sig.{plot_config.save_format}")
+        plt.close()
+        # plot bkg
+        fig, ax = plt.subplots(figsize=(8, 6))
+        feature_cfg.update(
+            {
+                "facecolor": plot_config.bkg_color,
+                "edgecolor": "none",
+                "label": "background",
+            }
+        )
+        plot_hist_plt(
+            ax, bkg_fill_array, bkg_fill_weights, feature_cfg,
+        )
+        ax.legend(loc="upper right")
+        fig.suptitle(feature, fontsize=16)
+        fig.savefig(f"{save_dir}/{feature}_bkg.{plot_config.save_format}")
+        plt.close()
+    else:
+        fig, ax = plt.subplots(figsize=(8, 6))
+        # plot sig
+        feature_cfg.update(
+            {"facecolor": plot_config.sig_color, "edgecolor": "none", "label": "signal"}
+        )
+        plot_hist_plt(
+            ax, sig_fill_array, sig_fill_weights, feature_cfg,
+        )
+        # plot bkg
+        feature_cfg.update(
+            {
+                "facecolor": plot_config.bkg_color,
+                "edgecolor": "none",
+                "label": "background",
+            }
+        )
+        plot_hist_plt(
+            ax, bkg_fill_array, bkg_fill_weights, feature_cfg,
+        )
+        ax.legend(loc="upper right")
+        fig.suptitle(feature, fontsize=16)
+        fig.savefig(f"{save_dir}/{feature}.{plot_config.save_format}")
+        plt.close()
+
+
+def plot_input_distributions_cut_dnn_plt(
+    feature,
+    sig_fill_array,
+    sig_fill_weights,
+    sig_fill_weights_dnn,
+    bkg_fill_array,
+    bkg_fill_weights,
+    bkg_fill_weights_dnn,
+    plot_config={},
+    save_dir=".",
+):
+    feature_cfg = plot_config.clone()
+    if feature in plot_config.__dict__.keys():
+        feature_cfg_tmp = getattr(plot_config, feature)
+        feature_cfg.update(feature_cfg_tmp.get_config_dict())
+    # plot sig
+    fig = plt.figure(figsize=(8, 8))
+    gs = gridspec.GridSpec(2, 1, height_ratios=[3, 1])
+    gs.update(hspace=0)
+    ax0 = plt.subplot(gs[0])
+    feature_cfg.update(
+        {
+            "facecolor": "none",
+            "edgecolor": plot_config.sig_color,
+            "label": "signal-not-cut",
+            "hatch": "///",
+        }
+    )
+    plot_hist_plt(
+        ax0, sig_fill_array, sig_fill_weights, feature_cfg,
+    )
+    feature_cfg.update(
+        {
+            "facecolor": plot_config.sig_color,
+            "edgecolor": "none",
+            "label": "signal-cut-dnn",
+            "hatch": None,
+        }
+    )
+    plot_hist_plt(
+        ax0, sig_fill_array, sig_fill_weights_dnn, feature_cfg,
+    )
+    ax0.legend(loc="upper right")
+    xlim = ax0.get_xlim()
+    ax1 = plt.subplot(gs[1])
+    ax1.set_xlim(xlim)
+    feature_cfg.update(
+        {
+            "facecolor": "none",
+            "edgecolor": plot_config.sig_color,
+            "label": None,
+            "hatch": None,
+        }
+    )
+    plot_hist_ratio_plt(
+        ax1,
+        sig_fill_array,
+        sig_fill_weights_dnn,
+        sig_fill_array,
+        sig_fill_weights,
+        feature_cfg,
+    )
+    fig.suptitle(feature, fontsize=16)
+    fig.savefig(f"{save_dir}/{feature}_sig.{plot_config.save_format}")
+    plt.close()
+
+    # plot bkg
+    fig = plt.figure(figsize=(8, 8))
+    gs = gridspec.GridSpec(2, 1, height_ratios=[3, 1])
+    gs.update(hspace=0)
+    ax0 = plt.subplot(gs[0])
+    feature_cfg.update(
+        {
+            "facecolor": "none",
+            "edgecolor": plot_config.bkg_color,
+            "label": "background-no-cut",
+            "hatch": "///",
+        }
+    )
+    plot_hist_plt(
+        ax0, bkg_fill_array, bkg_fill_weights, feature_cfg,
+    )
+    feature_cfg.update(
+        {
+            "facecolor": plot_config.bkg_color,
+            "edgecolor": "none",
+            "label": "background-cut-dnn",
+            "hatch": "///",
+        }
+    )
+    plot_hist_plt(
+        ax0, bkg_fill_array, bkg_fill_weights_dnn, feature_cfg,
+    )
+    ax0.legend(loc="upper right")
+    xlim = ax0.get_xlim()
+    ax1 = plt.subplot(gs[1])
+    ax1.set_xlim(xlim)
+    feature_cfg.update(
+        {
+            "facecolor": "none",
+            "edgecolor": plot_config.bkg_color,
+            "label": None,
+            "hatch": None,
+        }
+    )
+    plot_hist_ratio_plt(
+        ax1,
+        bkg_fill_array,
+        bkg_fill_weights_dnn,
+        bkg_fill_array,
+        bkg_fill_weights,
+        feature_cfg,
+    )
+    fig.suptitle(feature, fontsize=16)
+    fig.savefig(f"{save_dir}/{feature}_bkg.{plot_config.save_format}")
+    plt.close()
 
 
 def plot_input_distributions_root(

@@ -36,6 +36,6 @@ setuptools.setup(
         # "eli5",
     ],
     entry_points={
-        "console_scripts": ["execute_pdnn_jobs=lfv_pdnn.main.execute:execute",],
+        "console_scripts": ["hepynet=lfv_pdnn.main.execute:execute",],
     },
 )

@@ -165,14 +165,14 @@ class job_executor(object):
             # Check models in different epochs, check only final if not specified
             model_path_list = ["_final"]
             if ac.check_model_epoch:
-                if self.job_type == "apply":
-                    model_dir = self.load_dir
-                    job_name = self.load_job_name
+                if jc.job_type == "apply":
+                    model_dir = rc.load_dir
+                    job_name = jc.load_job_name
                 else:
-                    model_dir = self.save_dir
-                    job_name = self.job_name
+                    model_dir = rc.save_dir
+                    job_name = jc.job_name
                 model_path_list += train_utils.get_model_epoch_path_list(
-                    model_dir, self.model_name, job_name=job_name,
+                    model_dir, tc.model_name, job_name=job_name,
                 )
             max_epoch = 10
             total_models = len(model_path_list)
@@ -223,8 +223,8 @@ class job_executor(object):
                     # show kinemetics at different dnn cut
                     if ac.book_cut_kine_study:
                         print(">> Making kinematic plots with different DNN cut")
-                        for dnn_cut in ac.dnn_cut_list:
-                            evaluate.plot_input_distributions(
+                        for dnn_cut in ac.cfg_kine_study.dnn_cut_list:
+                            kinematics.plot_input_distributions(
                                 self.model_wrapper,
                                 ic.sig_key,
                                 ic.bkg_key,
@@ -235,10 +235,6 @@ class job_executor(object):
                                 save_dir=f"{rc.save_sub_dir}/kinematics/model_{identifier}_cut_p{dnn_cut * 100}",
                                 dnn_cut=dnn_cut,
                                 compare_cut_sb_separated=True,
-                                plot_density=False,
-                                print_ratio_table=ac.cfg_cut_kine_study[
-                                    "save_ratio_table"
-                                ],
                             )
                     # Make significance scan plot
                     if ac.book_significance_scan:
