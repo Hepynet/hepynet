@@ -436,6 +436,7 @@ class Model_Sequential_Base(Model_Base):
             )
             train_callbacks.append(early_stop_callback)
         # set up check point to save model in each epoch
+        print("#### set check point")
         if save_dir is None:
             save_dir = "./models"
         if not os.path.exists(save_dir):
@@ -449,6 +450,7 @@ class Model_Sequential_Base(Model_Base):
         )
         train_callbacks.append(checkpoint)
         # check input
+        print("#### check input")
         train_test_dict = self.feedbox.get_train_test_arrays(
             sig_key=sig_key,
             bkg_key=bkg_key,
@@ -460,10 +462,10 @@ class Model_Sequential_Base(Model_Base):
         y_test = train_test_dict["y_test"]
         wt_train = train_test_dict["wt_train"]
         wt_test = train_test_dict["wt_test"]
-        if np.isnan(np.sum(x_train)):
-            exit(1)
-        if np.isnan(np.sum(y_train)):
-            exit(1)
+        # if np.isnan(np.sum(x_train)):
+        #    exit(1)
+        # if np.isnan(np.sum(y_train)):
+        #    exit(1)
         self.get_model().summary()
         self.train_history = self.get_model().fit(
             x_train,
@@ -476,15 +478,17 @@ class Model_Sequential_Base(Model_Base):
             verbose=verbose,
         )
         print("Training finished.")
+
         # Quick evaluation
-        print("Quick evaluation:")
-        score = self.get_model().evaluate(
-            x_test, y_test, verbose=verbose, sample_weight=wt_test,
-        )
-        print("> test loss:", score[0])
-        print("> test accuracy:", score[1])
-        print(self.get_model().metrics_names)
-        print(score)
+        # print("Quick evaluation:")
+        # score = self.get_model().evaluate(
+        #     x_test, y_test, verbose=verbose, sample_weight=wt_test,
+        # )
+        # print("> test loss:", score[0])
+        # print("> test accuracy:", score[1])
+        # print(self.get_model().metrics_names)
+        # print(score)
+
         # Save train history
         # save accuracy history
         self.train_history_accuracy = [
@@ -652,8 +656,16 @@ class Model_Sequential_Flat(Model_Sequential_Base):
             if self.model_hypers["dropout_rate"] != 0:
                 self.model.add(Dropout(self.model_hypers["dropout_rate"]))
         # output
+        if self.model_hypers["output_bkg_node_names"]:
+            num_nodes_out = len(self.model_hypers["output_bkg_node_names"]) + 1
+        else:
+            num_nodes_out = 1
         self.model.add(
-            Dense(1, kernel_initializer="glorot_uniform", activation="sigmoid")
+            Dense(
+                num_nodes_out,
+                kernel_initializer="glorot_uniform",
+                activation="sigmoid",
+            )
         )
         # Compile
         # transfer self-defined metrics into real function

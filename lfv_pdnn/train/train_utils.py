@@ -45,8 +45,12 @@ def dump_fit_ntup(
                 if branch == "weight":
                     branch_content = dump_array_weight
                 else:
+                    if feedbox.validation_features is None:
+                        validation_features = []
+                    else:
+                        validation_features = feedbox.validation_features
                     feature_list = (
-                        feedbox.selected_features + feedbox.validation_features
+                        feedbox.selected_features + validation_features
                     )
                     branch_index = feature_list.index(branch)
                     branch_content = dump_array[:, branch_index]

@@ -32,7 +32,7 @@ def execute():
         if args.debug:  # DEBUG, INFO, WARNING, ERROR, CRITICAL
             logging.getLogger("lfv_pdnn").setLevel(logging.DEBUG)
             if args.verbose:
-                logging_format = "%(asctime)s,%(msecs)03d %(levelname)7s %(message)s, file %(filename)s, line %(lineno)d"
+                logging_format = "%(asctime)s,%(msecs)03d %(levelname)7s %(message)s  >>  file: %(filename)s, line: %(lineno)d"
             else:
                 logging_format = "%(asctime)s,%(msecs)03d %(levelname)7s %(message)s"
 

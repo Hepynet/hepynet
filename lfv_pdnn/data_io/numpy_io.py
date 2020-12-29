@@ -5,8 +5,8 @@ Note:
   2. Each sample component is a sub-dictionary, each key is corresponding to a input feature's array 
 
 """
-
 import logging
+import pathlib
 
 import numpy as np
 from lfv_pdnn.common import array_utils, common_utils, config_utils
@@ -56,9 +56,19 @@ def load_npy_arrays(
         campaign_list = [campaign]
     # load arrays
     included_features = selected_features[:]
+    if validation_features is None:
+        validation_features = (
+            []
+        )  # TODO: need to solve this using a global default config setting in the future
     included_features = list(
         set().union(included_features, validation_features, ["weight"])
     )
+    if (
+        cut_features is None
+    ):  # TODO: need to solve this using a global default config setting in the future
+        cut_features = []
+        cut_values = []
+        cut_types = []
     cut_features += [channel]
     cut_values += [1]
     cut_types += ["="]
@@ -71,21 +81,43 @@ def load_npy_arrays(
         logger.critical(
             f"Can't find data_path setting for current host {current_hostname} with platform {current_platform}, please update the config at share/cross_platform/pc_meta.yaml"
         )
-        exit(1)
+        raise KeyError
     for sample_component in sample_list:
         sample_array_dict = {}
         cut_array_dict = {}
         for feature in set().union(included_features, cut_features):
             feature_array = None
-            for campaign in campaign_list:
-                temp_array = np.load(
+            if campaign in ["run2", "all"]:
+                try:
+                    for camp in campaign_list:
+                        temp_array = np.load(
+                            f"{data_directory}/{directory}/{camp}/{region}/{sample_component}_{feature}.npy"
+                        )
+                        temp_array = np.reshape(temp_array, (-1, 1))
+                        if feature_array is None:
+                            feature_array = temp_array
+                        else:
+                            feature_array = np.concatenate((feature_array, temp_array))
+                except:
+                    feature_array = np.load(
+                        f"{data_directory}/{directory}/{campaign}/{region}/{sample_component}_{feature}.npy"
+                    )
+            # except:
+            #    for campaign in campaign_list:
+            #        temp_array = np.load(
+            #            f"{data_directory}/{directory}/{campaign}/{region}/#{sample_component}_{feature}.npy"
+            #        )
+            #        temp_array = np.reshape(temp_array, (-1, 1))
+            #        if feature_array is None:
+            #            feature_array = temp_array
+            #        else:
+            #            feature_array = np.concatenate((feature_array, temp_array))
+            else:
+                feature_array = np.load(
                     f"{data_directory}/{directory}/{campaign}/{region}/{sample_component}_{feature}.npy"
                 )
-                temp_array = np.reshape(temp_array, (-1, 1))
-                if feature_array is None:
-                    feature_array = temp_array
-                else:
-                    feature_array = np.concatenate((feature_array, temp_array))
+            feature_array = feature_array.reshape((-1, 1))
+
             if feature in included_features:
                 sample_array_dict[feature] = feature_array
             if feature in cut_features:

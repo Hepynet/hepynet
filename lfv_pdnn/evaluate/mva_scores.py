@@ -115,8 +115,8 @@ def plot_scores_plt(
             use_error=False,
         )
     ax.set_title(config.plot_title)
-    ax.legend(loc="upper right")
-    ax.set_xlabel("Output score")
+    ax.legend(loc="upper center")
+    ax.set_xlabel("output score")
     ax.set_ylabel("arb. unit")
     ax.grid()
     if config.log:
@@ -384,6 +384,7 @@ def plot_train_test_compare(
             color="maroon",
             fmt=".",
         )
+        ax.legend(loc="upper center")
         # Make and show plots
         if feedbox.reset_mass:
             file_name = f"/mva_scores_overtrain_original_mass_{all_nodes[node_num]}"

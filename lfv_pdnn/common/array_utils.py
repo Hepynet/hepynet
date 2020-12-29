@@ -84,6 +84,8 @@ def get_cut_index_value(array, cut_value, cut_type):
         cut_feature: str
         cut_bool: bool
     """
+    logger.debug("Cutting input array")
+    logger.debug(f"Input shape: {array.shape}")
     # Make cuts
     if cut_type == "=":
         pass_index = np.argwhere(array == cut_value)

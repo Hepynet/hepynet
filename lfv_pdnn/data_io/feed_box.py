@@ -133,7 +133,11 @@ class Feedbox(object):
             logger.warn("Unknown input type")
             return None
         if add_validation_features:
-            feature_list = self.selected_features + self.validation_features
+            if self.validation_features is None:
+                validation_features = []
+            else:
+                validation_features = self.validation_features
+            feature_list = self.selected_features + validation_features
         else:
             feature_list = self.selected_features
         if array_key in list(array_dict.keys()):
@@ -267,81 +271,115 @@ class Feedbox(object):
             "xs", array_key=sig_key, reset_mass=reset_mass, reset_array_key=sig_key
         )
         logger.debug(f"xs_weight_reweight shape: {xs_weight_reweight.shape}")
-        xb_reweight = None
-        xb_weight_reweight = None
-        ys = None
-        yb = None
         if len(multi_class_bkgs) > 0:
-            pass
-            # num_bkg_nodes = len(multi_class_bkgs)
-            # ys_element = np.zeros(num_bkg_nodes + 1)
-            # ys_element[0] = 1
-            # ys = np.tile(ys_element, (len(xs_reweight), 1))
-            # for node_num, bkg_node in enumerate(multi_class_bkgs):
-            #     bkg_node_list = ("".join(bkg_node.split())).split("+")
-            #     xb_reweight_node = None
-            #     for bkg_ele in bkg_node_list:
-            #         xb_reweight_ele = self.get_reweight(
-            #             "xb",
-            #             array_key=bkg_ele,
-            #             reset_mass=reset_mass,
-            #             reset_array_key=sig_key,
-            #             norm=True,
-            #         )
-            #         if xb_reweight_node is None:
-            #             xb_reweight_node = xb_reweight_ele
-            #         else:
-            #             xb_reweight_node = np.concatenate(
-            #                 (xb_reweight_node, xb_reweight_ele)
-            #             )
-            #     xb_reweight_node = array_utils.modify_array(
-            #         xb_reweight_node, norm=True, sumofweight=1000
-            #     )
-            #     yb_single_element = np.zeros(num_bkg_nodes + 1)
-            #     yb_single_element[node_num + 1] = 1
-            #     yb_single = np.tile(yb_single_element, (len(xb_reweight_node), 1))
-            #     if xb_reweight is None:
-            #         xb_reweight = xb_reweight_node
-            #         yb = yb_single
-            #     else:
-            #         xb_reweight = np.concatenate((xb_reweight, xb_reweight_node))
-            #         yb = np.concatenate((yb, yb_single))
-            # xb_reweight = array_utils.modify_array(
-            #     xb_reweight, norm=True, sumofweight=self.bkg_weight
-            # )
+            xb_reweight = None
+            xb_weight_reweight = None
+            yb = None
+            num_bkg_nodes = len(multi_class_bkgs)
+            ys_element = np.zeros(num_bkg_nodes + 1)
+            ys_element[0] = 1
+            ys = np.tile(ys_element, (len(xs_reweight), 1))
+            for node_num, bkg_node in enumerate(multi_class_bkgs):
+                bkg_node_list = ("".join(bkg_node.split())).split("+")
+                xb_reweight_node = None
+                wt_reweight_node = None
+                for bkg_ele in bkg_node_list:
+                    xb_reweight_ele, xb_wt_reweight_ele = self.get_reweight(
+                        "xb",
+                        array_key=bkg_ele,
+                        reset_mass=reset_mass,
+                        reset_array_key=sig_key,
+                    )
+                    if xb_reweight_node is None:
+                        xb_reweight_node = xb_reweight_ele
+                        wt_reweight_node = xb_wt_reweight_ele
+                    else:
+                        xb_reweight_node = np.concatenate(
+                            (xb_reweight_node, xb_reweight_ele)
+                        )
+                        wt_reweight_node = np.concatenate(
+                            (wt_reweight_node, xb_wt_reweight_ele)
+                        )
+                xb_reweight_node, wt_reweight_node = array_utils.modify_array(
+                    xb_reweight_node,
+                    wt_reweight_node,
+                    norm=True,
+                    sumofweight=1000,
+                )
+                yb_single_element = np.zeros(num_bkg_nodes + 1)
+                yb_single_element[node_num + 1] = 1
+                yb_single = np.tile(yb_single_element, (len(xb_reweight_node), 1))
+                if xb_reweight is None:
+                    xb_reweight = xb_reweight_node
+                    yb = yb_single
+                    xb_weight_reweight = wt_reweight_node
+                else:
+                    xb_reweight = np.concatenate((xb_reweight, xb_reweight_node))
+                    yb = np.concatenate((yb, yb_single))
+                    xb_weight_reweight = np.concatenate((xb_weight_reweight, wt_reweight_node))
+            xb_reweight, xb_weight_reweight = array_utils.modify_array(
+                xb_reweight, xb_weight_reweight, norm=True, sumofweight=self.bkg_weight
+            )
+            (
+                x_train,
+                x_test,
+                y_train,
+                y_test,
+                wt_train,
+                wt_test,
+                xs_train,
+                xs_test,
+                ys_train,
+                ys_test,
+                wts_train,
+                wts_test,
+                xb_train,
+                xb_test,
+                yb_train,
+                yb_test,
+                wtb_train,
+                wtb_test,
+            ) = train_utils.split_and_combine(
+                xs_reweight,
+                xs_weight_reweight,
+                xb_reweight,
+                xb_weight_reweight,
+                ys=ys,
+                yb=yb,
+                test_rate=self.test_rate,
+                shuffle_seed=self.rdm_seed,
+            )
         else:
             xb_reweight, xb_weight_reweight = self.get_reweight(
                 "xb", array_key=bkg_key, reset_mass=reset_mass, reset_array_key=sig_key
             )
-        (
-            x_train,
-            x_test,
-            y_train,
-            y_test,
-            wt_train,
-            wt_test,
-            xs_train,
-            xs_test,
-            ys_train,
-            ys_test,
-            wts_train,
-            wts_test,
-            xb_train,
-            xb_test,
-            yb_train,
-            yb_test,
-            wtb_train,
-            wtb_test,
-        ) = train_utils.split_and_combine(
-            xs_reweight,
-            xs_weight_reweight,
-            xb_reweight,
-            xb_weight_reweight,
-            ys=ys,
-            yb=yb,
-            test_rate=self.test_rate,
-            shuffle_seed=self.rdm_seed,
-        )
+            (
+                x_train,
+                x_test,
+                y_train,
+                y_test,
+                wt_train,
+                wt_test,
+                xs_train,
+                xs_test,
+                ys_train,
+                ys_test,
+                wts_train,
+                wts_test,
+                xb_train,
+                xb_test,
+                yb_train,
+                yb_test,
+                wtb_train,
+                wtb_test,
+            ) = train_utils.split_and_combine(
+                xs_reweight,
+                xs_weight_reweight,
+                xb_reweight,
+                xb_weight_reweight,
+                test_rate=self.test_rate,
+                shuffle_seed=self.rdm_seed,
+            )
         full_dict = {
             "x_train": x_train,
             "x_test": x_test,

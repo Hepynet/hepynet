@@ -195,5 +195,5 @@ def load_yaml_dict(yaml_path) -> dict:
         yaml_file = open(yaml_path, "r")
         return yaml.load(yaml_file, Loader=yaml.FullLoader)
     except:
-        logger.critical(f"Can't open yaml config: {yaml_path}")
-        raise FileNotFoundError
+        logger.critical(f"Can't read yaml config: {yaml_path}, please check whether input yaml config exists and the syntax is correct")
+        raise IOError
