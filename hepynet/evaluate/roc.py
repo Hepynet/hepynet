@@ -2,9 +2,10 @@ import logging
 
 import matplotlib.pyplot as plt
 import numpy as np
-from hepynet.common import array_utils
 from matplotlib.ticker import NullFormatter
 from sklearn.metrics import auc, roc_auc_score, roc_curve
+
+from hepynet.common import array_utils
 
 logger = logging.getLogger("hepynet")
 
@@ -57,7 +58,7 @@ def plot_multi_class_roc(
     bkg_key: str = None,
 ):
     """Plots roc curve."""
-    print("Plotting train/test roc curve.")
+    logger.info("Plotting train/test roc curve.")
     fig, ax = plt.subplots(figsize=figsize)
 
     model = model_wrapper.get_model()

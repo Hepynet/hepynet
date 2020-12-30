@@ -13,7 +13,7 @@ logger = logging.getLogger("hepynet")
 
 
 def create_folders(foldernames, parent_path="./"):
-    """Checks existence of given folder names, creats if not exsits.
+    """Checks existence of given folder names, creates if not exists.
 
     Args:
       foldernames: list of str, folder names to be checked/created.
@@ -25,29 +25,23 @@ def create_folders(foldernames, parent_path="./"):
             os.makedirs(today_dir)
 
 
-def dict_key_strtoint(json_data):
+def dict_key_str_to_int(json_data):
     """Cast string keys to int keys"""
     correctedDict = {}
     for key, value in json_data.items():
         if isinstance(value, list):
             value = [
-                dict_key_strtoint(item) if isinstance(item, dict) else item
+                dict_key_str_to_int(item) if isinstance(item, dict) else item
                 for item in value
             ]
         elif isinstance(value, dict):
-            value = dict_key_strtoint(value)
+            value = dict_key_str_to_int(value)
         try:
             key = int(key)
         except:
             pass
         correctedDict[key] = value
     return correctedDict
-
-
-def display_dict(input_dict):
-    """Print dict in a readable way."""
-    for key in list(input_dict.keys()):
-        print("*", key, ":", input_dict[key])
 
 
 def get_current_platform_name() -> str:
@@ -66,45 +60,6 @@ def get_current_hostname() -> str:
         str: current hostname
     """
     return socket.gethostname()
-
-
-def get_file_list(directory, search_pattern, out_name_identifier="None"):
-    """Gets a full list of file under given directory with given name pattern
-
-    To use:
-    >>> get_file_list("path/to/directory", "*.root", "signal_emu_500_GeV{}")
-
-    Args:
-      directory: str, path to search files
-      search_pattern: str, pattern of files to search
-      out_name_identifier: patter to rename file_name_list with increased number
-
-    Returns:
-      A list of file absolute path & file name
-    """
-    # Get absolute path
-    absolute_file_list = glob.glob(directory + "/" + search_pattern, recursive=True)
-    absolute_file_list.sort()
-    if len(absolute_file_list) == 0:
-        logger.warning("Empty file list, please check input.")
-    # Get file name match the pattern
-    file_name_list = [os.path.basename(path) for path in absolute_file_list]
-    # Rename file_name_list if out_name_identifier is specified
-    if out_name_identifier is not None:
-        if len(file_name_list) == 1:
-            file_name_list[0] = out_name_identifier
-        else:  # add number for multiple files that match the pattern
-            for id, ele in enumerate(file_name_list):
-                file_name_list[id] = (out_name_identifier + ".{}").format(id)
-    # check duplicated name in file_name_list
-    for name in file_name_list:
-        num_same_name = 0
-        for name_check in file_name_list:
-            if name == name_check:
-                num_same_name += 1
-        if num_same_name > 1:
-            logger.warning("Same file name detected.")
-    return absolute_file_list, file_name_list
 
 
 def get_newest_file_version(path_pattern, n_digit=2, ver_num=None, use_existing=False):
@@ -126,9 +81,7 @@ def get_newest_file_version(path_pattern, n_digit=2, ver_num=None, use_existing=
     if len(path_list) < 1:
         if use_existing:
             logger.debug(
-                "Can't find existing file with path pattern:"
-                + path_pattern
-                + ", returning empty."
+                f"Can't find existing file with path pattern: {path_pattern}, returning empty."
             )
             return {}
         else:
@@ -175,77 +128,3 @@ def has_none(list):
         if ele is None:
             return True
     return False
-
-
-def read_dict_from_json(json_input):
-    """Reads dict type data from json input
-
-    Args:
-      json_input: json, used to read dict from
-
-    Returns:
-      dict type data of json input
-    """
-    pass
-
-
-def read_dict_from_txt(file_path, key_type="str", value_type="str"):
-    """Reads dict type data from text file
-
-    Args:
-      file_path: str, path to the input text file
-      key_type: str, specify type of key of dict
-        use 'str' for string type
-        use 'float' for float value
-      value_type: str, specify type of value of dict
-        available type same as key_type
-
-    Returns:
-      dict type data of text file input
-    """
-    dict_output = {}
-
-    with open(file_path, "r") as lines:
-        for line in lines:
-            key_error = False
-            value_error = False
-            content1, content2 = line.strip().split(",", 1)
-            # get key
-            if key_type == "str":
-                key = content1.strip()
-            elif key_type == "float":
-                try:
-                    key = eval(content1)
-                except ZeroDivisionError:
-                    key_error = True
-                    logger.warning("Float division by zero.")
-                    continue  # skip invalid key
-                except:
-                    key_error = True
-                    logger.warning("Unknown evaluation error.")
-                    continue  # skip invalid key
-            else:
-                logger.warning("Unrecognized key type.")
-            # get value
-            if value_type == "str":
-                value = content2.strip()
-            elif value_type == "float":
-                try:
-                    value = eval(content2)
-                except ZeroDivisionError:
-                    value_error = True
-                    value = 0  # set default value
-                    logger.warning("Float division by zero.")
-                except:
-                    value_error = True
-                    value = 0  # set default value
-                    logger.warning("Unknown evaluation error.")
-            else:
-                logger.warning("Unrecognized value type.")
-            # save dict item
-            if key in dict_output:
-                logger.warning("Key already exists, overwriting value...")
-                if value_error == True:
-                    continue  # skip invalid value if value of key already exists
-            dict_output[key] = value
-    return dict_output

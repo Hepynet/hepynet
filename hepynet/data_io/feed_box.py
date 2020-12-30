@@ -4,6 +4,7 @@ import time
 from sys import getsizeof
 
 import numpy as np
+
 from hepynet.common import array_utils
 from hepynet.train import train_utils
 
@@ -301,10 +302,7 @@ class Feedbox(object):
                             (wt_reweight_node, xb_wt_reweight_ele)
                         )
                 xb_reweight_node, wt_reweight_node = array_utils.modify_array(
-                    xb_reweight_node,
-                    wt_reweight_node,
-                    norm=True,
-                    sumofweight=1000,
+                    xb_reweight_node, wt_reweight_node, norm=True, sumofweight=1000,
                 )
                 yb_single_element = np.zeros(num_bkg_nodes + 1)
                 yb_single_element[node_num + 1] = 1
@@ -316,7 +314,9 @@ class Feedbox(object):
                 else:
                     xb_reweight = np.concatenate((xb_reweight, xb_reweight_node))
                     yb = np.concatenate((yb, yb_single))
-                    xb_weight_reweight = np.concatenate((xb_weight_reweight, wt_reweight_node))
+                    xb_weight_reweight = np.concatenate(
+                        (xb_weight_reweight, wt_reweight_node)
+                    )
             xb_reweight, xb_weight_reweight = array_utils.modify_array(
                 xb_reweight, xb_weight_reweight, norm=True, sumofweight=self.bkg_weight
             )

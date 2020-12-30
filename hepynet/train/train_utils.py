@@ -15,9 +15,10 @@ from math import sqrt
 
 import matplotlib.pyplot as plt
 import numpy as np
+from sklearn.metrics import accuracy_score, auc, classification_report
+
 from hepynet.common import array_utils, config_utils
 from hepynet.data_io import root_io
-from sklearn.metrics import accuracy_score, auc, classification_report
 
 logger = logging.getLogger("hepynet")
 
@@ -98,10 +99,10 @@ def get_model_epoch_path_list(
         raise FileNotFoundError("Model file that matched the pattern not found.")
     model_dir = model_dir_list[-1]
     if len(model_dir_list) > 1:
-        print("More than one valid model file found, try to specify more infomation.")
-        print("Loading the last matched model path:", model_dir)
+        logger.warning("More than one valid model file found, try to specify more infomation.")
+        logger.info(f"Loading the last matched model path: {model_dir}")
     else:
-        print("Loading model at:", model_dir)
+        logger.info("Loading model at: {model_dir}")
     search_pattern = model_dir + "/" + model_name + "_epoch*.h5"
     model_path_list = glob.glob(search_pattern)
     return model_path_list
@@ -153,7 +154,7 @@ def norarray(array, average=None, variance=None, axis=None, weights=None):
         return array
     else:
         if (average is None) or (variance is None):
-            print("Warning! unspecified average or variance.")
+            logger.warn("Unspecified average or variance.")
             average, variance = get_mean_var(array, axis=axis, weights=weights)
         output_array = (array.copy() - average) / np.sqrt(variance)
         return output_array
@@ -164,7 +165,7 @@ def norarray_min_max(array, min, max, axis=None):
     middle = (min + max) / 2.0
     output_array = array.copy() - middle
     if max < min:
-        print("ERROR: max shouldn't be smaller than min.")
+        logger.error("ERROR: max shouldn't be smaller than min.")
         return None
     ratio = (max - min) / 2.0
     output_array = output_array / ratio

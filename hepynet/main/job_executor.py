@@ -16,33 +16,15 @@ import pandas as pd
 import seaborn as sns
 from hyperopt import Trials, fmin, hp, tpe
 from hyperopt.pyll.stochastic import sample
-from hepynet.common import array_utils, common_utils, config_utils
-from hepynet.common.hepy_const import *
-from hepynet.data_io import feed_box, numpy_io
-from hepynet.evaluate import (
-    importance,
-    kinematics,
-    mva_scores,
-    roc,
-    significance,
-    train_history,
-)
-from hepynet.main import job_utils
-from hepynet.train import model, train_utils
-from reportlab.lib.enums import TA_JUSTIFY
-from reportlab.lib.pagesizes import letter
-from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-from reportlab.lib.units import inch
-from reportlab.platypus import (
-    Image,
-    PageBreak,
-    Paragraph,
-    SimpleDocTemplate,
-    Spacer,
-    Table,
-    TableStyle,
-)
 from sklearn.metrics import auc, roc_curve
+
+from hepynet.common import array_utils, common_utils, config_utils
+from hepynet.common.hepy_const import SCANNED_PARAS
+from hepynet.data_io import feed_box, numpy_io
+from hepynet.evaluate import (importance, kinematics, mva_scores, roc,
+                              significance, train_history)
+from hepynet.main import job_utils
+from hepynet.train import evaluate, model, train_utils
 
 logger = logging.getLogger("hepynet")
 
@@ -135,7 +117,7 @@ class job_executor(object):
 
             # save kinematic plots
             if ac.book_kine_study:
-                print(">> Making input distribution plots")
+                logger.info("Making input distribution plots")
                 kinematics.plot_input_distributions(
                     self.model_wrapper,
                     sig_key=ic.sig_key,
@@ -157,7 +139,7 @@ class job_executor(object):
                 )
             # Make correlation plot
             if ac.book_cor_matrix:
-                print(">> Making correlation plot")
+                logger.info("Making correlation plot")
                 kinematics.plot_correlation_matrix(
                     self.model_wrapper, save_dir=rc.save_sub_dir
                 )
@@ -183,14 +165,15 @@ class job_executor(object):
                     epoch_interval = 5
             for model_num, model_path in enumerate(model_path_list):
                 if model_num % epoch_interval == 0 or model_num == 1:
-                    print(">>>> Checking model:", model_path)
+                    logger.info(">" * 80)
+                    logger.info(f"Checking model:{model_path}")
                     identifier = "final"
                     if model_path != "_final":
                         identifier = "epoch{:02d}".format(model_num)
                         self.model_wrapper.load_model_with_path(model_path)
                     # Overtrain check
                     if ac.book_roc:
-                        print(">> Making roc curve plot")
+                        logger.info("Making roc curve plot")
                         roc.plot_multi_class_roc(
                             self.model_wrapper,
                             save_dir=rc.save_dir,
@@ -198,13 +181,13 @@ class job_executor(object):
                             bkg_key=ic.bkg_key,
                         )
                     if ac.book_train_test_compare:
-                        print(">> Making train/test compare plots")
+                        logger.info("Making train/test compare plots")
                         mva_scores.plot_train_test_compare(
                             self.model_wrapper, ac.cfg_train_test_compare, rc.save_dir,
                         )
                     # Make feature importance check
                     if ac.book_importance_study:
-                        print(">> Checking input feature importance")
+                        logger.info("Checking input feature importance")
                         importance.plot_feature_importance(
                             self.model_wrapper,
                             rc.save_dir,
@@ -213,7 +196,7 @@ class job_executor(object):
                         )
                     # Extra plots (use model on non-mass-reset arrays)
                     if ac.book_mva_scores_data_mc:
-                        print(">> Making data/mc scores distributions plots")
+                        logger.info("Making data/mc scores distributions plots")
                         mva_scores.plot_mva_scores(
                             self.model_wrapper,
                             ac.cfg_mva_scores_data_mc,
@@ -222,7 +205,7 @@ class job_executor(object):
                         )
                     # show kinemetics at different dnn cut
                     if ac.book_cut_kine_study:
-                        print(">> Making kinematic plots with different DNN cut")
+                        logger.info("Making kinematic plots with different DNN cut")
                         for dnn_cut in ac.cfg_kine_study.dnn_cut_list:
                             kinematics.plot_input_distributions(
                                 self.model_wrapper,
@@ -323,6 +306,7 @@ class job_executor(object):
                             tc.output_bkg_node_names,
                             ntup_dir=ntup_dir,
                         )
+                    logger.info("<" * 80)
 
         # post procedure
         plt.close("all")

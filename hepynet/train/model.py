@@ -4,10 +4,13 @@ import copy
 import datetime
 import glob
 import json
+import logging
 import math
 import os
 import time
 import warnings
+
+logger = logging.getLogger("hepynet")
 
 # import eli5
 import keras
@@ -26,10 +29,10 @@ if gpus:
         for gpu in gpus:
             tf.config.experimental.set_memory_growth(gpu, True)
         logical_gpus = tf.config.experimental.list_logical_devices("GPU")
-        print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
+        logger.info(f"{len(gpus)} Physical GPUs, {len(logical_gpus)} Logical GPUs")
     except RuntimeError as e:
         # Memory growth must be set before GPUs have been initialized
-        print(e)
+        logger.error(e)
 
 # from eli5.sklearn import PermutationImportance
 from keras import backend as K
@@ -39,10 +42,11 @@ from keras.layers.normalization import BatchNormalization
 from keras.models import Model, Sequential
 from keras.optimizers import SGD, Adagrad, Adam, RMSprop
 from keras.wrappers.scikit_learn import KerasClassifier, KerasRegressor
-from hepynet.common import array_utils, common_utils
-from hepynet.train import evaluate, train_utils
 from matplotlib.ticker import FixedLocator, NullFormatter
 from sklearn.metrics import auc, roc_curve
+
+from hepynet.common import array_utils, common_utils
+from hepynet.train import evaluate, train_utils
 
 
 # self-defined metrics functions
@@ -206,7 +210,7 @@ class Model_Sequential_Base(Model_Base):
         return self.train_history
 
     def get_train_performance_meta(self):
-        """Returns meta data of trainning performance
+        """Returns meta data of training performance
 
         Note:
             This function should be called after show_performance and
@@ -220,12 +224,12 @@ class Model_Sequential_Base(Model_Base):
             performance_meta_dict["original_significance"] = self.original_significance
             performance_meta_dict["max_significance"] = self.max_significance
             performance_meta_dict[
-                "max_significance_threshould"
-            ] = self.max_significance_threshould
+                "max_significance_threshold"
+            ] = self.max_significance_threshold
         except:
             performance_meta_dict["original_significance"] = "-"
             performance_meta_dict["max_significance"] = "-"
-            performance_meta_dict["max_significance_threshould"] = "-"
+            performance_meta_dict["max_significance_threshold"] = "-"
         # try collect auc value
         try:
             # performance_meta_dict["auc_train"] = self.auc_train
@@ -266,7 +270,7 @@ class Model_Sequential_Base(Model_Base):
         model_dir_list = glob.glob(search_pattern)
         if not model_dir_list:
             search_pattern = "/work/" + search_pattern
-            print("search pattern:", search_pattern)
+            logger.debug(f"search pattern:{search_pattern}")
             model_dir_list = glob.glob(search_pattern)
         model_dir_list = sorted(model_dir_list)
         # Choose the newest one
@@ -274,12 +278,12 @@ class Model_Sequential_Base(Model_Base):
             raise FileNotFoundError("Model file that matched the pattern not found.")
         model_dir = model_dir_list[-1]
         if len(model_dir_list) > 1:
-            print(
-                "More than one valid model file found, try to specify more infomation."
+            logger.info(
+                "More than one valid model file found, maybe you should try to specify more infomation."
             )
-            print("Loading the last matched model path:", model_dir)
+            logger.info(f"Loading the last matched model path: {model_dir}")
         else:
-            print("Loading model at:", model_dir)
+            logger.info(f"Loading model at: {model_dir}")
         self.model = keras.models.load_model(
             model_dir + "/" + model_name + ".h5",
             custom_objects={"plain_acc": plain_acc},
@@ -293,7 +297,7 @@ class Model_Sequential_Base(Model_Base):
             self.model_paras_is_loaded = True
         except:
             warnings.warn("Model parameters not successfully loaded.")
-        print("Model loaded.")
+        logger.info("Model loaded.")
 
     def load_model_with_path(self, model_path, paras_path=None):
         """Loads model with given path
@@ -310,14 +314,14 @@ class Model_Sequential_Base(Model_Base):
                 self.model_paras_is_loaded = True
             except:
                 warnings.warn("Model parameters not successfully loaded.")
-        print("Model loaded.")
+        logger.info("Model loaded.")
 
     def load_model_parameters(self, paras_path):
         """Retrieves model parameters from json file."""
         with open(paras_path, "r") as paras_file:
             paras_dict = json.load(paras_file)
         # sorted by alphabet
-        self.class_weight = common_utils.dict_key_strtoint(paras_dict["class_weight"])
+        self.class_weight = common_utils.dict_key_str_to_int(paras_dict["class_weight"])
         self.model_create_time = paras_dict["model_create_time"]
         self.model_input_dim = paras_dict["model_input_dim"]
         self.model_is_compiled = paras_dict["model_is_compiled"]
@@ -354,11 +358,11 @@ class Model_Sequential_Base(Model_Base):
         # Save
         self.model.save(save_path)
         self.model_save_path = save_path
-        print(f"\033[F model:", self.model_name, "has been saved to:", save_path)
+        logger.debug(f"model: {self.model_name} has been saved to: {save_path}")
         # update path for json
         save_path = save_dir + "/" + file_name + "_paras.json"
         self.save_model_paras(save_path)
-        print("model parameters has been saved to:", save_path)
+        logger.debug(f"model parameters has been saved to: {save_path}")
         self.model_is_saved = True
 
     def save_model_paras(self, save_path):
@@ -409,9 +413,9 @@ class Model_Sequential_Base(Model_Base):
         if self.array_prepared == False:
             raise ValueError("Training data is not ready.")
         # Train
-        print("-" * 40)
-        print("Training start. Using model:", self.model_name)
-        print("Model info:", self.model_note)
+        logger.info("-" * 40)
+        logger.info(f"Training start. Using model: {self.model_name}")
+        logger.info(f"Model info: {self.model_note}")
         self.class_weight = {1: sig_class_weight, 0: bkg_class_weight}
         train_callbacks = []
         if self.save_tb_logs:
@@ -436,7 +440,6 @@ class Model_Sequential_Base(Model_Base):
             )
             train_callbacks.append(early_stop_callback)
         # set up check point to save model in each epoch
-        print("#### set check point")
         if save_dir is None:
             save_dir = "./models"
         if not os.path.exists(save_dir):
@@ -445,12 +448,9 @@ class Model_Sequential_Base(Model_Base):
             datestr = datetime.date.today().strftime("%Y-%m-%d")
             file_name = self.model_name
         path_pattern = save_dir + "/" + file_name + "_epoch{epoch:03d}.h5"
-        checkpoint = ModelCheckpoint(
-            path_pattern, monitor="val_loss", verbose=1, period=1
-        )
+        checkpoint = ModelCheckpoint(path_pattern, monitor="val_loss")
         train_callbacks.append(checkpoint)
         # check input
-        print("#### check input")
         train_test_dict = self.feedbox.get_train_test_arrays(
             sig_key=sig_key,
             bkg_key=bkg_key,
@@ -462,10 +462,6 @@ class Model_Sequential_Base(Model_Base):
         y_test = train_test_dict["y_test"]
         wt_train = train_test_dict["wt_train"]
         wt_test = train_test_dict["wt_test"]
-        # if np.isnan(np.sum(x_train)):
-        #    exit(1)
-        # if np.isnan(np.sum(y_train)):
-        #    exit(1)
         self.get_model().summary()
         self.train_history = self.get_model().fit(
             x_train,
@@ -477,17 +473,17 @@ class Model_Sequential_Base(Model_Base):
             callbacks=train_callbacks,
             verbose=verbose,
         )
-        print("Training finished.")
+        logger.info("Training finished.")
 
-        # Quick evaluation
-        # print("Quick evaluation:")
-        # score = self.get_model().evaluate(
-        #     x_test, y_test, verbose=verbose, sample_weight=wt_test,
-        # )
-        # print("> test loss:", score[0])
-        # print("> test accuracy:", score[1])
-        # print(self.get_model().metrics_names)
-        # print(score)
+        # Evaluation
+        logger.info("Evaluate with test dataset:")
+        score = self.get_model().evaluate(
+            x_test, y_test, verbose=verbose, sample_weight=wt_test,
+        )
+        logger.info(f"> test loss: {score[0]}")
+        logger.info(f"> test accuracy: {score[1]}")
+        logger.info(self.get_model().metrics_names)
+        logger.info(score)
 
         # Save train history
         # save accuracy history

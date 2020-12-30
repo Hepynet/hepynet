@@ -52,7 +52,7 @@ def make_table(data, save_dir, num_para=1):
     """
     # save csv format
     save_path = save_dir + "/scan_meta_report.csv"
-    with open(save_path, "w", newline="") as myfile:
-        wr = csv.writer(myfile, quoting=csv.QUOTE_ALL)
+    with open(save_path, "w", newline="") as my_file:
+        wr = csv.writer(my_file, quoting=csv.QUOTE_ALL)
         for single_list in data:
             wr.writerow(single_list)

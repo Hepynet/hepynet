@@ -1,11 +1,14 @@
-import logging
 import copy
+import logging
+
 import matplotlib.pyplot as plt
 import numpy as np
-from easy_atlas_plot.plot_utils import plot_utils_root, plot_utils_plt, th1_tools
+
+from easy_atlas_plot.plot_utils import plot_utils_plt, plot_utils_root, th1_tools
 from hepynet.evaluate import evaluate_utils
 
 logger = logging.getLogger("hepynet")
+
 
 def plot_mva_scores(model_wrapper, plot_config, save_dir, file_name="mva_scores"):
     # initialize
@@ -149,7 +152,7 @@ def plot_scores_root(
         'top' will be put at bottom & 'zll' in the middle & 'diboson' on the top
 
     """
-    print("Plotting scores with bkg separated with ROOT.")
+    logger.info("Plotting scores with bkg separated with ROOT.")
     all_nodes = ["sig"] + model_wrapper.model_hypers["output_bkg_node_names"]
     num_nodes = len(all_nodes)
 
@@ -290,11 +293,11 @@ def plot_scores_root(
 
         # show & save total weight info
         model_wrapper.total_weight_sig = total_weight_sig
-        print("sig total weight:", total_weight_sig)
+        logger.debug(f"sig total weight: {total_weight_sig}")
         model_wrapper.total_weight_bkg = total_weight_bkg
-        print("bkg total weight:", total_weight_bkg)
+        logger.debug(f"bkg total weight: {total_weight_bkg}")
         model_wrapper.total_weight_data = total_weight_data
-        print("data total weight:", total_weight_data)
+        logger.debug(f"data total weight: {total_weight_data}")
         # save plot
         if save_plot:
             plot_canvas.SaveAs(
@@ -311,7 +314,7 @@ def plot_train_test_compare(
 ):
     """Plots train/test scores distribution to check overtrain"""
     # initialize
-    print("Plotting train/test scores (original mass).")
+    logger.info("Plotting train/test scores (original mass).")
     config = plot_config.clone()
     model = model_wrapper.get_model()
     feedbox = model_wrapper.feedbox

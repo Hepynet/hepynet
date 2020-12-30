@@ -3,7 +3,9 @@ import time
 import warnings
 
 import numpy as np
+
 from hepynet.common import common_utils
+
 logger = logging.getLogger("hepynet")
 
 
@@ -22,36 +24,10 @@ def clean_negative_weights(weights):
     logger.debug("Cleaning array elements with negative weights...")
     new_weights = weights.copy()
     new_weights = np.clip(new_weights, a_min=0, a_max=None)
-    logger.debug(f"Shape before clean negative: {weights.shape}, shape after: {new_weights.shape}")
+    logger.debug(
+        f"Shape before clean negative: {weights.shape}, shape after: {new_weights.shape}"
+    )
     return new_weights
-
-
-def clean_zero_weights(array, weight_id, verbose=False):
-    """removes elements with 0 weight.
-
-    Args:
-        array: numpy array, input array to be processed, must be numpy array
-        weight_id: int, indicate which column is weight value.
-        verbose: bool, optional, show more detailed message if set True.
-
-    Returns:
-        cleaned new numpy array.
-    """
-    # Start
-    if verbose:
-        print("cleaning array elements with zero weights ...")
-    # Clean
-    # create new array for output to avoid direct operation on input array
-    new = []
-    for d in array:
-        if d[weight_id] == 0.0:  # only remove zero weight row
-            continue
-        new.append(d)
-    # Output
-    out = np.array(new)
-    if verbose:
-        print("shape before", array.shape, "shape after", out.shape)
-    return out
 
 
 def get_cut_index(array, cut_values, cut_types):
@@ -157,14 +133,18 @@ def modify_array(
                 new_array, reset_mass_array, reset_mass_weights, col=reset_mass_id
             )
         else:
-            print("missing parameters, skipping mass reset...")
+            logger.warning("missing parameters, skipping mass reset...")
     # normalize weight
     if norm == True:
         new_weight = norweight(new_weight, norm=sumofweight)
     # shuffle array
     if shuffle == True:
-        new_array, _, _, _ = shuffle_and_split(
-            new_array, np.zeros(len(new_array)), split_ratio=0.0, shuffle_seed=shuffle_seed
+        new_array, _, _, _, new_weight, _ = shuffle_and_split(
+            new_array,
+            np.zeros(len(new_array)),
+            new_weight,
+            split_ratio=0.0,
+            shuffle_seed=shuffle_seed,
         )
     # return result
     return new_array, new_weight
@@ -208,7 +188,9 @@ def reset_col(reset_array, ref_array, ref_weights, col=0, shuffle_seed=None):
         warnings.warn("Non-positive weights detected, set to zero")
     sump = sum(positive_weights)
     reset_list = np.random.choice(
-        ref_array[:, col], size=total_events, p=(1 / sump) * positive_weights.reshape((-1,))
+        ref_array[:, col],
+        size=total_events,
+        p=(1 / sump) * positive_weights.reshape((-1,)),
     )
     new[:, col] = reset_list
     return new
@@ -223,7 +205,7 @@ def shuffle_and_split(x, y, wt, split_ratio=0.0, shuffle_seed=None):
         raise ValueError("Length of x and y is not same.")
     array_len = len(y)
     np.random.seed(shuffle_seed)
-    # get index for the first part of the splited array
+    # get index for the first part of the split array
     first_part_index = np.random.choice(
         range(array_len), int(array_len * 1.0 * split_ratio), replace=False
     )
@@ -235,4 +217,12 @@ def shuffle_and_split(x, y, wt, split_ratio=0.0, shuffle_seed=None):
     last_part_x = x[last_part_index]
     last_part_y = y[last_part_index]
     last_part_wt = wt[last_part_index]
-    return first_part_x, last_part_x, first_part_y, last_part_y, first_part_wt, last_part_wt
+    return (
+        first_part_x,
+        last_part_x,
+        first_part_y,
+        last_part_y,
+        first_part_wt,
+        last_part_wt,
+    )
+

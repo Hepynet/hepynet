@@ -1,6 +1,11 @@
+import logging
+
 import matplotlib.pyplot as plt
 import numpy as np
+
 from hepynet.evaluate import roc
+
+logger = logging.getLogger("hepynet")
 
 
 def plot_feature_importance(
@@ -12,7 +17,7 @@ def plot_feature_importance(
     https://christophm.github.io/interpretable-ml-book/feature-importance.html#feature-importance-data
 
     """
-    print("Plotting feature importance.")
+    logger.info("Plotting feature importance.")
     # Prepare
     model = model_wrapper.get_model()
     feedbox = model_wrapper.feedbox
@@ -49,21 +54,21 @@ def plot_feature_importance(
         )
         feature_auc.append(current_auc)
     for node_id, node in enumerate(all_nodes):
-        print("making importance plot for node:", node)
+        logger.info(f"making importance plot for node: {node}")
         fig_save_path = fig_save_pattern.format(node)
         fig, ax = plt.subplots(figsize=(9, canvas_height))
-        print("base auc:", base_auc[node_id])
+        logger.info(f"base auc: {base_auc[node_id]}")
         feature_importance = np.zeros(num_feature)
         for num, feature_name in enumerate(selected_feature_names):
             current_auc = feature_auc[num][node_id]
             feature_importance[num] = (1 - current_auc) / (1 - base_auc[node_id])
-            print(feature_name, ":", feature_importance[num])
+            logger.info(f"{feature_name} : {feature_importance[num]}")
 
         # Sort
         sort_list = np.flip(np.argsort(feature_importance))
         sorted_importance = feature_importance[sort_list]
         sorted_names = selected_feature_names[sort_list]
-        print("feature importance rank:", sorted_names)
+        logger.info(f"feature importance rank: {sorted_names}")
         # Plot
         if num_feature > max_feature:
             num_show = max_feature

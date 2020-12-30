@@ -9,6 +9,7 @@ import logging
 import pathlib
 
 import numpy as np
+
 from hepynet.common import array_utils, common_utils, config_utils
 
 logger = logging.getLogger("hepynet")

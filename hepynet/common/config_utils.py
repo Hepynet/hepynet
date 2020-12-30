@@ -6,8 +6,9 @@ import os
 import re
 from typing import Any
 
-import hepynet
 import yaml
+
+import hepynet
 from hepynet.common import common_utils
 
 logger = logging.getLogger("hepynet")

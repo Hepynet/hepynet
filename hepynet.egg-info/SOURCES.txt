@@ -21,6 +21,10 @@ hepynet/common/array_utils.py
 hepynet/common/common_utils.py
 hepynet/common/config_utils.py
 hepynet/common/hepy_const.py
+hepynet/data_io/__init__.py
+hepynet/data_io/feed_box.py
+hepynet/data_io/numpy_io.py
+hepynet/data_io/root_io.py
 hepynet/evaluate/__init__.py
 hepynet/evaluate/evaluate_utils.py
 hepynet/evaluate/importance.py

@@ -1,10 +1,11 @@
 import logging
 import pathlib
 
-import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
+import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
+
 from easy_atlas_plot.plot_utils import plot_utils_root, th1_tools
 from hepynet.common import array_utils, config_utils
 
@@ -69,7 +70,7 @@ def plot_input_distributions(
     use_root=False,
 ):
     """Plots input distributions comparision plots for sig/bkg/data"""
-    print("Plotting input distributions.")
+    logger.info("Plotting input distributions.")
     config = plot_cfg.clone()
     feedbox = model_wrapper.feedbox
     if show_reshaped:  # validation features not supported in get_reshape yet

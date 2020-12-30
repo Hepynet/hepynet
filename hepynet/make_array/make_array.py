@@ -3,7 +3,6 @@ import logging
 import os
 
 import numpy as np
-
 import ROOT
 import uproot
 
@@ -28,13 +27,13 @@ def dump_flat_ntuple_individual(
         events = uproot.open(f"{root_path}:{ntuple_name}")
     except:
         raise IOError("Can not get ntuple")
-    print("Read arrays from:", root_path)
+    logger.info(f"Read arrays from: {root_path}")
     for var in variable_list:
         if use_lower_var_name:
             file_name = save_pre_fix + "_" + var.lower()
         else:
             file_name = save_pre_fix + "_" + var
-        print("Generating:", file_name)
+        logger.info(f"Generating: {file_name}")
         temp_arr = events[var].array(library="np")
         save_array(temp_arr, save_dir, file_name)
 

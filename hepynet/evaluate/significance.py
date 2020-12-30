@@ -1,11 +1,12 @@
+import csv
 import logging
 import math
-import csv
 
 import matplotlib.pyplot as plt
 import numpy as np
-from hepynet.common import common_utils
 from matplotlib.ticker import NullFormatter
+
+from hepynet.common import common_utils
 
 logger = logging.getLogger("hepynet")
 
@@ -18,7 +19,7 @@ def calculate_significance(sig, bkg, sig_total=None, bkg_total=None, algo="asimo
     """Returns asimov significance"""
     # check input
     if sig <= 0 or bkg <= 0 or sig_total <= 0 or bkg_total <= 0:
-        logger.warn(
+        logger.warning(
             "non-positive value found during significance calculation, using default value 0."
         )
         return 0
@@ -49,7 +50,7 @@ def calculate_significance(sig, bkg, sig_total=None, bkg_total=None, algo="asimo
     elif algo == "s_sqrt_sb_rel":
         return (sig / sig_total) / math.sqrt((bkg + sig) / (sig_total + bkg_total))
     else:
-        logger.warn("Unrecognized significance algorithm, will use default 'asimov'")
+        logger.warning("Unrecognized significance algorithm, will use default 'asimov'")
         return calculate_asimov(sig, bkg)
 
 
@@ -130,7 +131,7 @@ def plot_significance_scan(
     Note:
         significance is calculated by s/sqrt(b)
     """
-    print("Plotting significance scan.")
+    logger.info("Plotting significance scan.")
     (
         plot_thresholds,
         significances,
