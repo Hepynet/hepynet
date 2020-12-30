@@ -18,13 +18,13 @@ import numpy as np
 from sklearn.metrics import accuracy_score, auc, classification_report
 
 from hepynet.common import array_utils, config_utils
-from hepynet.data_io import root_io
+from hepynet.data_io import numpy_io
 
 logger = logging.getLogger("hepynet")
 
 
-def dump_fit_ntup(
-    feedbox, keras_model, fit_ntup_branches, output_bkg_node_names, ntup_dir="./"
+def dump_fit_npy(
+    feedbox, keras_model, fit_ntup_branches, output_bkg_node_names, npy_dir="./"
 ):
     prefix_map = {"sig": "xs", "bkg": "xb"}
     if feedbox.apply_data:
@@ -41,7 +41,9 @@ def dump_fit_ntup(
                 prefix_map[map_key], array_key=sample_key, reset_mass=False
             )
             predictions = keras_model.predict(predict_input)
-            dump_contents = []
+            # dump
+            platform_meta = config_utils.load_current_platform_meta()
+            data_path = platform_meta["data_path"]
             for branch in dump_branches:
                 if branch == "weight":
                     branch_content = dump_array_weight
@@ -50,28 +52,24 @@ def dump_fit_ntup(
                         validation_features = []
                     else:
                         validation_features = feedbox.validation_features
-                    feature_list = (
-                        feedbox.selected_features + validation_features
-                    )
+                    feature_list = feedbox.selected_features + validation_features
                     branch_index = feature_list.index(branch)
                     branch_content = dump_array[:, branch_index]
-                dump_contents.append(branch_content)
+                save_path = f"{data_path}/{npy_dir}/{sample_key}_{branch}.npy"
+                numpy_io.save_npy_array(branch_content, save_path)
+                logger.info(f"Array saved to: {save_path}")
             if len(output_bkg_node_names) == 0:
-                dump_branches.append("dnn_out")
-                dump_contents.append(predictions)
+                save_path = f"{data_path}/{npy_dir}/{sample_key}_dnn_out.npy"
+                numpy_io.save_npy_array(predictions, save_path)
+                logger.info(f"Array saved to: {save_path}")
             else:
                 for i, out_node in enumerate(["sig"] + output_bkg_node_names):
                     out_node = out_node.replace("+", "_")
-                    dump_branches.append("dnn_out_" + out_node)
-                    dump_contents.append(predictions[:, i])
-            # dump
-            platform_meta = config_utils.load_current_platform_meta()
-            data_path = platform_meta["data_path"]
-            ntup_path = f"{data_path}/{ntup_dir}/{sample_key}.root"
-            root_io.dump_ntup_from_npy(
-                "ntup", dump_branches, "f", dump_contents, ntup_path,
-            )
-            logger.info(f"Ntuples saved to: {ntup_path}")
+                    save_path = (
+                        f"{data_path}/{npy_dir}/{sample_key}_dnn_out_{out_node}.npy"
+                    )
+                    numpy_io.save_npy_array(predictions[:, i], save_path)
+                    logger.info(f"Array saved to: {save_path}")
 
 
 def get_mass_range(mass_array, weights, nsig=1):
@@ -99,25 +97,15 @@ def get_model_epoch_path_list(
         raise FileNotFoundError("Model file that matched the pattern not found.")
     model_dir = model_dir_list[-1]
     if len(model_dir_list) > 1:
-        logger.warning("More than one valid model file found, try to specify more infomation.")
+        logger.warning(
+            "More than one valid model file found, try to specify more infomation."
+        )
         logger.info(f"Loading the last matched model path: {model_dir}")
     else:
         logger.info("Loading model at: {model_dir}")
     search_pattern = model_dir + "/" + model_name + "_epoch*.h5"
     model_path_list = glob.glob(search_pattern)
     return model_path_list
-
-
-def get_valid_feature(xtrain):
-    """Gets valid inputs.
-
-    Note:
-        indice -2 is for channel
-        indice -1 is for weight
-
-    """
-    xtrain = xtrain[:, :-2]
-    return xtrain
 
 
 def generate_shuffle_index(array_len, shuffle_seed=None):

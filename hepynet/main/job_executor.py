@@ -290,21 +290,20 @@ class job_executor(object):
                         )
                         # restore original model wrapper
                         self.model_wrapper = temp_model_wrapper
-                    if ac.book_fit_ntup:
-                        save_region = ac.cfg_fit_ntup.fit_ntup_region
+                    if ac.book_fit_npy:
+                        save_region = ac.cfg_fit_npy.fit_npy_region
                         if save_region is None:
                             save_region = ic.region
-                        ntup_dir = f"{ac.cfg_fit_ntup.ntup_save_dir}/{ic.campaign}/{save_region}"
+                        npy_dir = f"{ac.cfg_fit_npy.npy_save_dir}/{ic.campaign}/{save_region}"
                         feedbox = self.model_wrapper.feedbox
                         keras_model = self.model_wrapper.get_model()
-                        # dump signal ntuple
-                        logger.info("Dumping ntuples for fitting.")
-                        train_utils.dump_fit_ntup(
+                        logger.info("Dumping numpy arrays for fitting.")
+                        train_utils.dump_fit_npy(
                             feedbox,
                             keras_model,
-                            ac.cfg_fit_ntup.fit_ntup_branches,
+                            ac.cfg_fit_npy.fit_npy_branches,
                             tc.output_bkg_node_names,
-                            ntup_dir=ntup_dir,
+                            npy_dir=npy_dir,
                         )
                     logger.info("<" * 80)
 

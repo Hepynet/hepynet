@@ -151,3 +151,12 @@ def load_npy_arrays(
         logger.debug(f"Total input {sample_component} weights: {total_weights}")
         out_dict[sample_component] = sample_array_dict
     return out_dict
+
+def save_npy_array(
+    npy_array,
+    save_path,
+):
+    save_path = pathlib.Path(save_path)
+    save_path.cwd().mkdir(parents=True, exist_ok=True)
+    with open(save_path, "wb") as f:
+        np.save(f, npy_array)

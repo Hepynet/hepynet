@@ -157,9 +157,9 @@ apply:
             - 78.7681
             - 82.0543
 
-    ## TODO ## book_fit_ntup: true
-    cfg_fit_ntup:
-        fit_ntup_region:
-        fit_ntup_branches:
+    book_fit_npy: true
+    cfg_fit_npy:
+        fit_npy_region:
+        fit_npy_branches:
             - "mz1"
-        ntup_save_dir: "zprime/ntuples/fit_ntup_1214_high_test"
+        npy_save_dir: "zprime/arrays_fit/all-mass-test"
