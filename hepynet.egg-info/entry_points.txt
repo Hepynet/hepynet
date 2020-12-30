@@ -1,3 +1,0 @@
-[console_scripts]
-hepynet = hepynet.main.execute:execute
-
