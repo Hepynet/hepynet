@@ -9,8 +9,6 @@ job:
     job_name: "train-job-default"
     job_type: "train"
     save_dir: "/work/run/zprime/default"
-    pop_plots: false
-    verbose: 2
 
 input:
     campaign: "run2"
@@ -40,13 +38,6 @@ train:
     epochs: 200
     sig_class_weight: 1.
     bkg_class_weight: 1.
-    # early stop setups
-    use_early_stop: true
-    early_stop_monitor: "val_loss"
-    early_stop_min_delta: 0
-    early_stop_patience: 5
-    early_stop_mode: "min"
-    early_stop_restore_best_weights: true
     # in older tensorflow version may use "acc"
     train_metrics:
         #- "plain_acc"
@@ -59,7 +50,3 @@ train:
 
 para_scan:
     perform_para_scan: false
-
-apply:
-    show_report: false
-    save_pdf_report: false

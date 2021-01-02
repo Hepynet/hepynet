@@ -18,8 +18,14 @@ from sklearn.metrics import auc, roc_curve
 from hepynet.common import array_utils, common_utils, config_utils
 from hepynet.common.hepy_const import SCANNED_PARAS
 from hepynet.data_io import feed_box, numpy_io
-from hepynet.evaluate import (importance, kinematics, mva_scores, roc,
-                              significance, train_history)
+from hepynet.evaluate import (
+    importance,
+    kinematics,
+    mva_scores,
+    roc,
+    significance,
+    train_history,
+)
 from hepynet.main import job_utils
 from hepynet.train import model, train_utils
 
@@ -81,6 +87,10 @@ class job_executor(object):
             self.execute_train_job()
         elif jc.job_type == "apply":
             self.execute_apply_job()
+        else:
+            logger.critical(
+                f"job.job_type must be train or apply, {jc.job_type} is not supported"
+            )
 
         # post procedure
         plt.close("all")
@@ -551,12 +561,11 @@ class job_executor(object):
         job_config_temp = config_utils.Hepy_Config(yaml_dict)
         # Check whether need to import other (default) ini file first
         if hasattr(job_config_temp, "config"):
-            if hasattr(job_config_temp.config, "include"):
-                import_ini_path_list = job_config_temp.config.include
-                if import_ini_path_list:
-                    for cfg_path in import_ini_path_list:
-                        self.get_config(cfg_path)
-                        logger.info(f"Included config: {cfg_path}")
+            import_ini_path_list = job_config_temp.config.include
+            if import_ini_path_list:
+                for cfg_path in import_ini_path_list:
+                    self.get_config(cfg_path)
+                    logger.info(f"Included config: {cfg_path}")
         if self.job_config:
             self.job_config.update(yaml_dict)
         else:

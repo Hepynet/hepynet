@@ -11,10 +11,9 @@ import yaml
 
 import hepynet
 from hepynet.common import common_utils
+from hepynet.common.config_default import DEFAULT_CFG
 
 logger = logging.getLogger("hepynet")
-
-DEFAULT_CFG = {"input": {"region": ""}, "train": {"output_bkg_node_names": []}}
 
 
 class Hepy_Config(object):

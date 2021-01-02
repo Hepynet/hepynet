@@ -60,9 +60,7 @@ def plot_multi_class_roc(model_wrapper, job_config):
     # prepare
     model = model_wrapper.get_model()
     feedbox = model_wrapper.feedbox
-    output_bkg_node_names = common_utils.get_default_if_none(
-        tc.output_bkg_node_names, []
-    )
+    output_bkg_node_names = tc.output_bkg_node_names
     all_nodes = ["sig"] + output_bkg_node_names
     train_test_dict = feedbox.get_train_test_arrays(
         sig_key=ic.sig_key,

@@ -30,9 +30,14 @@ class Feedbox(object):
         self.selected_features = ic.selected_features
         self.validation_features = ic.validation_features
         self.reset_mass = ic.reset_feature
-        self.reset_mass_name = ic.reset_feature_name
         if self.reset_mass:
-            self.reset_mass_id = self.selected_features.index(self.reset_mass_name)
+            if ic.reset_feature_name in self.selected_features:
+                self.reset_mass_id = self.selected_features.index(ic.reset_feature_name)
+            else:
+                logger.critical(
+                    f"input.reset_feature is True but input.reset_feature_name {ic.reset_feature_name} is invalid, please check the config"
+                )
+                exit(1)
         else:
             self.reset_mass_id = None
         self.remove_negative_weight = ic.rm_negative_weight_events
