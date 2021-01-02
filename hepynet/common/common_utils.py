@@ -2,7 +2,6 @@ import glob
 import json
 import logging
 import math
-import os
 import platform
 import re
 import socket
@@ -10,19 +9,6 @@ import socket
 import numpy as np
 
 logger = logging.getLogger("hepynet")
-
-
-def create_folders(foldernames, parent_path="./"):
-    """Checks existence of given folder names, creates if not exists.
-
-    Args:
-      foldernames: list of str, folder names to be checked/created.
-      parent_path: str, parent path where to create folders.
-    """
-    for foldername in foldernames:
-        today_dir = os.path.join(parent_path, foldername)
-        if not os.path.isdir(today_dir):
-            os.makedirs(today_dir)
 
 
 def dict_key_str_to_int(json_data):

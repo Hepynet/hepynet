@@ -3,7 +3,7 @@ import csv
 import datetime
 import logging
 import math
-import os
+import pathlib
 import re
 import time
 
@@ -18,14 +18,8 @@ from sklearn.metrics import auc, roc_curve
 from hepynet.common import array_utils, common_utils, config_utils
 from hepynet.common.hepy_const import SCANNED_PARAS
 from hepynet.data_io import feed_box, numpy_io
-from hepynet.evaluate import (
-    importance,
-    kinematics,
-    mva_scores,
-    roc,
-    significance,
-    train_history,
-)
+from hepynet.evaluate import (importance, kinematics, mva_scores, roc,
+                              significance, train_history)
 from hepynet.main import job_utils
 from hepynet.train import model, train_utils
 
@@ -118,8 +112,7 @@ class job_executor(object):
         # setup save parameters if reports need to be saved
         fig_save_path = None
         rc.save_dir = f"{rc.save_sub_dir}/apply/{jc.job_name}"
-        if not os.path.exists(rc.save_dir):
-            os.makedirs(rc.save_dir)
+        pathlib.Path(rc.save_dir).mkdir(parents=True, exist_ok=True)
 
         # save metrics curve
         if ac.book_history:
@@ -551,7 +544,7 @@ class job_executor(object):
     def get_config(self, yaml_path):
         """Retrieves configurations from yaml file."""
         cfg_path = job_utils.get_valid_cfg_path(yaml_path)
-        if not os.path.isfile(cfg_path):
+        if not pathlib.Path(cfg_path).is_file():
             logger.error("No vallid configuration file path provided.")
             raise FileNotFoundError
         yaml_dict = config_utils.load_yaml_dict(cfg_path)

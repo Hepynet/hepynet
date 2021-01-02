@@ -1,6 +1,6 @@
 import csv
 import logging
-import os
+import pathlib
 
 import hepynet
 
@@ -20,7 +20,7 @@ def get_valid_cfg_path(path):
 
     """
     # Check path:
-    if os.path.isfile(path):
+    if pathlib.Path(path).is_file():
         return path
     # Check try add share folder prefix
     hepynet_dir = os.path.dirname(os.path.dirname(hepynet.__file__))

@@ -8,7 +8,6 @@ manipulation, making plots, evaluation functions and so on.
 
 import glob
 import logging
-import os
 import sys
 import time
 from math import sqrt

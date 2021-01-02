@@ -1,6 +1,5 @@
 import logging
 import time
-import warnings
 
 import numpy as np
 
@@ -121,7 +120,7 @@ def modify_array(
     new_array = input_array.copy()  # copy data to avoid original data operation
     new_weight = input_weights.copy()
     if len(new_array) == 0:
-        warnings.warn("empty input detected in modify_array, no changes will be made.")
+        logger.warning("empty input detected in modify_array, no changes will be made.")
         return new_array
     # clean array
     if remove_negative_weight:
@@ -185,7 +184,7 @@ def reset_col(reset_array, ref_array, ref_weights, col=0, shuffle_seed=None):
     total_events = len(new)
     positive_weights = (ref_weights.copy()).clip(min=0)
     if (positive_weights != ref_weights).all():
-        warnings.warn("Non-positive weights detected, set to zero")
+        logger.warning("Non-positive weights detected, set to zero")
     sump = sum(positive_weights)
     reset_list = np.random.choice(
         ref_array[:, col],

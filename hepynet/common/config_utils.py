@@ -2,8 +2,9 @@ import argparse
 import collections
 import copy
 import logging
-import os
+import pathlib
 import re
+import sys
 from typing import Any
 
 import yaml
@@ -178,9 +179,7 @@ def load_pc_meta() -> dict:
     Returns:
         dict: meta information dictionary
     """
-    hepynet_dir = os.path.dirname(hepynet.__file__)
-    logger.debug(f"Found hepynet root directory at: {hepynet_dir}")
-    pc_meta_cfg_path = f"{hepynet_dir}/../share/cross_platform/pc_meta.yaml"
+    pc_meta_cfg_path = f"{pathlib.Path().parent}/share/cross_platform/pc_meta.yaml"
     try:
         with open(pc_meta_cfg_path) as pc_meta_file:
             pc_meta_dict = yaml.load(pc_meta_file, Loader=yaml.FullLoader)

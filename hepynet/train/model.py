@@ -5,8 +5,8 @@ import datetime
 import glob
 import logging
 import math
-import os
 import typing
+import pathlib
 
 logger = logging.getLogger("hepynet")
 import keras
@@ -261,8 +261,7 @@ class Model_Sequential_Base(Model_Base):
             file_name = self._model_name + "_" + self._model_label + "_" + datestr
         # Check path
         save_path = save_dir + "/" + file_name + ".h5"
-        if not os.path.exists(os.path.dirname(save_path)):
-            os.makedirs(os.path.dirname(save_path))
+        pathlib.Path(save_dir).mkdir(parents=True, exist_ok=True)
         # Save
         self._model.save(save_path)
         self._model_save_path = save_path
@@ -346,8 +345,7 @@ class Model_Sequential_Base(Model_Base):
         ## set up check point to save model in each epoch
         if model_save_dir is None:
             model_save_dir = "./models"
-        if not os.path.exists(model_save_dir):
-            os.makedirs(model_save_dir)
+        pathlib.Path(model_save_dir).mkdir(parents=True, exist_ok=True)
         if file_name is None:
             file_name = self._model_name
         path_pattern = model_save_dir + "/" + file_name + "_epoch{epoch:03d}.h5"
