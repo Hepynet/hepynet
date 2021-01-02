@@ -62,6 +62,13 @@ def get_current_hostname() -> str:
     return socket.gethostname()
 
 
+def get_default_if_none(input_var, default_value):
+    if input_var is None:
+        return default_value
+    else:
+        return input_var
+
+
 def get_newest_file_version(path_pattern, n_digit=2, ver_num=None, use_existing=False):
     """Check existed file and return last available file path with version.
 
@@ -128,3 +135,4 @@ def has_none(list):
         if ele is None:
             return True
     return False
+

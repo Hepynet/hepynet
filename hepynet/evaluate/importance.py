@@ -9,7 +9,7 @@ logger = logging.getLogger("hepynet")
 
 
 def plot_feature_importance(
-    model_wrapper, save_dir, identifier="", log=True, max_feature=16
+    model_wrapper, job_config, identifier="", log=True, max_feature=16
 ):
     """Calculates importance of features and sort the feature.
 
@@ -18,15 +18,18 @@ def plot_feature_importance(
 
     """
     logger.info("Plotting feature importance.")
+    ic = job_config.input.clone()
+    tc = job_config.train.clone()
+    rc = job_config.run.clone()
     # Prepare
     model = model_wrapper.get_model()
     feedbox = model_wrapper.feedbox
     num_feature = len(feedbox.selected_features)
     selected_feature_names = np.array(feedbox.selected_features)
     train_test_dict = feedbox.get_train_test_arrays(
-        sig_key=model_wrapper.model_meta["sig_key"],
-        bkg_key=model_wrapper.model_meta["bkg_key"],
-        multi_class_bkgs=model_wrapper.model_hypers["output_bkg_node_names"],
+        sig_key=ic.sig_key,
+        bkg_key=ic.bkg_key,
+        multi_class_bkgs=tc.output_bkg_node_names,
         reset_mass=False,
         output_keys=["x_test", "y_test", "wt_test"],
     )
@@ -35,16 +38,15 @@ def plot_feature_importance(
     weight_test = train_test_dict["wt_test"]
     all_nodes = []
     if y_test.ndim == 2:
-        all_nodes = ["sig"] + model_wrapper.model_hypers["output_bkg_node_names"]
+        all_nodes = ["sig"] + tc.output_bkg_node_names
     else:
         all_nodes = ["sig"]
     # Make plots
-    fig_save_pattern = save_dir + "/importance_" + identifier + "_{}.png"
+    fig_save_pattern = f"{rc.save_dir}/importance_{identifier}_{{}}.png"
     if num_feature > 16:
         canvas_height = 16
     else:
         canvas_height = num_feature
-    fig_save_path = save_dir + "/importance_" + identifier + "_{}.png"
     base_auc = roc.calculate_auc(x_test, y_test, weight_test, model, rm_last_two=True)
     # Calculate importance
     feature_auc = []

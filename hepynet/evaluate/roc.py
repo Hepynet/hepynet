@@ -5,7 +5,7 @@ import numpy as np
 from matplotlib.ticker import NullFormatter
 from sklearn.metrics import auc, roc_auc_score, roc_curve
 
-from hepynet.common import array_utils
+from hepynet.common import array_utils, common_utils
 
 logger = logging.getLogger("hepynet")
 
@@ -50,24 +50,24 @@ def plot_auc_text(ax, titles, auc_values):
     )
 
 
-def plot_multi_class_roc(
-    model_wrapper,
-    figsize: tuple = (8, 6),
-    save_dir: str = None,
-    sig_key: str = None,
-    bkg_key: str = None,
-):
+def plot_multi_class_roc(model_wrapper, job_config):
     """Plots roc curve."""
     logger.info("Plotting train/test roc curve.")
-    fig, ax = plt.subplots(figsize=figsize)
-
+    # setup config
+    rc = job_config.run
+    ic = job_config.input
+    tc = job_config.train
+    # prepare
     model = model_wrapper.get_model()
     feedbox = model_wrapper.feedbox
-    all_nodes = ["sig"] + model_wrapper.model_hypers["output_bkg_node_names"]
+    output_bkg_node_names = common_utils.get_default_if_none(
+        tc.output_bkg_node_names, []
+    )
+    all_nodes = ["sig"] + output_bkg_node_names
     train_test_dict = feedbox.get_train_test_arrays(
-        sig_key=sig_key,
-        bkg_key=bkg_key,
-        multi_class_bkgs=model_wrapper.model_hypers["output_bkg_node_names"],
+        sig_key=ic.sig_key,
+        bkg_key=ic.bkg_key,
+        multi_class_bkgs=output_bkg_node_names,
         reset_mass=False,
         output_keys=["x_train", "x_test", "y_train", "y_test", "wt_train", "wt_test",],
     )
@@ -81,6 +81,7 @@ def plot_multi_class_roc(
     color_map = plt.get_cmap("Pastel1")
     auc_labels = []
     auc_contents = []
+    fig, ax = plt.subplots(figsize=(8, 6))
     for node_num in range(num_nodes):
         color = color_map(float(node_num) / num_nodes)
         # plot roc for train dataset without reseting mass
@@ -118,13 +119,13 @@ def plot_multi_class_roc(
     auc_dict["auc_train_original"] = auc_train_original
     auc_dict["auc_test_original"] = auc_test_original
     # Make plots
-    if save_dir is not None:
+    if rc.save_dir is not None:
         ax.set_ylim(0, 1)
         ax.set_yscale("linear")
-        fig.savefig(f"{save_dir}/roc_linear.png")
+        fig.savefig(f"{rc.save_dir}/roc_linear.png")
         ax.set_ylim(0.1, 1 - 1e-4)
         ax.set_yscale("logit")
-        fig.savefig(f"{save_dir}/roc_logit.png")
+        fig.savefig(f"{rc.save_dir}/roc_logit.png")
     return auc_dict
 
 

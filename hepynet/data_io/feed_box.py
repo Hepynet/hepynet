@@ -15,75 +15,36 @@ class Feedbox(object):
     """DNN inputs management class."""
 
     def __init__(
-        self,
-        xs_dict,
-        xb_dict,
-        xd_dict=None,
-        apply_data=False,
-        selected_features=[],
-        validation_features=[],
-        reshape_array=True,
-        reset_mass=False,
-        reset_mass_name=None,
-        remove_negative_weight=False,
-        cut_features=[],
-        cut_values=[],
-        cut_types=[],
-        sig_tag=1,
-        bkg_tag=[0],
-        sig_weight=1000,
-        bkg_weight=1000,
-        data_weight=1000,
-        test_rate=0.2,
-        rdm_seed=None,
-        model_meta=None,
-        verbose=1,
+        self, xs_dict, xb_dict, xd_dict, job_config, model_meta=None,
     ):
+        # get config
+        ic = job_config.input.clone()
+        tc = job_config.train.clone()
+        ac = job_config.apply.clone()
         # basic array collection
         self.xs_dict = copy.deepcopy(xs_dict)
         self.xb_dict = copy.deepcopy(xb_dict)
         self.xd_dict = copy.deepcopy(xd_dict)
         # meta info
-        self.apply_data = apply_data
-        self.selected_features = selected_features
-        self.validation_features = validation_features
-        self.reshape_array = reshape_array
-        self.reset_mass = reset_mass
-        self.reset_mass_name = reset_mass_name
+        self.apply_data = ac.apply_data
+        self.selected_features = ic.selected_features
+        self.validation_features = ic.validation_features
+        self.reset_mass = ic.reset_feature
+        self.reset_mass_name = ic.reset_feature_name
         if self.reset_mass:
             self.reset_mass_id = self.selected_features.index(self.reset_mass_name)
         else:
             self.reset_mass_id = None
-        self.remove_negative_weight = remove_negative_weight
-        self.cut_features = cut_features
-        self.cut_values = cut_values
-        self.cut_types = cut_types
-        self.sig_weight = sig_weight
-        self.bkg_weight = bkg_weight
-        self.data_weight = data_weight
-        self.test_rate = test_rate
-        self.rdm_seed = rdm_seed
-        self.model_meta = model_meta
-        self.verbose = verbose
-        self.array_prepared = False
+        self.remove_negative_weight = ic.rm_negative_weight_events
+        self.sig_weight = ic.sig_sumofweight
+        self.bkg_weight = ic.bkg_sumofweight
+        self.data_weight = ic.data_sumofweight
+        self.test_rate = tc.test_rate
+        self.rdm_seed = ic.rdm_seed
+        self._array_prepared = False
         # set random seed
-        if rdm_seed is None:
-            rdm_seed = int(time.time())
-            self.rdm_seed = rdm_seed
-        # cut array
-        for xs_key in xs_dict.keys():
-            cut_array(
-                self.xs_dict[xs_key], cut_features, cut_values, cut_types,
-            )
-        for xb_key in xb_dict.keys():
-            cut_array(
-                self.xb_dict[xb_key], cut_features, cut_values, cut_types,
-            )
-        if apply_data:
-            for xd_key in xd_dict.keys():
-                cut_array(
-                    self.xd_dict[xd_key], cut_features, cut_values, cut_types,
-                )
+        if self.rdm_seed is None:
+            self.rdm_seed = int(time.time())
 
         # get normalization parameters
         no_norm_paras = False
@@ -99,7 +60,7 @@ class Feedbox(object):
             weight_array = np.concatenate(
                 [sample_dict["weight"] for sample_dict in self.xb_dict.values()]
             )
-            for feature in selected_features:
+            for feature in self.selected_features:
                 feature_array = np.concatenate(
                     [sample_dict[feature] for sample_dict in self.xb_dict.values()]
                 )
@@ -111,7 +72,7 @@ class Feedbox(object):
             norm_dict = model_meta["norm_dict"]
 
         self.norm_dict = norm_dict
-        self.array_prepared = True
+        self._array_prepared = True
 
     def get_raw(self, input_type, array_key="all", add_validation_features=False):
         array_out = None
@@ -407,29 +368,3 @@ class Feedbox(object):
             return partial_dict
         else:
             return full_dict
-
-
-def cut_array(input_array, cut_features=[], cut_values=[], cut_types=[]):
-    # cut array
-    if len(cut_features) > 0:
-        # Get indexes that pass cuts
-        assert len(cut_features) == len(cut_values) and len(cut_features) == len(
-            cut_types
-        ), "cut_features and cut_values and cut_types should have same length."
-        pass_index_array = None
-        for (cut_feature, cut_value, cut_type) in zip(
-            cut_features, cut_values, cut_types
-        ):
-            # update cut index
-            temp_index = array_utils.get_cut_index_value(
-                input_array[cut_feature], cut_value, cut_type
-            )
-            if pass_index_array is None:
-                pass_index_array = temp_index
-            else:
-                pass_index_array = np.intersect1d(pass_index_array, temp_index)
-        for feature_name in input_array:
-            input_array[feature_name] = input_array[feature_name][
-                pass_index_array.flatten()
-            ]
-

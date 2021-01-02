@@ -3,25 +3,19 @@
 import copy
 import datetime
 import glob
-import json
 import logging
 import math
 import os
-import time
-import warnings
+import typing
 
 logger = logging.getLogger("hepynet")
-
-# import eli5
 import keras
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import seaborn as sns
+import tensorflow as tf
+import yaml
 
 # fix tensorflow 2.2 issue
-import tensorflow as tf
-
 gpus = tf.config.experimental.list_physical_devices("GPU")
 if gpus:
     try:
@@ -33,17 +27,11 @@ if gpus:
     except RuntimeError as e:
         # Memory growth must be set before GPUs have been initialized
         logger.error(e)
-
-# from eli5.sklearn import PermutationImportance
 from keras import backend as K
 from keras.callbacks import ModelCheckpoint, TensorBoard, callbacks
-from keras.layers import Concatenate, Dense, Dropout, Input, Layer
-from keras.layers.normalization import BatchNormalization
-from keras.models import Model, Sequential
+from keras.layers import Dense, Dropout
+from keras.models import Sequential
 from keras.optimizers import SGD, Adagrad, Adam, RMSprop
-from keras.wrappers.scikit_learn import KerasClassifier, KerasRegressor
-from matplotlib.ticker import FixedLocator, NullFormatter
-from sklearn.metrics import auc, roc_curve
 
 from hepynet.common import array_utils, common_utils
 from hepynet.train import evaluate, train_utils
@@ -55,26 +43,16 @@ def plain_acc(y_true, y_pred):
     # return 1-K.mean(K.abs(y_pred-y_true))
 
 
-def get_model_class(model_name: str) -> None:
-    if model_name == "Model_Base":
-        return Model_Base
-    elif model_name == "Model_Sequential_Flat":
+def get_model_class(model_class: str):
+    if model_class == "Model_Sequential_Flat":
         return Model_Sequential_Flat
+    else:
+        logger.critical(f"Unsupported model class: {model_class}")
+        exit(1)
 
 
 class Model_Base(object):
-    """Base model of deep neural network for pdnn training.
-
-    In feature_list:
-        model_create_time: datetime.datetime
-        Time stamp of model object created time.
-        model_is_compiled: bool
-        Whether the model has been compiled.
-        model_name: str
-        Name of the model.
-        train_history:
-        Training of keras model, include 'acc', 'loss', 'val_acc' and 'val_loss'.
-
+    """Base model of deep neural network
     """
 
     def __init__(self, name):
@@ -85,129 +63,62 @@ class Model_Base(object):
             Name of the model.
 
         """
-        self.model_create_time = str(datetime.datetime.now())
-        self.model_is_compiled = False
-        self.model_is_loaded = False
-        self.model_is_saved = False
-        self.model_is_trained = False
-        self.model_name = name
-        self.model_save_path = None
-        self.train_history = None
+        self._model_create_time = str(datetime.datetime.now())
+        self._model_is_compiled = False
+        self._model_is_loaded = False
+        self._model_is_saved = False
+        self._model_is_trained = False
+        self._model_name = name
+        self._model_save_path = None
+        self._train_history = None
 
 
 class Model_Sequential_Base(Model_Base):
     """Sequential model base.
 
-    Attributes:
-        model_input_dim: int
-        Number of input variables.
-        model_learn_rate: float
-        model_decay: float
-        model: keras model
-        Keras training model object.
-        array_prepared = bool
-        Whether the array for training has been prepared.
-        x_train: numpy array
-        x array for training.
-        x_test: numpy array
-        x array for testing.
-        y_train: numpy array
-        y array for training.
-        y_test: numpy array
-        y array for testing.
-        xs_test: numpy array
-        Signal component of x array for testing.
-        xb_test: numpy array
-        Background component of x array for testing.
-        selected_features: list
-        Names of input array of features that will be used for training.
-        x_train_selected: numpy array
-        x array for training with feature selection.
-        x_test_selected: numpy array
-        x array for testing with feature selection.
-        xs_test_selected: numpy array
-        Signal component of x array for testing with feature selection.
-        xb_test_selected: numpy array
-        Background component of x array for testing with feature selection.
-        xs_selected: numpy array
-        Signal component of x array (train + test) with feature selection.
-        xb_selected: numpy array
-        Background component of x array (train + test) with feature selection.
-
-        Example:
-        To use to model class, first to create the class:
-        >>> model_name = "test model"
-        >>> selected_features = ["pt", "eta", "phi"]
-        >>> model_deep = model.model_0913(model_name, len(selected_features))
-        Then compile model:
-        >>> model_deep.compile()
-        Prepare array for training:
-        >>> xs_emu = np.load('path/to/numpy/signal/array.npy')
-        >>> xb_emu = np.load('path/to/numpy/background/array.npy')
-        >>> model_deep.prepare_array(xs_emu, xb_emu)
-        Perform training:
-        >>> model_deep.train(epochs = epochs, val_split = 0.1, verbose = 0)
-        Make plots to shoe training performance:
-        >>> model_deep.show_performance()
-
+    Note:
+        This class should not be used directly
     """
 
     def __init__(
-        self,
-        name,
-        input_features,
-        hypers,
-        validation_features=[],
-        sig_key=None,
-        bkg_key=None,
-        data_key=None,
-        save_tb_logs=False,
-        tb_logs_path=None,
+        self, job_config,
     ):
         """Initialize model."""
-        super().__init__(name)
+        self._job_config = job_config.clone()
+        tc = self._job_config.train
+        ic = self._job_config.input
+        super().__init__(tc.model_name)
         # Model parameters
-        self.model_label = "mod_seq_base"
-        self.model_note = "Basic sequential model."
-        self.model_input_dim = len(input_features)
-        self.model_hypers = copy.deepcopy(hypers)
-        self.model = Sequential()
+        self._model_label = "mod_seq_base"
+        self._model_note = "Basic sequential model."
+        self._model_input_dim = len(ic.selected_features)
+        self._model = Sequential()
         # Arrays
-        self.array_prepared = False
-        self.selected_features = input_features
-        self.validation_features = validation_features
-        self.model_meta = {
-            "sig_key": sig_key,
-            "bkg_key": bkg_key,
-            "data_key": data_key,
+        self._array_prepared = False
+        self._selected_features = ic.selected_features
+        self._model_meta = {
             "norm_dict": None,
         }
         # Report
-        self.save_tb_logs = save_tb_logs
-        self.tb_logs_path = tb_logs_path
-
-    def compile(self):
-        """ Compile model, function to be changed in the future.
-
-        Note:
-            Needs to be override in child class
-
-        """
-        pass
+        self._save_tb_logs = tc.save_tb_logs
+        self._tb_logs_path = tc.tb_logs_path
 
     def get_model(self):
         """Returns model."""
-        if not self.model_is_compiled:
-            warnings.warn("Model is not compiled")
-        return self.model
+        if not self._model_is_compiled:
+            logger.warning("Model is not compiled")
+        return self._model
+
+    def get_model_meta(self):
+        return self._model_meta
 
     def get_train_history(self):
         """Returns train history."""
-        if not self.model_is_compiled:
-            warnings.warn("Model is not compiled")
-        if self.train_history is None:
-            warnings.warn("Empty training history found")
-        return self.train_history
+        if not self._model_is_compiled:
+            logger.warning("Model is not compiled")
+        if self._train_history is None:
+            logger.warning("Empty training history found")
+        return self._train_history
 
     def get_train_performance_meta(self):
         """Returns meta data of training performance
@@ -249,19 +160,19 @@ class Model_Sequential_Base(Model_Base):
         bkg_array, _ = self.feedbox.get_reweight(
             "xb", array_key="all", reset_mass=False
         )
-        d_bkg = pd.DataFrame(data=bkg_array, columns=list(self.selected_features),)
+        d_bkg = pd.DataFrame(data=bkg_array, columns=list(self._selected_features),)
         bkg_matrix = d_bkg.corr()
         sig_array, _ = self.feedbox.get_reweight(
             "xs", array_key="all", reset_mass=False
         )
-        d_sig = pd.DataFrame(data=sig_array, columns=list(self.selected_features),)
+        d_sig = pd.DataFrame(data=sig_array, columns=list(self._selected_features),)
         sig_matrix = d_sig.corr()
         corrcoef_matrix_dict = {}
         corrcoef_matrix_dict["bkg"] = bkg_matrix
         corrcoef_matrix_dict["sig"] = sig_matrix
         return corrcoef_matrix_dict
 
-    def load_model(self, load_dir, model_name, job_name="*", date="*", version="*"):
+    def load_model(self, load_dir, _model_name, job_name="*", date="*", version="*"):
         """Loads saved model."""
         # Search possible files
         search_pattern = (
@@ -284,19 +195,19 @@ class Model_Sequential_Base(Model_Base):
             logger.info(f"Loading the last matched model path: {model_dir}")
         else:
             logger.info(f"Loading model at: {model_dir}")
-        self.model = keras.models.load_model(
-            model_dir + "/" + model_name + ".h5",
+        self._model = keras.models.load_model(
+            model_dir + "/" + _model_name + ".h5",
             custom_objects={"plain_acc": plain_acc},
         )  # it's important to specify
         # custom objects
-        self.model_is_loaded = True
+        self._model_is_loaded = True
         # Load parameters
-        try:
-            paras_path = model_dir + "/" + model_name + "_paras.json"
-            self.load_model_parameters(paras_path)
-            self.model_paras_is_loaded = True
-        except:
-            warnings.warn("Model parameters not successfully loaded.")
+        #try:
+        paras_path = model_dir + "/" + _model_name + "_paras.yaml"
+        self.load_model_parameters(paras_path)
+        self.model_paras_is_loaded = True
+        #except:
+        #    logger.warning("Model parameters not successfully loaded.")
         logger.info("Model loaded.")
 
     def load_model_with_path(self, model_path, paras_path=None):
@@ -305,7 +216,7 @@ class Model_Sequential_Base(Model_Base):
         Note:
             Should load model parameters manually.
         """
-        self.model = keras.models.load_model(
+        self._model = keras.models.load_model(
             model_path, custom_objects={"plain_acc": plain_acc},
         )  # it's important to specify
         if paras_path is not None:
@@ -313,29 +224,26 @@ class Model_Sequential_Base(Model_Base):
                 self.load_model_parameters(paras_path)
                 self.model_paras_is_loaded = True
             except:
-                warnings.warn("Model parameters not successfully loaded.")
+                logger.warning("Model parameters not successfully loaded.")
         logger.info("Model loaded.")
 
     def load_model_parameters(self, paras_path):
-        """Retrieves model parameters from json file."""
+        """Retrieves model parameters from yaml file."""
         with open(paras_path, "r") as paras_file:
-            paras_dict = json.load(paras_file)
+            paras_dict = yaml.load(paras_file, Loader=yaml.UnsafeLoader)
         # sorted by alphabet
-        self.class_weight = common_utils.dict_key_str_to_int(paras_dict["class_weight"])
-        self.model_create_time = paras_dict["model_create_time"]
-        self.model_input_dim = paras_dict["model_input_dim"]
-        self.model_is_compiled = paras_dict["model_is_compiled"]
-        self.model_is_saved = paras_dict["model_is_saved"]
-        self.model_is_trained = paras_dict["model_is_trained"]
-        self.model_label = paras_dict["model_label"]
-        self.model_hypers = paras_dict["model_hypers"]
-        self.model_meta = paras_dict["model_meta"]
-        self.model_name = paras_dict["model_name"]
-        self.model_note = paras_dict["model_note"]
-        self.train_history_accuracy = paras_dict["train_history_accuracy"]
-        self.train_history_val_accuracy = paras_dict["train_history_val_accuracy"]
-        self.train_history_loss = paras_dict["train_history_loss"]
-        self.train_history_val_loss = paras_dict["train_history_val_loss"]
+        self._job_config.update(paras_dict["job_config_dict"])
+
+        model_meta_save = paras_dict["model_meta"]
+        self._model_name = model_meta_save["model_name"]
+        self._model_label = model_meta_save["model_label"]
+        self._model_note = model_meta_save["model_note"]
+        self._model_create_time = model_meta_save["model_create_time"]
+        self._model_is_compiled = model_meta_save["model_is_compiled"]
+        self._model_is_saved = model_meta_save["model_is_saved"]
+        self._model_is_trained = model_meta_save["model_is_trained"]
+
+        self._train_history = paras_dict["train_history"]
 
     def save_model(self, save_dir=None, file_name=None):
         """Saves trained model.
@@ -350,111 +258,106 @@ class Model_Sequential_Base(Model_Base):
             save_dir = "./models"
         if file_name is None:
             datestr = datetime.date.today().strftime("%Y-%m-%d")
-            file_name = self.model_name + "_" + self.model_label + "_" + datestr
+            file_name = self._model_name + "_" + self._model_label + "_" + datestr
         # Check path
         save_path = save_dir + "/" + file_name + ".h5"
         if not os.path.exists(os.path.dirname(save_path)):
             os.makedirs(os.path.dirname(save_path))
         # Save
-        self.model.save(save_path)
-        self.model_save_path = save_path
-        logger.debug(f"model: {self.model_name} has been saved to: {save_path}")
-        # update path for json
-        save_path = save_dir + "/" + file_name + "_paras.json"
+        self._model.save(save_path)
+        self._model_save_path = save_path
+        logger.debug(f"model: {self._model_name} has been saved to: {save_path}")
+        # update path for yaml
+        save_path = save_dir + "/" + file_name + "_paras.yaml"
         self.save_model_paras(save_path)
         logger.debug(f"model parameters has been saved to: {save_path}")
-        self.model_is_saved = True
+        self._model_is_saved = True
 
     def save_model_paras(self, save_path):
-        """Save model parameters to json file."""
-        # sorted by alphabet
-        paras_dict = {}
-        paras_dict["class_weight"] = self.class_weight
-        paras_dict["model_create_time"] = self.model_create_time
-        paras_dict["model_input_dim"] = self.model_input_dim
-        paras_dict["model_is_compiled"] = self.model_is_compiled
-        paras_dict["model_is_saved"] = self.model_is_saved
-        paras_dict["model_is_trained"] = self.model_is_trained
-        paras_dict["model_label"] = self.model_label
-        paras_dict["model_hypers"] = self.model_hypers
-        paras_dict["model_meta"] = self.model_meta
-        paras_dict["model_name"] = self.model_name
-        paras_dict["model_note"] = self.model_note
-        paras_dict["train_history_accuracy"] = self.train_history_accuracy
-        paras_dict["train_history_val_accuracy"] = self.train_history_val_accuracy
-        paras_dict["train_history_loss"] = self.train_history_loss
-        paras_dict["train_history_val_loss"] = self.train_history_val_loss
-        with open(save_path, "w") as write_file:
-            json.dump(paras_dict, write_file, indent=2)
+        """Save model parameters to yaml file."""
+        paras_dict = dict()
+        paras_dict["job_config_dict"] = self._job_config.get_config_dict()
 
-    def set_inputs(self, feedbox: dict, apply_data=False) -> None:
+        model_meta_save = copy.deepcopy(self._model_meta)
+        model_meta_save["model_name"] = self._model_name
+        model_meta_save["model_label"] = self._model_label
+        model_meta_save["model_note"] = self._model_note
+        model_meta_save["model_create_time"] = self._model_create_time
+        model_meta_save["model_is_compiled"] = self._model_is_compiled
+        model_meta_save["model_is_saved"] = self._model_is_saved
+        model_meta_save["model_is_trained"] = self._model_is_trained
+        paras_dict["model_meta"] = model_meta_save
+
+        paras_dict["train_history"] = self._train_history
+
+        with open(save_path, "w") as write_file:
+            yaml.dump(paras_dict, write_file, indent=2)
+
+    def set_inputs(self, feedbox: dict) -> None:
         """Prepares array for training."""
         self.feedbox = feedbox
-        self.array_prepared = feedbox.array_prepared
-        self.model_meta["norm_dict"] = feedbox.norm_dict
+        self._array_prepared = feedbox._array_prepared
+        self._model_meta["norm_dict"] = feedbox.norm_dict
 
     def train(
-        self,
-        sig_key="all",
-        bkg_key="all",
-        batch_size=128,
-        epochs=20,
-        val_split=0.25,
-        sig_class_weight=1.0,
-        bkg_class_weight=1.0,
-        verbose=1,
-        save_dir=None,
-        file_name=None,
+        self, job_config, model_save_dir=None, file_name=None,
     ):
         """Performs training."""
+
+        # prepare config alias
+        ic = self._job_config.input
+        tc = self._job_config.train
+
         # Check
-        if self.model_is_compiled == False:
-            raise ValueError("DNN model is not yet compiled")
-        if self.array_prepared == False:
-            raise ValueError("Training data is not ready.")
+        if self._model_is_compiled == False:
+            logging.critical("DNN model is not yet compiled")
+            exit(1)
+        if self._array_prepared == False:
+            logging.critical("Training data is not ready.")
+            exit(1)
+
         # Train
         logger.info("-" * 40)
-        logger.info(f"Training start. Using model: {self.model_name}")
-        logger.info(f"Model info: {self.model_note}")
-        self.class_weight = {1: sig_class_weight, 0: bkg_class_weight}
+        logger.info(f"Training start. Using model: {self._model_name}")
+        logger.info(f"Model info: {self._model_note}")
+        self.class_weight = {1: tc.sig_class_weight, 0: tc.bkg_class_weight}
+        ## setup callbacks
         train_callbacks = []
-        if self.save_tb_logs:
-            if self.tb_logs_path is None:
-                self.tb_logs_path = "temp_logs/{}".format(self.model_label)
-                warnings.warn(
-                    "TensorBoard logs path not specified, set path to: {}".format(
-                        self.tb_logs_path
-                    )
-                )
-            tb_callback = TensorBoard(log_dir=self.tb_logs_path, histogram_freq=1)
-            train_callbacks.append(tb_callback)
-        if self.model_hypers["use_early_stop"]:
+        if self._save_tb_logs:  # TODO: add back this function
+            pass
+            # if self._tb_logs_path is None:
+            #    self._tb_logs_path = "temp_logs/{}".format(self._model_label)
+            #    logger.warning(
+            #        "TensorBoard logs path not specified, set path to: {}".format(
+            #            self._tb_logs_path
+            #        )
+            #    )
+            # tb_callback = TensorBoard(log_dir=self._tb_logs_path, histogram_freq=1)
+            # train_callbacks.append(tb_callback)
+        if tc.use_early_stop:
             early_stop_callback = callbacks.EarlyStopping(
-                monitor=self.model_hypers["early_stop_paras"]["monitor"],
-                min_delta=self.model_hypers["early_stop_paras"]["min_delta"],
-                patience=self.model_hypers["early_stop_paras"]["patience"],
-                mode=self.model_hypers["early_stop_paras"]["mode"],
-                restore_best_weights=self.model_hypers["early_stop_paras"][
-                    "restore_best_weights"
-                ],
+                monitor=tc.early_stop_paras.monitor,
+                min_delta=tc.early_stop_paras.min_delta,
+                patience=tc.early_stop_paras.patience,
+                mode=tc.early_stop_paras.mode,
+                restore_best_weights=tc.early_stop_paras.restore_best_weights,
             )
             train_callbacks.append(early_stop_callback)
-        # set up check point to save model in each epoch
-        if save_dir is None:
-            save_dir = "./models"
-        if not os.path.exists(save_dir):
-            os.makedirs(save_dir)
+        ## set up check point to save model in each epoch
+        if model_save_dir is None:
+            model_save_dir = "./models"
+        if not os.path.exists(model_save_dir):
+            os.makedirs(model_save_dir)
         if file_name is None:
-            datestr = datetime.date.today().strftime("%Y-%m-%d")
-            file_name = self.model_name
-        path_pattern = save_dir + "/" + file_name + "_epoch{epoch:03d}.h5"
+            file_name = self._model_name
+        path_pattern = model_save_dir + "/" + file_name + "_epoch{epoch:03d}.h5"
         checkpoint = ModelCheckpoint(path_pattern, monitor="val_loss")
         train_callbacks.append(checkpoint)
-        # check input
+        ## check input
         train_test_dict = self.feedbox.get_train_test_arrays(
-            sig_key=sig_key,
-            bkg_key=bkg_key,
-            multi_class_bkgs=self.model_hypers["output_bkg_node_names"],
+            sig_key=ic.sig_key,
+            bkg_key=ic.bkg_key,
+            multi_class_bkgs=tc.output_bkg_node_names,
         )
         x_train = train_test_dict["x_train"]
         x_test = train_test_dict["x_test"]
@@ -463,57 +366,36 @@ class Model_Sequential_Base(Model_Base):
         wt_train = train_test_dict["wt_train"]
         wt_test = train_test_dict["wt_test"]
         self.get_model().summary()
-        self.train_history = self.get_model().fit(
+        ## train
+        history_obj = self.get_model().fit(
             x_train,
             y_train,
-            batch_size=batch_size,
-            epochs=epochs,
-            validation_split=val_split,
+            batch_size=tc.batch_size,
+            epochs=tc.epochs,
+            validation_split=tc.val_split,
             sample_weight=wt_train,
             callbacks=train_callbacks,
-            verbose=verbose,
+            verbose=tc.verbose,
         )
+        self._train_history = history_obj.history
         logger.info("Training finished.")
 
         # Evaluation
         logger.info("Evaluate with test dataset:")
         score = self.get_model().evaluate(
-            x_test, y_test, verbose=verbose, sample_weight=wt_test,
+            x_test, y_test, verbose=tc.verbose, sample_weight=wt_test,
         )
-        logger.info(f"> test loss: {score[0]}")
-        logger.info(f"> test accuracy: {score[1]}")
-        logger.info(self.get_model().metrics_names)
-        logger.info(score)
 
-        # Save train history
-        # save accuracy history
-        self.train_history_accuracy = [
-            float(ele) for ele in self.train_history.history["accuracy"]
-        ]
-        try:
-            self.train_history_accuracy = [
-                float(ele) for ele in self.train_history.history["acc"]
-            ]
-            self.train_history_val_accuracy = [
-                float(ele) for ele in self.train_history.history["val_acc"]
-            ]
-        except:  # updated for tensorflow2.0
-            self.train_history_accuracy = [
-                float(ele) for ele in self.train_history.history["accuracy"]
-            ]
-            self.train_history_val_accuracy = [
-                float(ele) for ele in self.train_history.history["val_accuracy"]
-            ]
-        # save loss history/
-        self.train_history_loss = [
-            float(ele) for ele in self.train_history.history["loss"]
-        ]
-        self.train_history_val_loss = [
-            float(ele) for ele in self.train_history.history["val_loss"]
-        ]
+        if not isinstance(score, typing.Iterable):
+            logger.info(f"> test loss: {score}")
+        else:
+            for i, metric in enumerate(self.get_model().metrics_names):
+                logger.info(f"> test - {metric}: {score[i]}")
+
         # update status
-        self.model_is_trained = True
+        self._model_is_trained = True
 
+    '''
     def tuning_train(
         self,
         sig_key="all",
@@ -527,9 +409,9 @@ class Model_Sequential_Base(Model_Base):
     ):
         """Performs quick training for hyperparameters tuning."""
         # Check
-        if self.model_is_compiled == False:
+        if self._model_is_compiled == False:
             raise ValueError("DNN model is not yet compiled")
-        if self.array_prepared == False:
+        if self._array_prepared == False:
             raise ValueError("Training data is not ready.")
         # separate validation samples
         train_test_dict = self.feedbox.get_train_test_arrays(
@@ -569,7 +451,7 @@ class Model_Sequential_Base(Model_Base):
                 ],
             )
             train_callbacks.append(early_stop_callback)
-        self.train_history = self.get_model().fit(
+        self._train_history = self.get_model().fit(
             x_tr,
             y_tr,
             batch_size=batch_size,
@@ -585,8 +467,9 @@ class Model_Sequential_Base(Model_Base):
             x_val, y_val, verbose=verbose, sample_weight=wt_val
         )
         # update status
-        self.model_is_trained = True
+        self._model_is_trained = True
         return score[0]
+    '''
 
 
 class Model_Sequential_Flat(Model_Sequential_Base):
@@ -598,65 +481,45 @@ class Model_Sequential_Flat(Model_Sequential_Base):
     """
 
     def __init__(
-        self,
-        name,
-        input_features,
-        hypers,
-        validation_features=[],
-        sig_key="all",
-        bkg_key="all",
-        data_key="all",
-        save_tb_logs=False,
-        tb_logs_path=None,
+        self, job_config,
     ):
-        super().__init__(
-            name,
-            input_features,
-            hypers,
-            validation_features=validation_features,
-            sig_key=sig_key,
-            bkg_key=bkg_key,
-            data_key=data_key,
-            save_tb_logs=save_tb_logs,
-            tb_logs_path=tb_logs_path,
-        )
+        super().__init__(job_config)
 
-        self.model_label = "mod_seq"
-        self.model_note = "Sequential model with flexible layers and nodes."
-        assert (
-            self.model_hypers["layers"] > 0
-        ), "Model layer quantity should be positive"
+        self._model_label = "mod_seq"
+        self._model_note = "Sequential model with flexible layers and nodes."
 
     def compile(self):
         """ Compile model, function to be changed in the future."""
+        tc = self._job_config.train
         # Add layers
-        # input
-        for layer in range(self.model_hypers["layers"]):
+        for layer in range(tc.layers):
+            # input layer
             if layer == 0:
-                self.model.add(
+                self._model.add(
                     Dense(
-                        self.model_hypers["nodes"],
+                        tc.nodes,
                         kernel_initializer="glorot_uniform",
                         activation="relu",
-                        input_dim=self.model_input_dim,
+                        input_dim=self._model_input_dim,
                     )
                 )
+            # hidden layers
             else:
-                self.model.add(
+                self._model.add(
                     Dense(
-                        self.model_hypers["nodes"],
+                        tc.nodes,
                         kernel_initializer="glorot_uniform",
                         activation="relu",
                     )
                 )
-            if self.model_hypers["dropout_rate"] != 0:
-                self.model.add(Dropout(self.model_hypers["dropout_rate"]))
-        # output
-        if self.model_hypers["output_bkg_node_names"]:
-            num_nodes_out = len(self.model_hypers["output_bkg_node_names"]) + 1
+            if tc.dropout_rate != 0:
+                self._model.add(Dropout(tc.dropout_rate))
+        # output layer
+        if tc.output_bkg_node_names:
+            num_nodes_out = len(tc.output_bkg_node_names) + 1
         else:
             num_nodes_out = 1
-        self.model.add(
+        self._model.add(
             Dense(
                 num_nodes_out,
                 kernel_initializer="glorot_uniform",
@@ -665,115 +528,25 @@ class Model_Sequential_Flat(Model_Sequential_Base):
         )
         # Compile
         # transfer self-defined metrics into real function
-        metrics = copy.deepcopy(self.model_hypers["metrics"])
-        weighted_metrics = copy.deepcopy(self.model_hypers["weighted_metrics"])
-        if "plain_acc" in metrics:
+        metrics = copy.deepcopy(tc.train_metrics)
+        weighted_metrics = copy.deepcopy(tc.train_metrics_weighted)
+        if metrics is not None and "plain_acc" in metrics:
             index = metrics.index("plain_acc")
             metrics[index] = plain_acc
-        if "plain_acc" in weighted_metrics:
+        if weighted_metrics is not None and "plain_acc" in weighted_metrics:
             index = weighted_metrics.index("plain_acc")
             weighted_metrics[index] = plain_acc
         # compile model
-        self.model.compile(
+        self._model.compile(
             loss="binary_crossentropy",
             optimizer=SGD(
-                lr=self.model_hypers["learn_rate"],
-                decay=self.model_hypers["decay"],
-                momentum=self.model_hypers["momentum"],
-                nesterov=self.model_hypers["nesterov"],
+                lr=tc.learn_rate,
+                decay=tc.learn_rate_decay,
+                momentum=tc.momentum,
+                nesterov=tc.nesterov,
             ),
             metrics=metrics,
             weighted_metrics=weighted_metrics,
         )
-        self.model_is_compiled = True
-
-
-class Model_Sequential_Multi_Class(Model_Sequential_Base):
-    """Sequential model with multiple class"""
-
-    def __init__(
-        self,
-        name,
-        input_features,
-        hypers,
-        validation_features=[],
-        sig_key="all",
-        bkg_key="all",
-        data_key="all",
-        save_tb_logs=False,
-        tb_logs_path=None,
-    ):
-        super().__init__(
-            name,
-            input_features,
-            hypers,
-            validation_features=validation_features,
-            sig_key=sig_key,
-            bkg_key=bkg_key,
-            data_key=data_key,
-            save_tb_logs=False,
-            tb_logs_path=None,
-        )
-
-        self.model_label = "mod_seq"
-        self.model_note = "Sequential model with multiple class."
-        assert (
-            self.model_hypers["layers"] > 0
-        ), "Model layer quantity should be positive"
-
-    def compile(self):
-        """ Compile model, function to be changed in the future."""
-        # Add layers
-        # input
-        for layer in range(self.model_hypers["layers"]):
-            if layer == 0:
-                self.model.add(
-                    Dense(
-                        self.model_hypers["nodes"],
-                        kernel_initializer="glorot_uniform",
-                        activation="relu",
-                        input_dim=self.model_input_dim,
-                    )
-                )
-            else:
-                self.model.add(
-                    Dense(
-                        self.model_hypers["nodes"],
-                        kernel_initializer="glorot_uniform",
-                        activation="relu",
-                    )
-                )
-            if self.model_hypers["dropout_rate"] != 0:
-                self.model.add(Dropout(self.model_hypers["dropout_rate"]))
-        # output
-        self.model.add(
-            Dense(
-                len(self.model_hypers["output_bkg_node_names"]) + 1,
-                kernel_initializer="glorot_uniform",
-                activation="softmax",
-            )
-        )
-        # Compile
-        # transfer self-defined metrics into real function
-        metrics = copy.deepcopy(self.model_hypers["metrics"])
-        weighted_metrics = copy.deepcopy(self.model_hypers["weighted_metrics"])
-        if "plain_acc" in metrics:
-            index = metrics.index("plain_acc")
-            metrics[index] = plain_acc
-        if "plain_acc" in weighted_metrics:
-            index = weighted_metrics.index("plain_acc")
-            weighted_metrics[index] = plain_acc
-        # compile model
-        self.model.compile(
-            loss="categorical_crossentropy",
-            optimizer=SGD(
-                lr=self.model_hypers["learn_rate"],
-                decay=self.model_hypers["decay"],
-                momentum=self.model_hypers["momentum"],
-                nesterov=self.model_hypers["nesterov"],
-            ),
-            metrics=metrics,
-            weighted_metrics=weighted_metrics,
-        )
-        self.model_is_compiled = True
+        self._model_is_compiled = True
 

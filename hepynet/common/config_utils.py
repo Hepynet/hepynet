@@ -27,7 +27,6 @@ class Hepy_Config(object):
         self.train = Hepy_Config_Section({})
         self.apply = Hepy_Config_Section({})
         self.para_scan = Hepy_Config_Section({})
-        self.report = Hepy_Config_Section({})
         self.run = Hepy_Config_Section({})
         # set default
         self.update(DEFAULT_CFG)
@@ -42,6 +41,21 @@ class Hepy_Config(object):
                     f"Expect section {key} must has dict type value or None, please check the input."
                 )
                 raise ValueError
+
+    def clone(self):
+        return copy.deepcopy(self)
+
+    def get_config_dict(self) -> dict:
+        """ Returns config in dict format """
+        out_dict = {}
+        out_dict["config"] = self.config.get_config_dict()
+        out_dict["job"] = self.job.get_config_dict()
+        out_dict["input"] = self.input.get_config_dict()
+        out_dict["train"] = self.train.get_config_dict()
+        out_dict["apply"] = self.apply.get_config_dict()
+        out_dict["para_scan"] = self.para_scan.get_config_dict()
+        out_dict["run"] = self.run.get_config_dict()
+        return out_dict
 
     def update(self, config: dict) -> None:
         """Updates configs with given config dict, overwrite if exists
@@ -79,7 +93,6 @@ class Hepy_Config_Section(object):
     """Helper class to handle job configs in a section"""
 
     def __init__(self, section_config_dict: dict) -> None:
-        self._config_dict = copy.deepcopy(section_config_dict)
         for key, value in section_config_dict.items():
             if type(value) is dict:
                 setattr(self, key, Hepy_Config_Section(value))
@@ -99,7 +112,14 @@ class Hepy_Config_Section(object):
 
     def get_config_dict(self) -> dict:
         """ Returns config in dict format """
-        return self._config_dict
+        config_dict = dict()
+        for key, value in self.__dict__.items():
+            if key != "_config_dict":
+                if isinstance(value, Hepy_Config_Section):
+                    config_dict[key] = value.get_config_dict()
+                else:
+                    config_dict[key] = value
+        return config_dict
 
     def update(self, cfg_dict: dict) -> None:
         """Updates the section config dict with new dict, overwrite if exists
@@ -107,7 +127,6 @@ class Hepy_Config_Section(object):
         Args:
             cfg_dict (dict): new section config dict for update
         """
-        dict_merge(self._config_dict, cfg_dict)
         for key, value in cfg_dict.items():
             if type(value) is dict:
                 if key in self.__dict__.keys() and key != "_config_dict":
@@ -131,19 +150,6 @@ class Hepy_Config_Section(object):
                         logger.info(f"{' '*4*tabs}        - {ele}")
                 else:
                     logger.info(f"{' '*4*tabs}    {key} : {value}")
-
-
-def dict_merge(my_dict, merge_dict):
-    """ Recursive dict merge """
-    for key in merge_dict.keys():
-        if (
-            key in my_dict
-            and isinstance(my_dict[key], dict)
-            and isinstance(merge_dict[key], collections.Mapping)
-        ):
-            dict_merge(my_dict[key], merge_dict[key])
-        else:
-            my_dict[key] = merge_dict[key]
 
 
 def load_current_platform_meta() -> dict:

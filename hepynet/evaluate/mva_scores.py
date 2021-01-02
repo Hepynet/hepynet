@@ -6,22 +6,22 @@ import numpy as np
 
 from easy_atlas_plot.plot_utils import plot_utils_plt, plot_utils_root, th1_tools
 from hepynet.evaluate import evaluate_utils
+from hepynet.common.common_utils import get_default_if_none
 
 logger = logging.getLogger("hepynet")
 
 
-def plot_mva_scores(model_wrapper, plot_config, save_dir, file_name="mva_scores"):
+def plot_mva_scores(model_wrapper, job_config, file_name="mva_scores"):
     # initialize
     logger.info("Plotting MVA scores")
-    config = plot_config.clone()
+    plot_config = job_config.apply.cfg_mva_scores_data_mc.clone()
     model = model_wrapper.get_model()
     feedbox = model_wrapper.feedbox
-    model_meta = model_wrapper.model_meta
 
     # prepare signal
     sig_scores_dict = {}
     sig_weights_dict = {}
-    for sig_key in config.sig_list:
+    for sig_key in plot_config.sig_list:
         predict_arr, predict_weight_arr = feedbox.get_reshape("xs", array_key=sig_key)
         sig_scores_dict[sig_key] = model.predict(predict_arr).flatten()
         sig_weights_dict[sig_key] = predict_weight_arr.flatten()
@@ -29,7 +29,7 @@ def plot_mva_scores(model_wrapper, plot_config, save_dir, file_name="mva_scores"
     # prepare background
     bkg_scores_dict = {}
     bkg_weights_dict = {}
-    for bkg_key in config.bkg_list:
+    for bkg_key in plot_config.bkg_list:
         predict_arr, predict_weight_arr = feedbox.get_reshape("xb", array_key=bkg_key)
         bkg_scores_dict[bkg_key] = model.predict(predict_arr).flatten()
         bkg_weights_dict[bkg_key] = predict_weight_arr.flatten()
@@ -37,14 +37,15 @@ def plot_mva_scores(model_wrapper, plot_config, save_dir, file_name="mva_scores"
     # prepare data
     data_scores = np.array([])
     data_weights = np.array([])
-    if config.apply_data:
-        data_key = model_meta["data_key"]
+    if plot_config.apply_data:
+        data_key = plot_config.data_key
         data_arr_temp, data_weights = feedbox.get_reshape("xd", array_key=data_key)
         data_scores = model.predict(data_arr_temp)
         data_weights = data_weights.flatten()
 
     # make plots
-    if config.use_root:
+    save_dir = job_config.run.save_dir
+    if plot_config.use_root:
         if plot_utils_root.HAS_ROOT:
             pass
         else:
@@ -53,7 +54,7 @@ def plot_mva_scores(model_wrapper, plot_config, save_dir, file_name="mva_scores"
         fig, ax = plt.subplots(figsize=(8, 6))
         plot_scores_plt(
             ax,
-            config,
+            plot_config,
             sig_scores_dict,
             sig_weights_dict,
             bkg_scores_dict,
@@ -61,7 +62,7 @@ def plot_mva_scores(model_wrapper, plot_config, save_dir, file_name="mva_scores"
             data_scores,
             data_weights,
         )
-        fig.savefig(f"{save_dir}/{file_name}.{config.save_format}")
+        fig.savefig(f"{save_dir}/{file_name}.{plot_config.save_format}")
 
     return 0  # success run
 
@@ -309,23 +310,22 @@ def plot_scores_root(
             )
 
 
-def plot_train_test_compare(
-    model_wrapper, plot_config, save_dir=".", save_format="png"
-):
+def plot_train_test_compare(model_wrapper, job_config):
     """Plots train/test scores distribution to check overtrain"""
     # initialize
     logger.info("Plotting train/test scores (original mass).")
-    config = plot_config.clone()
+    ic = job_config.input
+    tc = job_config.train
+    plot_config = job_config.apply.cfg_train_test_compare
     model = model_wrapper.get_model()
     feedbox = model_wrapper.feedbox
-    model_meta = model_wrapper.model_meta
-    sig_key = model_meta["sig_key"]
-    bkg_key = model_meta["bkg_key"]
-    all_nodes = ["sig"] + model_wrapper.model_hypers["output_bkg_node_names"]
+    sig_key = get_default_if_none(plot_config.sig_key, ic.sig_key)
+    bkg_key = get_default_if_none(plot_config.bkg_key, ic.bkg_key)
+    all_nodes = ["sig"] + tc.output_bkg_node_names
     train_test_dict = feedbox.get_train_test_arrays(
         sig_key=sig_key,
         bkg_key=bkg_key,
-        multi_class_bkgs=model_wrapper.model_hypers["output_bkg_node_names"],
+        multi_class_bkgs=tc.output_bkg_node_names,
         reset_mass=feedbox.reset_mass,
         output_keys=[
             "xs_train",
@@ -355,22 +355,24 @@ def plot_train_test_compare(
     for node_num in range(num_nodes):
         fig, ax = plt.subplots(figsize=(8, 6))
         # plot scores
+        ## plot train scores
         plot_scores_plt(
             ax,
-            config,
-            {"signal": xs_test_scores[:, node_num].flatten()},
-            {"signal": xs_test_weight.flatten()},
-            {"background": xb_test_scores[:].flatten()},
-            {"background": xb_test_weight.flatten()},
+            plot_config,
+            {"s-test": xs_test_scores[:, node_num].flatten()},
+            {"s-test": xs_test_weight.flatten()},
+            {"b-test": xb_test_scores[:].flatten()},
+            {"b-test": xb_test_weight.flatten()},
         )
+        ## plot test scores
         evaluate_utils.paint_bars(
             ax,
             xb_train_scores[:, node_num],
             "b-train",
             weights=xb_train_weight,
-            bins=config.bins,
-            range=config.range,
-            density=config.density,
+            bins=plot_config.bins,
+            range=plot_config.range,
+            density=plot_config.density,
             use_error=True,
             color="darkblue",
             fmt=".",
@@ -380,9 +382,9 @@ def plot_train_test_compare(
             xs_train_scores[:, node_num],
             "s-train",
             weights=xs_train_weight,
-            bins=config.bins,
-            range=config.range,
-            density=config.density,
+            bins=plot_config.bins,
+            range=plot_config.range,
+            density=plot_config.density,
             use_error=True,
             color="maroon",
             fmt=".",
@@ -393,4 +395,4 @@ def plot_train_test_compare(
             file_name = f"/mva_scores_overtrain_original_mass_{all_nodes[node_num]}"
         else:
             file_name = f"/mva_scores_overtrain_reset_mass_{all_nodes[node_num]}"
-        fig.savefig(f"{save_dir}/{file_name}.{save_format}")
+        fig.savefig(f"{job_config.run.save_dir}/{file_name}.{plot_config.save_format}")

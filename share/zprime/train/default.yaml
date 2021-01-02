@@ -15,12 +15,14 @@ job:
 input:
     campaign: "run2"
     norm_array: true
-    bkg_sumofweight: 100000
     sig_sumofweight: 100000
+    bkg_sumofweight: 100000
+    data_sumofweight: 100000
     # pre-processing
     reset_feature: true
     reset_feature_name: "mz1"
     rm_negative_weight_events: false
+    rdm_seed: 1024
 
 train:
     model_name: "pdnn_model"
@@ -47,7 +49,7 @@ train:
     early_stop_restore_best_weights: true
     # in older tensorflow version may use "acc"
     train_metrics:
-        - "plain_acc"
+        #- "plain_acc"
     train_metrics_weighted:
         - "accuracy"
         - "mean_squared_error"

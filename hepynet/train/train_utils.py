@@ -57,11 +57,11 @@ def dump_fit_npy(
                     branch_content = dump_array[:, branch_index]
                 save_path = f"{data_path}/{npy_dir}/{sample_key}_{branch}.npy"
                 numpy_io.save_npy_array(branch_content, save_path)
-                logger.info(f"Array saved to: {save_path}")
+                logger.debug(f"Array saved to: {save_path}")
             if len(output_bkg_node_names) == 0:
                 save_path = f"{data_path}/{npy_dir}/{sample_key}_dnn_out.npy"
                 numpy_io.save_npy_array(predictions, save_path)
-                logger.info(f"Array saved to: {save_path}")
+                logger.debug(f"Array saved to: {save_path}")
             else:
                 for i, out_node in enumerate(["sig"] + output_bkg_node_names):
                     out_node = out_node.replace("+", "_")
@@ -69,7 +69,7 @@ def dump_fit_npy(
                         f"{data_path}/{npy_dir}/{sample_key}_dnn_out_{out_node}.npy"
                     )
                     numpy_io.save_npy_array(predictions[:, i], save_path)
-                    logger.info(f"Array saved to: {save_path}")
+                    logger.debug(f"Array saved to: {save_path}")
 
 
 def get_mass_range(mass_array, weights, nsig=1):

@@ -77,6 +77,8 @@ apply:
 
     book_train_test_compare: true
     cfg_train_test_compare:
+        sig_key: "all_norm"
+        bkg_key: "all"
         plot_title: "train/test MVA scores compare"
         bins: 50
         range: [0, 1]

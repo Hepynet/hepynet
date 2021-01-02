@@ -2,7 +2,7 @@ import argparse
 import logging
 import os
 import sys
-
+import time
 logger = logging.getLogger("hepynet")
 # Show tensorflow warnings and errors only
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"
@@ -48,8 +48,11 @@ def execute():
         for yaml_cfg in args.yaml_configs:
             logger.info("#" * 80)
             logger.info(f"Executing: {yaml_cfg}")
+            job_start_time = time.perf_counter()
             ex_test = job_executor.job_executor(yaml_cfg)
             ex_test.execute_jobs()
+            job_end_time = time.perf_counter()
+            logger.info(f"Time consumed: {job_end_time - job_start_time}")
         logger.info("#" * 80)
         logger.info("Done!")
         logger.info("#" * 80)

@@ -2,11 +2,13 @@ import logging
 
 import matplotlib.pyplot as plt
 
+from hepynet.common.common_utils import get_default_if_none
+
 logger = logging.getLogger("hepynet")
 
 
 def plot_history(
-    model_wrapper, plot_config, save_dir=None,
+    model_wrapper, job_config, save_dir=None,
 ):
     """Evaluates training result.
 
@@ -16,48 +18,27 @@ def plot_history(
 
         """
     logger.info("Plotting training history")
-    config = plot_config.clone()
-    # accuracy curve
-    plot_accuracy(
-        model_wrapper, config.accuracy, save_dir=save_dir,
-    )
-    # loss curve
-    plot_loss(
-        model_wrapper, config.loss, save_dir=save_dir,
-    )
+    plot_config = job_config.apply.cfg_history
+    train_history = model_wrapper._train_history
+    for metric_key in train_history.keys():
+        if not metric_key.startswith("val_"):
+            plot_metrics(metric_key, train_history, plot_config, save_dir=save_dir)
 
 
-def plot_accuracy(model_wrapper, plot_config, save_dir: str = ".",) -> None:
-    """Plots accuracy vs training epoch."""
-    logger.info("Plotting accuracy curve")
-    accuracy_list = model_wrapper.train_history_accuracy
-    val_accuracy_list = model_wrapper.train_history_val_accuracy
+def plot_metrics(metric_name, train_history, plot_config, save_dir: str = ".",) -> None:
+    logger.info(f"Plotting {metric_name}")
+    metric_entries = train_history[metric_name]
+    val_metric_entries = train_history["val_" + metric_name]
     # plot
     fig, ax = plt.subplots(figsize=(8, 6))
-    ax.plot(accuracy_list)
-    ax.plot(val_accuracy_list)
+    ax.plot(metric_entries)
+    ax.plot(val_metric_entries)
     # config
-    ax.set_title(plot_config.plot_title)
-    ax.set_ylabel("accuracy")
+    plot_title = get_default_if_none(plot_config.plot_title, metric_name)
+    ax.set_title(plot_title)
+    ax.set_ylabel(metric_name)
     ax.set_xlabel("epoch")
-    ax.legend(["train", "val"], loc="lower left")
+    ax.legend(["train", "val"])
     ax.grid()
-    fig.savefig(f"{save_dir}/history_accuracy.{plot_config.save_format}")
-
-
-def plot_loss(model_wrapper, plot_config, save_dir: str = ".",) -> None:
-    """Plots loss vs training epoch."""
-    logger.info("Plotting loss curve")
-    loss_list = model_wrapper.train_history_loss
-    val_loss_list = model_wrapper.train_history_val_loss
-    # plot
-    fig, ax = plt.subplots(figsize=(8, 6))
-    ax.plot(loss_list)
-    ax.plot(val_loss_list)
-    # config
-    ax.set_title(plot_config.plot_title)
-    ax.set_xlabel("epoch")
-    ax.set_ylabel("loss")
-    ax.legend(["train", "val"], loc="lower left")
-    ax.grid()
-    fig.savefig(f"{save_dir}/history_loss.{plot_config.save_format}")
+    save_format = get_default_if_none(plot_config.save_format, "png")
+    fig.savefig(f"{save_dir}/history_{metric_name}.{save_format}")
