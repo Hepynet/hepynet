@@ -12,6 +12,9 @@ RUN apt-get update \
     && pip install seaborn \
     && pip install hyperopt
 
+# Install git
+RUN apt-get update && apt-get install -y vim git
+
 # Install hepynet
 RUN git clone --recursive git@github.com:StarPrecursor/hepynet.git \
     && git checkout iss13-prepare-for-new-release \
