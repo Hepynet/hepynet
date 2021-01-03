@@ -20,7 +20,7 @@ setuptools.setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
-    python_requires=">=3.6,<3.9",
+    python_requires=">=3.8,<3.9",
     install_requires=[
         "tensorflow==2.2.0",
         "keras==2.3.1",
