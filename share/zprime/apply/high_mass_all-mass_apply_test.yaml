@@ -44,7 +44,6 @@ input:
 
 apply:
     #check_model_epoch: true
-    pop_plots: false
 
     book_history: true
     cfg_history:

@@ -319,14 +319,17 @@ def plot_train_test_compare(model_wrapper, job_config):
     plot_config = job_config.apply.cfg_train_test_compare
     model = model_wrapper.get_model()
     feedbox = model_wrapper.feedbox
+    print("#### plot_config.sigkey", plot_config.sig_key)
+    print("#### ic.sig_key", ic.sig_key)
     sig_key = get_default_if_none(plot_config.sig_key, ic.sig_key)
     bkg_key = get_default_if_none(plot_config.bkg_key, ic.bkg_key)
     all_nodes = ["sig"] + tc.output_bkg_node_names
+
     train_test_dict = feedbox.get_train_test_arrays(
         sig_key=sig_key,
         bkg_key=bkg_key,
         multi_class_bkgs=tc.output_bkg_node_names,
-        reset_mass=feedbox.reset_mass,
+        reset_mass=feedbox.get_job_config().input.reset_mass,
         output_keys=[
             "xs_train",
             "xs_test",
@@ -391,7 +394,7 @@ def plot_train_test_compare(model_wrapper, job_config):
         )
         ax.legend(loc="upper center")
         # Make and show plots
-        if feedbox.reset_mass:
+        if feedbox.get_job_config().input.reset_mass:
             file_name = f"/mva_scores_overtrain_original_mass_{all_nodes[node_num]}"
         else:
             file_name = f"/mva_scores_overtrain_reset_mass_{all_nodes[node_num]}"

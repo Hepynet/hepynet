@@ -5,8 +5,8 @@ import datetime
 import glob
 import logging
 import math
-import typing
 import pathlib
+import typing
 
 logger = logging.getLogger("hepynet")
 import keras
@@ -23,7 +23,9 @@ if gpus:
         for gpu in gpus:
             tf.config.experimental.set_memory_growth(gpu, True)
         logical_gpus = tf.config.experimental.list_logical_devices("GPU")
-        logger.info(f"{len(gpus)} Physical GPUs, {len(logical_gpus)} Logical GPUs")
+        logger.info(
+            f"GPU availability: {len(gpus)} Physical GPUs, {len(logical_gpus)} Logical GPUs"
+        )
     except RuntimeError as e:
         # Memory growth must be set before GPUs have been initialized
         logger.error(e)
@@ -202,11 +204,11 @@ class Model_Sequential_Base(Model_Base):
         # custom objects
         self._model_is_loaded = True
         # Load parameters
-        #try:
+        # try:
         paras_path = model_dir + "/" + _model_name + "_paras.yaml"
         self.load_model_parameters(paras_path)
         self.model_paras_is_loaded = True
-        #except:
+        # except:
         #    logger.warning("Model parameters not successfully loaded.")
         logger.info("Model loaded.")
 
@@ -296,7 +298,7 @@ class Model_Sequential_Base(Model_Base):
         """Prepares array for training."""
         self.feedbox = feedbox
         self._array_prepared = feedbox._array_prepared
-        self._model_meta["norm_dict"] = feedbox.norm_dict
+        self._model_meta["norm_dict"] = feedbox._norm_dict
 
     def train(
         self, job_config, model_save_dir=None, file_name=None,
@@ -356,13 +358,16 @@ class Model_Sequential_Base(Model_Base):
             sig_key=ic.sig_key,
             bkg_key=ic.bkg_key,
             multi_class_bkgs=tc.output_bkg_node_names,
+            output_keys=train_utils.COMB_KEYS,
         )
+        self.feedbox = None
         x_train = train_test_dict["x_train"]
         x_test = train_test_dict["x_test"]
         y_train = train_test_dict["y_train"]
         y_test = train_test_dict["y_test"]
         wt_train = train_test_dict["wt_train"]
         wt_test = train_test_dict["wt_test"]
+        train_test_dict = None
         self.get_model().summary()
         ## train
         history_obj = self.get_model().fit(

@@ -81,8 +81,8 @@ DEFAULT_CFG = {
         },
         "book_train_test_compare": False,
         "cfg_train_test_compare": {
-            "sig_key": "",
-            "bkg_key": "",
+            "sig_key": None,
+            "bkg_key": None,
             "plot_title": "train/test MVA scores compare",
             "bins": 25,
             "range": [0, 1],

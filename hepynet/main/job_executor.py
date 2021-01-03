@@ -28,7 +28,6 @@ from hepynet.evaluate import (
 )
 from hepynet.main import job_utils
 from hepynet.train import model, train_utils
-
 logger = logging.getLogger("hepynet")
 
 
@@ -622,36 +621,28 @@ class job_executor(object):
         # self.space = space
 
     def set_model(self) -> None:
+        logger.info("Setting up model")
         tc = self.job_config.train
         model_class = model.get_model_class(tc.model_class)
         self.model_wrapper = model_class(self.job_config)
 
     def set_model_input(self) -> None:
+        logger.info("Processing inputs")
         jc = self.job_config.job
         rc = self.job_config.run
-        ic = self.job_config.input
         tc = self.job_config.train
-        # load array dict
-        sig_dict = numpy_io.load_npy_arrays(self.job_config, "sig")
-        bkg_dict = numpy_io.load_npy_arrays(self.job_config, "bkg")
-        if ic.data_list:
-            data_dict = numpy_io.load_npy_arrays(self.job_config, "data")
-        else:
-            data_dict = None
-        logger.debug(f"Selected_features quantity: {len(ic.selected_features)}")
-        logger.debug(f"Selected_features: {ic.selected_features}")
         # setup feedbox
         if jc.job_type == "apply":
             self.model_wrapper.load_model(
                 rc.load_dir, tc.model_name, job_name=jc.load_job_name,
             )
         feedbox = feed_box.Feedbox(
-            sig_dict,
-            bkg_dict,
-            data_dict,
             self.job_config,
             model_meta=self.model_wrapper.get_model_meta(),
         )
+        if jc.job_type == "apply":
+            feedbox.load_sig_arrays()
+            feedbox.load_bkg_arrays()
         self.model_wrapper.set_inputs(feedbox)
 
     def set_save_dir(self) -> None:

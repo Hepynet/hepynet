@@ -14,7 +14,6 @@ input:
 
 apply:
     #check_model_epoch: true
-    pop_plots: false
 
     #book_history: true
     cfg_history:
@@ -54,6 +53,7 @@ apply:
         save_format: "png"
 
     #book_kine_study: true
+    #book_cut_kine_study: true
     cfg_kine_study:
         bins: 100
         range:
@@ -61,28 +61,11 @@ apply:
         alpha: 0.3
         density: true
         save_format: "png"
-        mz1_p:
-            range: [30, 110]
-        ptl1:
-            range: [0, 200]
-        ptl2:
-            range: [0, 100]
-        ptl3:
-            range: [0, 100]
-        ptl4:
-            range: [0, 100]
-        ptz1:
-            range: [0, 200]
-        ptz2:
-            range: [0, 100]
-
-    ## TODO ## book_cut_kine_study: true
-    cfg_cut_kine_study:
         save_ratio_table: true
-    dnn_cut_list:
-        - 0.5
-        - 0.6
-        - 0.8
+        dnn_cut_list:
+            - 0.5
+            - 0.6
+            - 0.8
 
     #book_importance_study: true
 
@@ -92,10 +75,9 @@ apply:
     cfg_significance_scan:
         significance_algo: "s_sqrt_b_rel"
 
-    ## TODO ## book_fit_ntup: true
-    book_fit_ntup: true
-    cfg_fit_ntup:
-        fit_ntup_region: "2tag_sr1"
-        fit_ntup_branches:
+    book_fit_npy: true
+    cfg_fit_npy:
+        fit_npy_region: "2tag_sr1"
+        fit_npy_branches:
             - "ll_m"
-        ntup_save_dir: "hh_bbll/ntuples/fit_ntup_1215"
+        npy_save_dir: "hh_bbll/arrays_fit/sr1-default"

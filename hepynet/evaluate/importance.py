@@ -24,8 +24,8 @@ def plot_feature_importance(
     # Prepare
     model = model_wrapper.get_model()
     feedbox = model_wrapper.feedbox
-    num_feature = len(feedbox.selected_features)
-    selected_feature_names = np.array(feedbox.selected_features)
+    num_feature = len(feedbox.get_job_config().input.selected_features)
+    selected_feature_names = np.array(feedbox.get_job_config().input.selected_features)
     train_test_dict = feedbox.get_train_test_arrays(
         sig_key=ic.sig_key,
         bkg_key=ic.bkg_key,

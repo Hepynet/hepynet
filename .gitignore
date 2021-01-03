@@ -7,6 +7,7 @@ test/*
 run/*
 hepynet.egg-info/*
 env_setup/*
+.vscode
 
 # Side files that are not needed to be saved #
 *.bak
