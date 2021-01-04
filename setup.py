@@ -22,7 +22,7 @@ setuptools.setup(
     ],
     python_requires=">=3.8,<3.9",
     install_requires=[
-        "tensorflow==2.2.0",
+        "tensorflow==2.4.0",
         "keras==2.3.1",
         "numpy",
         "matplotlib",
