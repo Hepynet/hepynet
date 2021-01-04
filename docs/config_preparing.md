@@ -2,7 +2,7 @@
 
 ## General
 
-This framework use an ".ini" file to set up the inputs, model structure, output
+This framework use an ".yaml" file to set up the inputs, model structure, output
 format and so on.
 
 There 6 basic sections in a configuration file:

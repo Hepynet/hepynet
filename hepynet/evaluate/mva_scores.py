@@ -23,7 +23,7 @@ def plot_mva_scores(model_wrapper, job_config, file_name="mva_scores"):
     sig_weights_dict = {}
     for sig_key in plot_config.sig_list:
         predict_arr, predict_weight_arr = feedbox.get_reshape("xs", array_key=sig_key)
-        sig_scores_dict[sig_key] = model.predict(predict_arr).flatten()
+        sig_scores_dict[sig_key] = model.predict(predict_arr)
         sig_weights_dict[sig_key] = predict_weight_arr.flatten()
 
     # prepare background
@@ -31,7 +31,7 @@ def plot_mva_scores(model_wrapper, job_config, file_name="mva_scores"):
     bkg_weights_dict = {}
     for bkg_key in plot_config.bkg_list:
         predict_arr, predict_weight_arr = feedbox.get_reshape("xb", array_key=bkg_key)
-        bkg_scores_dict[bkg_key] = model.predict(predict_arr).flatten()
+        bkg_scores_dict[bkg_key] = model.predict(predict_arr)
         bkg_weights_dict[bkg_key] = predict_weight_arr.flatten()
 
     # prepare data
@@ -51,18 +51,27 @@ def plot_mva_scores(model_wrapper, job_config, file_name="mva_scores"):
         else:
             logger.error("Can't import ROOT, try to use matplotlib as backend.")
     else:
-        fig, ax = plt.subplots(figsize=(8, 6))
-        plot_scores_plt(
-            ax,
-            plot_config,
-            sig_scores_dict,
-            sig_weights_dict,
-            bkg_scores_dict,
-            bkg_weights_dict,
-            data_scores,
-            data_weights,
-        )
-        fig.savefig(f"{save_dir}/{file_name}.{plot_config.save_format}")
+        all_nodes = ["sig"] + job_config.train.output_bkg_node_names
+        for node_id, node in enumerate(all_nodes):
+            fig, ax = plt.subplots(figsize=(8, 6))
+            sig_node_dict = {}
+            for key, value in sig_scores_dict.items():
+                sig_node_dict[key] = value[:, node_id]
+                print("#### node shape", value[:, node_id].shape)
+            bkg_node_dict = {}
+            for key, value in bkg_scores_dict.items():
+                bkg_node_dict[key] = value[:, node_id]
+            plot_scores_plt(
+                ax,
+                plot_config,
+                sig_node_dict,
+                sig_weights_dict,
+                bkg_node_dict,
+                bkg_weights_dict,
+                data_scores,
+                data_weights,
+            )
+            fig.savefig(f"{save_dir}/{file_name}_node_{node}.{plot_config.save_format}")
 
     return 0  # success run
 
@@ -86,6 +95,10 @@ def plot_scores_plt(
     if config.bkg_list is None:
         config.bkg_list = list(bkg_scores_dict.keys())
     # plot background
+    a = list(bkg_scores_dict.values())
+    print("#### len", len(a), " shape ", a[0].shape)
+    print("#### input shape:", np.transpose(a).shape)
+    print("#### weight shape:", np.transpose(list(bkg_weights_dict.values())).shape)
     ax.hist(
         np.transpose(list(bkg_scores_dict.values())),
         bins=config.bins,
@@ -97,6 +110,8 @@ def plot_scores_plt(
         stacked=True,
     )
     # plot signal
+    print("#### input shape:", np.transpose(list(sig_scores_dict.values())).shape)
+    print("#### weight shape:", np.transpose(list(sig_weights_dict.values())).shape)
     ax.hist(
         np.transpose(list(sig_scores_dict.values())),
         bins=config.bins,
