@@ -15,7 +15,7 @@ input:
 apply:
     #check_model_epoch: true
 
-    #book_history: true
+    book_history: true
     cfg_history:
         accuracy:
             plot_title: "accuracy history"
@@ -24,9 +24,9 @@ apply:
             plot_title: "loss history"
             save_format: "png"
 
-    #book_roc: true
+    book_roc: true
 
-    #book_mva_scores_data_mc: true
+    book_mva_scores_data_mc: true
     cfg_mva_scores_data_mc:
         sig_list:
             - "sig_nonres"
@@ -43,7 +43,7 @@ apply:
         save_format: "png"
         use_root: false
 
-    #book_train_test_compare: true
+    book_train_test_compare: true
     cfg_train_test_compare:
         plot_title: "train/test MVA scores compare"
         bins: 50
@@ -52,8 +52,8 @@ apply:
         log: false
         save_format: "png"
 
-    #book_kine_study: true
-    #book_cut_kine_study: true
+    book_kine_study: true
+    book_cut_kine_study: true
     cfg_kine_study:
         bins: 100
         range:
@@ -67,11 +67,11 @@ apply:
             - 0.6
             - 0.8
 
-    #book_importance_study: true
+    book_importance_study: true
 
-    #book_cor_matrix: true
+    book_cor_matrix: true
 
-    #book_significance_scan: true
+    book_significance_scan: true
     cfg_significance_scan:
         significance_algo: "s_sqrt_b_rel"
 

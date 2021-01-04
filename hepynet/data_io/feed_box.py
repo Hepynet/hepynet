@@ -156,7 +156,6 @@ class Feedbox(object):
         return array_out, weight_out.reshape((-1,))
 
     def get_reshape(self, input_type, array_key="all"):
-        print("#### array key:", array_key)
         x_reshape, weight_reshape = self.get_raw(input_type, array_key=array_key)
         norm_means = []
         norm_variances = []

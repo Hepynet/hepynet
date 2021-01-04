@@ -1,100 +1,108 @@
-# pDNN Code for LFV study v1.0 (pDNN_LFV)
+# **Hepynet**
 
-![forthebadge](https://img.shields.io/badge/pdnn__lfv-v0.3.0-blue)
-![forthebadge](https://img.shields.io/badge/status-developing-green)
+**H**igh **e**nergy physics, **py**thon-based, neural-**net**work framework
 
-The codes contains modules to use lfv ntuples of newest round and perform pDNN training.
+![forthebadge](https://img.shields.io/badge/hepynet-v0.4.0-blue)
 
-- pDNN_LFV use a simple configuration file to specify the input ntuples, model configurations, outputs and so on.
-- The corresponding modules cas also be used in an independent python script or Jupyter lab.
-- Examples are given to demonstrate the usage of pDNN_LFV to generate array and perform a training.
-- pDNN_LFV was developed for lepton flavor violation study, but can be used for different analysis. Further tests and developments are still needed. Currently, the framework is tested also on low mass Z prime study except LFV study.
+## **Introduction**
 
-About pDNN study for LFV:
+Goal of the hepynet: perform DNN related high energy physics analysis tasks with simple config files
 
-- pDNN means parameterized deep neural network. It use a traditional set of event-level features (neural networks or other multi-variable methods) plus one or more feature(s) that describe the larger scope of the problem such as a new particle mass.
-- One or a few training for the whole mass region.
-- The method has already being used/under development for several analyses, for example: low-mass Z', high mass H4l, HH->llbb&nu;&nu; and etc.
-- A related paper can be found [here](https://arxiv.org/pdf/1601.07913.pdf)
+- for **ATLAS Analysis**: include supports for various ATLAS analysis jobs
 
-## **Environment**
+- **Config Driven**: all tasks defined by a simple config file
 
-### **Method 1** - Use Docker (recommended)
+- **Python Based**: codes are written in Python, which is the mainstream language for DNN studies
 
-Install [Docker](https://www.docker.com/) if not installed.  
-Set up docker image:
+## **Setup**
 
-```shell
-cd docker
-source build_docker.sh
-```
-
-On every startup:  
-first cd to git repository's base directory, then (in Linux)
+### Clone Git repository
 
 ```bash
-source docker/start_docker.sh
+git clone --recursive git@github.com:StarPrecursor/hepynet.git
 ```
 
-or (in Windows PowerShell)
+### Installation
 
-```bash
-. docker/start_docker.bat
-```
+- **Method 1** - Use Docker
 
-### **Method 2** manually set environment with conda
+  Install [Docker](https://www.docker.com/) if not installed.
 
-#### Install Used Softwares
+  On every startup
 
-1. Install [python 3.7+](https://www.python.org/downloads/windows/)
-2. Install [conda](https://docs.conda.io/projects/conda/en/latest/user-guide/install/windows.html)
-3. Install [Git](https://git-scm.com/downloads)
+  - **Linux Command Line**
 
-#### Install Python Packages
+    ```bash
+    source docker/start_docker.sh
+    ```
 
-Open a **Anaconda powershell Prompt** (powshell in VSCode is **NOT RECOMMENDED**) to create conda environment and activate.
+  - **Windows PowerShell**
 
-```shell
-conda create -n pdnn python=3.7
-conda activate pdnn
-```
+    ```bash
+    . docker/start_docker.bat
+    ```
 
-Then install python packages use conda or pip(use -n pdnn to only install package for specified environment):
+  - **Windows file explorer**
 
-- **keras** with **tensorflow** backend (for DNN training)  
-  First install tensorflow in conda. If you have a GPU supporting [CUDA](https://developer.nvidia.com/cuda-zone), following instructions to install [tensorflow-gpu](https://www.tensorflow.org/install/gpu).
+    double-click docker/start_docker.bat
+
+  Note: if the Docker image is not installed yet, this will automatically pull the required image from [Docker Hub](https://hub.docker.com/)
+
+- **Method 2** - Install with Pip
 
   ```bash
-  conda install -n pdnn tensorflow keras
+  pip install -e .
   ```
 
-- required: **numpy**, **matplotlib**, **sklearn**, **eli5**, **configparser**, **Reportlab**, **pandas**, **seaborn**, **hyperopt**, **root** (not available on Windows currently, considering add matplotlib plot option in the future)
+  You can also install the package in your [conda](https://www.anaconda.com/) environment
 
-  (part of the packages only available in conda-forge)
 
-  ```bash
-  conda install -n pdnn numpy matplotlib scikit-learn configparser reportlab pandas seaborn hyperopt
-  conda install -n pdnn -c conda-forge root uproot eli5
-  ```
+### GPU support
 
-- optional: **jupyter lab**
+- You can refer to [Tensorflow GPU support](https://www.tensorflow.org/install/gpu) to set up environment to use GPU for training
 
-  ```bash
-  conda install -n pdnn -c conda-forge jupyterlab
-  ```
+- This is not mandatory, CPU alone is enough to run hepynet
 
-#### Fist time run
+## **Preparations**
 
-On main folder, where setup.py exists:
+- **Prepare numpy arrays as inputs**
+
+  - You can write your own code to generate numpy arrays from root files
+  - Or refer to [hepynet_root_npy](https://github.com/HEPTools/hepynet_root_npy) for more information about **root <--> numpy transformation**
+  - Numpy arrays should be organized as following
+
+    ```bash
+    Data_folder/path_to_array_folder/array_version/campaign/region/feature.npy
+    ```
+
+    Note:
+
+    - "Data_folder" is what you set in pc_meta.yaml
+    - "path_to_array_folder" is what you specified in train/apply job config files
+    - each numpy array file should only save **one** input feature
+
+- **Prepare job config files**
+
+  all config files are put under share folder, there are 3 types of config files you should prepare/modify
+
+  - **cross_platform.pc_meta.yaml**
+
+    You should set up the data folder (where you keep the input numpy arrays) in this file
+
+  - **train configs**: configs for a model training job
+
+  - **apply configs**: configs for a model applying job
+
+  please refer to [config_preparing.md](docs/config_preparing.md) for more details
+
+## **Execute jobs**
 
 ```bash
-conda develop .
+hepynet [-h] [-d] [-v] [yaml_configs [yaml_configs ...]]
 ```
 
-or (not recommended)
+## **Release note - v0.4.0**
 
-```bash
-pip install -e .
-```
+- This is the first public release, totally re-written to simplify the workflow and optimize the memory usage.
 
-If you are using the docker scripts "start_docker.bat/start_docker.sh", you can skip this step.
+- Part of the utilities (Bayesian optimization, k-fold training ... ) are disabled to reduce the test/debug work load, will be added back in the coming releases.

@@ -61,6 +61,7 @@ DEFAULT_CFG = {
         "verbose": 0,
     },
     "apply": {
+        "check_model_epoch": False,
         "book_history": False,
         "cfg_history": {},
         "book_roc": False,

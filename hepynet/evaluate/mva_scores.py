@@ -319,8 +319,6 @@ def plot_train_test_compare(model_wrapper, job_config):
     plot_config = job_config.apply.cfg_train_test_compare
     model = model_wrapper.get_model()
     feedbox = model_wrapper.feedbox
-    print("#### plot_config.sigkey", plot_config.sig_key)
-    print("#### ic.sig_key", ic.sig_key)
     sig_key = get_default_if_none(plot_config.sig_key, ic.sig_key)
     bkg_key = get_default_if_none(plot_config.bkg_key, ic.bkg_key)
     all_nodes = ["sig"] + tc.output_bkg_node_names
@@ -364,7 +362,7 @@ def plot_train_test_compare(model_wrapper, job_config):
             plot_config,
             {"s-test": xs_test_scores[:, node_num].flatten()},
             {"s-test": xs_test_weight.flatten()},
-            {"b-test": xb_test_scores[:].flatten()},
+            {"b-test": xb_test_scores[:, node_num].flatten()},
             {"b-test": xb_test_weight.flatten()},
         )
         ## plot test scores

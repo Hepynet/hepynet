@@ -100,7 +100,11 @@ train:
     sig_class_weight: 1.
     bkg_class_weight: 1.
     # multi-output nodes
-    output_bkg_node_names: []
+    output_bkg_node_names:
+        - "bkg_stop + bkg_ttbar + bkg_ttbarV"
+        - "bkg_Zee + bkg_Zmm + bkg_Zll"
+        - "bkg_fakes"
+        - "bkg_diboson + bkg_Higgs"
     # early stop setups
     use_early_stop: true
     early_stop_paras:
