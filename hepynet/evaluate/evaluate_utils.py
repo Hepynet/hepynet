@@ -1,16 +1,17 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
+
 def paint_bars(
     ax,
-    datas,
+    data,
     labels: list,
     weights,
     bins: int,
     range: tuple,
     title: str = None,
-    x_lable: str = None,
-    y_lable: str = None,
+    x_label: str = None,
+    y_label: str = None,
     x_unit: str = None,
     x_scale: float = None,
     density: bool = False,
@@ -29,20 +30,20 @@ def paint_bars(
     # Check input
     data_1dim = np.array([])
     weight_1dim = np.array([])
-    if isinstance(datas, np.ndarray):
-        datas = [datas]
+    if isinstance(data, np.ndarray):
+        data = [data]
         weights = [weights]
-    for data, weight in zip(datas, weights):
-        assert isinstance(data, np.ndarray), "datas element should be numpy array."
+    for datum, weight in zip(data, weights):
+        assert isinstance(datum, np.ndarray), "data element should be numpy array."
         assert isinstance(weight, np.ndarray), "weights element should be numpy array."
         assert (
-            data.shape == weight.shape
+            datum.shape == weight.shape
         ), "Input weights should be None or have same type as arrays."
         if len(data_1dim) == 0:
-            data_1dim = data
+            data_1dim = datum
             weight_1dim = weight
         else:
-            data_1dim = np.concatenate((data_1dim, data))
+            data_1dim = np.concatenate((data_1dim, datum))
             weight_1dim = np.concatenate((weight_1dim, weight))
 
     # Scale x axis
@@ -102,16 +103,16 @@ def paint_bars(
     # Config
     if title is not None:
         ax.set_title(title)
-    if x_lable is not None:
+    if x_label is not None:
         if x_unit is not None:
-            ax.set_xlabel(x_lable + "/" + x_unit)
+            ax.set_xlabel(x_label + "/" + x_unit)
         else:
-            ax.set_xlabel(x_lable)
+            ax.set_xlabel(x_label)
     else:
         if x_unit is not None:
             ax.set_xlabel(x_unit)
-    if y_lable is not None:
-        ax.set_ylabel(y_lable)
+    if y_label is not None:
+        ax.set_ylabel(y_label)
     if range is not None:
         ax.axis(xmin=range[0], xmax=range[1])
     ax.legend(loc="upper right")

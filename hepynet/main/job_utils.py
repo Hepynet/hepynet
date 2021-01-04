@@ -1,10 +1,10 @@
 import csv
 import logging
-import os
+import pathlib
 
-import lfv_pdnn
+import hepynet
 
-logger = logging.getLogger("lfv_pdnn")
+logger = logging.getLogger("hepynet")
 
 MAIN_DIR_NAMES = ["pdnn-lfv", "work"]
 
@@ -20,12 +20,12 @@ def get_valid_cfg_path(path):
 
     """
     # Check path:
-    if os.path.isfile(path):
+    if pathlib.Path(path).is_file():
         return path
     # Check try add share folder prefix
-    lfv_pdnn_dir = os.path.dirname(os.path.dirname(lfv_pdnn.__file__))
-    logger.debug(f"Get lfv_pdnn dir: {lfv_pdnn_dir}")
-    cfg_path = f"{lfv_pdnn_dir}/{path}"
+    hepynet_dir = os.path.dirname(os.path.dirname(hepynet.__file__))
+    logger.debug(f"Get hepynet dir: {hepynet_dir}")
+    cfg_path = f"{hepynet_dir}/{path}"
     if os.path.isfile(cfg_path):
         return cfg_path
     elif os.path.isdir(cfg_path):
@@ -52,7 +52,7 @@ def make_table(data, save_dir, num_para=1):
     """
     # save csv format
     save_path = save_dir + "/scan_meta_report.csv"
-    with open(save_path, "w", newline="") as myfile:
-        wr = csv.writer(myfile, quoting=csv.QUOTE_ALL)
+    with open(save_path, "w", newline="") as my_file:
+        wr = csv.writer(my_file, quoting=csv.QUOTE_ALL)
         for single_list in data:
             wr.writerow(single_list)

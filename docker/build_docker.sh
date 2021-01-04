@@ -1,1 +1,1 @@
-docker build -t lfv/pdnn:v1 -m 128g .
+docker build -t starp/hepynet:v0.4.0 .

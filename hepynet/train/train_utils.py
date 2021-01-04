@@ -8,28 +8,55 @@ manipulation, making plots, evaluation functions and so on.
 
 import glob
 import logging
-import os
+import pathlib
 import sys
 import time
 from math import sqrt
 
 import matplotlib.pyplot as plt
 import numpy as np
-from lfv_pdnn.common import array_utils, config_utils
-from lfv_pdnn.data_io import root_io
 from sklearn.metrics import accuracy_score, auc, classification_report
 
-logger = logging.getLogger("lfv_pdnn")
+from hepynet.common import array_utils, config_utils
+from hepynet.data_io import numpy_io
+
+logger = logging.getLogger("hepynet")
 
 
-def dump_fit_ntup(
-    feedbox, keras_model, fit_ntup_branches, output_bkg_node_names, ntup_dir="./"
+SEPA_KEYS = [
+    "xs_train",
+    "xs_test",
+    "ys_train",
+    "ys_test",
+    "wts_train",
+    "wts_test",
+    "xb_train",
+    "xb_test",
+    "yb_train",
+    "yb_test",
+    "wtb_train",
+    "wtb_test",
+]
+
+COMB_KEYS = [
+    "x_train",
+    "x_test",
+    "y_train",
+    "y_test",
+    "wt_train",
+    "wt_test",
+]
+
+
+def dump_fit_npy(
+    feedbox, keras_model, fit_ntup_branches, output_bkg_node_names, npy_dir="./"
 ):
     prefix_map = {"sig": "xs", "bkg": "xb"}
-    if feedbox.apply_data:
+    if feedbox.get_job_config().input.apply_data:
         prefix_map["data"] = "xd"
+
     for map_key in list(prefix_map.keys()):
-        sample_keys = list(getattr(feedbox, prefix_map[map_key] + "_dict").keys())
+        sample_keys = getattr(feedbox.get_job_config().input, f"{map_key}_list")
         for sample_key in sample_keys:
             dump_branches = fit_ntup_branches + ["weight"]
             # prepare contents
@@ -40,37 +67,39 @@ def dump_fit_ntup(
                 prefix_map[map_key], array_key=sample_key, reset_mass=False
             )
             predictions = keras_model.predict(predict_input)
-            dump_contents = []
+            # dump
+            platform_meta = config_utils.load_current_platform_meta()
+            data_path = platform_meta["data_path"]
+            save_dir = f"{data_path}/{npy_dir}"
+            pathlib.Path(save_dir).mkdir(parents=True, exist_ok=True)
             for branch in dump_branches:
                 if branch == "weight":
                     branch_content = dump_array_weight
                 else:
-                    if feedbox.validation_features is None:
+                    fd_val_features = feedbox.get_job_config().input.validation_features
+                    if fd_val_features is None:
                         validation_features = []
                     else:
-                        validation_features = feedbox.validation_features
+                        validation_features = fd_val_features
                     feature_list = (
-                        feedbox.selected_features + validation_features
+                        feedbox.get_job_config().input.selected_features
+                        + validation_features
                     )
                     branch_index = feature_list.index(branch)
                     branch_content = dump_array[:, branch_index]
-                dump_contents.append(branch_content)
+                save_path = f"{save_dir}/{sample_key}_{branch}.npy"
+                numpy_io.save_npy_array(branch_content, save_path)
+                logger.debug(f"Array saved to: {save_path}")
             if len(output_bkg_node_names) == 0:
-                dump_branches.append("dnn_out")
-                dump_contents.append(predictions)
+                save_path = f"{save_dir}/{sample_key}_dnn_out.npy"
+                numpy_io.save_npy_array(predictions, save_path)
+                logger.debug(f"Array saved to: {save_path}")
             else:
                 for i, out_node in enumerate(["sig"] + output_bkg_node_names):
                     out_node = out_node.replace("+", "_")
-                    dump_branches.append("dnn_out_" + out_node)
-                    dump_contents.append(predictions[:, i])
-            # dump
-            platform_meta = config_utils.load_current_platform_meta()
-            data_path = platform_meta["data_path"]
-            ntup_path = f"{data_path}/{ntup_dir}/{sample_key}.root"
-            root_io.dump_ntup_from_npy(
-                "ntup", dump_branches, "f", dump_contents, ntup_path,
-            )
-            logger.info(f"Ntuples saved to: {ntup_path}")
+                    save_path = f"{save_dir}/{sample_key}_dnn_out_{out_node}.npy"
+                    numpy_io.save_npy_array(predictions[:, i], save_path)
+                    logger.debug(f"Array saved to: {save_path}")
 
 
 def get_mass_range(mass_array, weights, nsig=1):
@@ -98,25 +127,15 @@ def get_model_epoch_path_list(
         raise FileNotFoundError("Model file that matched the pattern not found.")
     model_dir = model_dir_list[-1]
     if len(model_dir_list) > 1:
-        print("More than one valid model file found, try to specify more infomation.")
-        print("Loading the last matched model path:", model_dir)
+        logger.warning(
+            "More than one valid model file found, try to specify more infomation."
+        )
+        logger.info(f"Loading the last matched model path: {model_dir}")
     else:
-        print("Loading model at:", model_dir)
+        logger.info("Loading model at: {model_dir}")
     search_pattern = model_dir + "/" + model_name + "_epoch*.h5"
     model_path_list = glob.glob(search_pattern)
     return model_path_list
-
-
-def get_valid_feature(xtrain):
-    """Gets valid inputs.
-
-    Note:
-        indice -2 is for channel
-        indice -1 is for weight
-
-    """
-    xtrain = xtrain[:, :-2]
-    return xtrain
 
 
 def generate_shuffle_index(array_len, shuffle_seed=None):
@@ -153,7 +172,7 @@ def norarray(array, average=None, variance=None, axis=None, weights=None):
         return array
     else:
         if (average is None) or (variance is None):
-            print("Warning! unspecified average or variance.")
+            logger.warn("Unspecified average or variance.")
             average, variance = get_mean_var(array, axis=axis, weights=weights)
         output_array = (array.copy() - average) / np.sqrt(variance)
         return output_array
@@ -164,7 +183,7 @@ def norarray_min_max(array, min, max, axis=None):
     middle = (min + max) / 2.0
     output_array = array.copy() - middle
     if max < min:
-        print("ERROR: max shouldn't be smaller than min.")
+        logger.error("ERROR: max shouldn't be smaller than min.")
         return None
     ratio = (max - min) / 2.0
     output_array = output_array / ratio
@@ -177,6 +196,7 @@ def split_and_combine(
     xb_weight,
     ys=None,
     yb=None,
+    output_keys=None,
     test_rate=0.2,
     shuffle_combined_array=True,
     shuffle_seed=None,
@@ -206,69 +226,111 @@ def split_and_combine(
         Signal/background separated.
 
     """
+    # prepare
+    if output_keys is None:
+        output_keys = COMB_KEYS + SEPA_KEYS
+    has_sepa = output_keys_has_sepa(output_keys)
+    has_comb = output_keys_has_comb(output_keys)
+    arr_sepa = DNN_Arrays_Separate()
+    arr_comb = DNN_Arrays_Combined()
     if ys is None:
         ys = np.ones(len(xs)).reshape(-1, 1)
     if yb is None:
         yb = np.zeros(len(xb)).reshape(-1, 1)
 
     (
-        xs_train,
-        xs_test,
-        ys_train,
-        ys_test,
-        xs_weight_train,
-        xs_weight_test,
+        arr_sepa.xs_train,
+        arr_sepa.xs_test,
+        arr_sepa.ys_train,
+        arr_sepa.ys_test,
+        arr_sepa.wts_train,
+        arr_sepa.wts_test,
     ) = array_utils.shuffle_and_split(
         xs, ys, xs_weight, split_ratio=1 - test_rate, shuffle_seed=shuffle_seed
     )
     (
-        xb_train,
-        xb_test,
-        yb_train,
-        yb_test,
-        xb_weight_train,
-        xb_weight_test,
+        arr_sepa.xb_train,
+        arr_sepa.xb_test,
+        arr_sepa.yb_train,
+        arr_sepa.yb_test,
+        arr_sepa.wtb_train,
+        arr_sepa.wtb_test,
     ) = array_utils.shuffle_and_split(
         xb, yb, xb_weight, split_ratio=1 - test_rate, shuffle_seed=shuffle_seed
     )
 
-    x_train = np.concatenate((xs_train, xb_train))
-    y_train = np.concatenate((ys_train, yb_train))
-    wt_train = np.concatenate((xs_weight_train, xb_weight_train))
-    x_test = np.concatenate((xs_test, xb_test))
-    y_test = np.concatenate((ys_test, yb_test))
-    wt_test = np.concatenate((xs_weight_test, xb_weight_test))
+    if has_comb:
+        arr_comb.x_train = np.concatenate((arr_sepa.xs_train, arr_sepa.xb_train))
+        arr_comb.y_train = np.concatenate((arr_sepa.ys_train, arr_sepa.yb_train))
+        arr_comb.wt_train = np.concatenate((arr_sepa.wts_train, arr_sepa.wtb_train))
+        arr_comb.x_test = np.concatenate((arr_sepa.xs_test, arr_sepa.xb_test))
+        arr_comb.y_test = np.concatenate((arr_sepa.ys_test, arr_sepa.yb_test))
+        arr_comb.wt_test = np.concatenate((arr_sepa.wts_test, arr_sepa.wtb_test))
+        if not has_sepa:
+            arr_sepa = None
+        if shuffle_combined_array:
+            # shuffle train dataset
+            shuffle_index = generate_shuffle_index(
+                len(arr_comb.y_train), shuffle_seed=shuffle_seed
+            )
+            arr_comb.x_train = arr_comb.x_train[shuffle_index]
+            arr_comb.y_train = arr_comb.y_train[shuffle_index]
+            arr_comb.wt_train = arr_comb.wt_train[shuffle_index]
+            # shuffle test dataset
+            shuffle_index = generate_shuffle_index(
+                len(arr_comb.y_test), shuffle_seed=shuffle_seed
+            )
+            arr_comb.x_test = arr_comb.x_test[shuffle_index]
+            arr_comb.y_test = arr_comb.y_test[shuffle_index]
+            arr_comb.wt_test = arr_comb.wt_test[shuffle_index]
 
-    if shuffle_combined_array:
-        # shuffle train dataset
-        shuffle_index = generate_shuffle_index(len(y_train), shuffle_seed=shuffle_seed)
-        x_train = x_train[shuffle_index]
-        y_train = y_train[shuffle_index]
-        wt_train = wt_train[shuffle_index]
-        # shuffle test dataset
-        shuffle_index = generate_shuffle_index(len(y_test), shuffle_seed=shuffle_seed)
-        x_test = x_test[shuffle_index]
-        y_test = y_test[shuffle_index]
-        wt_test = wt_test[shuffle_index]
+    out_arrays = {}
+    for key in output_keys:
+        if key in SEPA_KEYS:
+            out_arrays[key] = getattr(arr_sepa, key)
+        elif key in COMB_KEYS:
+            out_arrays[key] = getattr(arr_comb, key)
+        else:
+            logger.error(f"Unknown output_key: {key}")
 
-    return (
-        x_train,
-        x_test,
-        y_train,
-        y_test,
-        wt_train,
-        wt_test,
-        xs_train,
-        xs_test,
-        ys_train,
-        ys_test,
-        xs_weight_train,
-        xs_weight_test,
-        xb_train,
-        xb_test,
-        yb_train,
-        yb_test,
-        xb_weight_train,
-        xb_weight_test,
-    )
+    return out_arrays
 
+
+def output_keys_has_sepa(output_keys):
+    for key in output_keys:
+        if key in SEPA_KEYS:
+            return True
+    return False
+
+
+def output_keys_has_comb(output_keys):
+    for key in output_keys:
+        if key in COMB_KEYS:
+            return True
+    return False
+
+
+class DNN_Arrays_Separate(object):
+    def __init__(self):
+        self.xs_train = None
+        self.xs_test = None
+        self.ys_train = None
+        self.ys_test = None
+        self.wts_train = None
+        self.wts_test = None
+        self.xb_train = None
+        self.xb_test = None
+        self.yb_train = None
+        self.yb_test = None
+        self.wtb_train = None
+        self.wtb_test = None
+
+
+class DNN_Arrays_Combined(object):
+    def __init__(self):
+        self.x_train = None
+        self.x_test = None
+        self.y_train = None
+        self.y_test = None
+        self.wt_train = None
+        self.wt_test = None

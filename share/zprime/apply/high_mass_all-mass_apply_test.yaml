@@ -44,9 +44,8 @@ input:
 
 apply:
     #check_model_epoch: true
-    pop_plots: false
 
-    #book_history: true
+    book_history: true
     cfg_history:
         accuracy:
             plot_title: "accuracy history"
@@ -55,9 +54,9 @@ apply:
             plot_title: "loss history"
             save_format: "png"
 
-    #book_roc: true
+    book_roc: true
 
-    #book_mva_scores_data_mc: true
+    book_mva_scores_data_mc: true
     cfg_mva_scores_data_mc:
         sig_list:
             - "all_norm"
@@ -75,8 +74,10 @@ apply:
         save_format: "png"
         use_root: false
 
-    #book_train_test_compare: true
+    book_train_test_compare: true
     cfg_train_test_compare:
+        sig_key: "all_norm"
+        bkg_key: "all"
         plot_title: "train/test MVA scores compare"
         bins: 50
         range: [0, 1]
@@ -116,13 +117,14 @@ apply:
             #- 0.6
             #- 0.8
 
-    #book_importance_study: true
+    book_importance_study: true
 
-    #book_cor_matrix: true
+    book_cor_matrix: true
 
-    #book_significance_scan: true
+    book_significance_scan: true
     cfg_significance_scan:
         significance_algo: "s_sqrt_b_rel"
+
     ## TODO ## book_2d_significance_scan: true
     cfg_2d_significance_scan:
         significance_dnn_cut_min: 0.4
@@ -156,10 +158,9 @@ apply:
             - 78.7681
             - 82.0543
 
-    ## TODO ## book_fit_ntup: true
-    # book_fit_ntup: true
-    cfg_fit_ntup:
-        fit_ntup_region:
-        fit_ntup_branches:
+    book_fit_npy: true
+    cfg_fit_npy:
+        fit_npy_region:
+        fit_npy_branches:
             - "mz1"
-        ntup_save_dir: "zprime/ntuples/fit_ntup_1214_high_test"
+        npy_save_dir: "zprime/arrays_fit/all-mass-test"

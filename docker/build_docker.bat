@@ -1,2 +1,2 @@
-CALL docker build -t lfv/pdnn:v1 -m 32G .
+CALL docker build -t starp/hepynet:v0.4.0 .
 PAUSE

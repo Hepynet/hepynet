@@ -10,12 +10,13 @@ import warnings
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
-from easy_atlas_plot.plot_utils import plot_utils_root, th1_tools
-from lfv_pdnn.common import array_utils, common_utils
-from lfv_pdnn.data_io import feed_box, numpy_io
-from lfv_pdnn.train import train_utils
 from scipy.special import softmax
 from sklearn.metrics import auc, roc_auc_score, roc_curve
+
+from easy_atlas_plot.plot_utils import plot_utils_root, th1_tools
+from hepynet.common import array_utils, common_utils
+from hepynet.data_io import feed_box, numpy_io
+from hepynet.train import train_utils
 
 try:
     import ROOT
@@ -23,6 +24,8 @@ try:
     root_available = True
 except ImportError:
     root_available = False
+
+logger = logging.getLogger("hepynet")
 
 
 def plot_2d_density(
@@ -121,7 +124,7 @@ def plot_2d_significance_scan(
         dnn_cut_step = 0.05
     dnn_cut_list = np.arange(dnn_cut_min, dnn_cut_max, dnn_cut_step)
     w_inputs = []
-    print("Making 2d significance scan.")
+    logger.info("Making 2d significance scan.")
     ic = job_wrapper.job_config.input
     tc = job_wrapper.job_config.train
     ac = job_wrapper.job_config.apply

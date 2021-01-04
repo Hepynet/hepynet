@@ -1,14 +1,15 @@
 import logging
 import pathlib
 
-import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
+import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
-from easy_atlas_plot.plot_utils import plot_utils_root, th1_tools
-from lfv_pdnn.common import array_utils, config_utils
 
-logger = logging.getLogger("lfv_pdnn")
+from easy_atlas_plot.plot_utils import plot_utils_root, th1_tools
+from hepynet.common import array_utils, config_utils
+
+logger = logging.getLogger("hepynet")
 
 try:
     import ROOT
@@ -54,37 +55,35 @@ def paint_correlation_matrix(ax, corr_matrix_dict, matrix_key="bkg"):
 
 def plot_input_distributions(
     model_wrapper,
-    sig_key,
-    bkg_key,
-    apply_data=False,
-    figsize=(8, 6),
-    style_cfg_path=None,
-    show_reshaped=False,
+    job_config,
     dnn_cut=None,
     multi_class_cut_branch=0,
-    compare_cut_sb_separated=False,
-    plot_cfg=config_utils.Hepy_Config_Section({}),
     save_dir=None,
-    save_format="png",
+    show_reshaped=False,
+    compare_cut_sb_separated=False,
     use_root=False,
 ):
     """Plots input distributions comparision plots for sig/bkg/data"""
-    print("Plotting input distributions.")
-    config = plot_cfg.clone()
+    logger.info("Plotting input distributions.")
+    # setup config
+    ic = job_config.input.clone()
+    ac = job_config.apply.clone()
+    plot_cfg = ac.cfg_kine_study
+    # prepare
     feedbox = model_wrapper.feedbox
     if show_reshaped:  # validation features not supported in get_reshape yet
-        plot_feature_list = model_wrapper.selected_features
-        bkg_array, bkg_fill_weights = feedbox.get_reshape("xb", array_key=bkg_key)
-        sig_array, sig_fill_weights = feedbox.get_reshape("xs", array_key=sig_key)
+        plot_feature_list = ic.selected_features
+        bkg_array, bkg_fill_weights = feedbox.get_reshape("xb", array_key=ic.bkg_key)
+        sig_array, sig_fill_weights = feedbox.get_reshape("xs", array_key=ic.sig_key)
     else:
         plot_feature_list = (
-            model_wrapper.selected_features + model_wrapper.validation_features
+            ic.selected_features + ic.validation_features
         )
         bkg_array, bkg_fill_weights = feedbox.get_raw(
-            "xb", array_key=bkg_key, add_validation_features=True
+            "xb", array_key=ic.bkg_key, add_validation_features=True
         )
         sig_array, sig_fill_weights = feedbox.get_raw(
-            "xs", array_key=sig_key, add_validation_features=True
+            "xs", array_key=ic.sig_key, add_validation_features=True
         )
     if plot_cfg.density:
         bkg_fill_weights = bkg_fill_weights / np.sum(bkg_fill_weights)
@@ -95,7 +94,7 @@ def plot_input_distributions(
         assert dnn_cut >= 0 and dnn_cut <= 1, "dnn_cut out or range."
         # prepare signal
         sig_selected_arr, _ = feedbox.get_reweight(
-            "xs", array_key=sig_key, reset_mass=False
+            "xs", array_key=ic.sig_key, reset_mass=False
         )
         sig_predictions = model_wrapper.get_model().predict(sig_selected_arr)
         if sig_predictions.ndim == 2:
@@ -105,7 +104,7 @@ def plot_input_distributions(
         sig_fill_weights_dnn[sig_cut_index] = 0
         # prepare background
         bkg_selected_arr, _ = feedbox.get_reweight(
-            "xb", array_key=bkg_key, reset_mass=False
+            "xb", array_key=ic.bkg_key, reset_mass=False
         )
         bkg_predictions = model_wrapper.get_model().predict(bkg_selected_arr)
         if bkg_predictions.ndim == 2:
@@ -141,8 +140,8 @@ def plot_input_distributions(
         sig_fill_array = np.reshape(sig_array[:, feature_id], (-1, 1))
         if use_root and plot_utils_root.HAS_ROOT:
             plot_range = None
-            if feature in config.__dict__.keys():
-                feature_cfg = getattr(config, feature)
+            if feature in plot_cfg.__dict__.keys():
+                feature_cfg = getattr(plot_cfg, feature)
                 plot_range = feature_cfg.range
             plot_input_distributions_root(
                 feature,
@@ -158,7 +157,7 @@ def plot_input_distributions(
                 plot_range=plot_range,
                 plot_density=plot_cfg.density,
                 save_dir=save_dir,
-                save_format=save_format,
+                save_format="png",
                 print_ratio_table=plot_cfg.save_ratio_table,
             )
         else:
@@ -169,7 +168,7 @@ def plot_input_distributions(
                     sig_fill_weights,
                     bkg_fill_array,
                     bkg_fill_weights,
-                    plot_config=config,
+                    plot_config=plot_cfg,
                     save_dir=save_dir,
                 )
             else:
@@ -181,7 +180,7 @@ def plot_input_distributions(
                     bkg_fill_array,
                     bkg_fill_weights,
                     bkg_fill_weights_dnn,
-                    plot_config=config,
+                    plot_config=plot_cfg,
                     save_dir=save_dir,
                 )
 
