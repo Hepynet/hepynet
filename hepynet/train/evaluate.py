@@ -13,15 +13,14 @@ import seaborn as sns
 from scipy.special import softmax
 from sklearn.metrics import auc, roc_auc_score, roc_curve
 
-from easy_atlas_plot.plot_utils import plot_utils_root, th1_tools
 from hepynet.common import array_utils, common_utils
 from hepynet.data_io import feed_box, numpy_io
 from hepynet.train import train_utils
 
 try:
     import ROOT
-
     root_available = True
+    from easy_atlas_plot.plot_utils import plot_utils_root, th1_tools
 except ImportError:
     root_available = False
 

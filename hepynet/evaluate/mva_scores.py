@@ -4,9 +4,15 @@ import logging
 import matplotlib.pyplot as plt
 import numpy as np
 
-from easy_atlas_plot.plot_utils import plot_utils_plt, plot_utils_root, th1_tools
 from hepynet.evaluate import evaluate_utils
 from hepynet.common.common_utils import get_default_if_none
+
+try:
+    import ROOT
+    root_available = True
+    from easy_atlas_plot.plot_utils import plot_utils_root, th1_tools
+except ImportError:
+    root_available = False
 
 logger = logging.getLogger("hepynet")
 

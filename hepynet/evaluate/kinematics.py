@@ -6,15 +6,16 @@ import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 
-from easy_atlas_plot.plot_utils import plot_utils_root, th1_tools
 from hepynet.common import array_utils, config_utils
 
 logger = logging.getLogger("hepynet")
 
 try:
     import ROOT
-except:
-    pass
+    root_available = True
+    from easy_atlas_plot.plot_utils import plot_utils_root, th1_tools
+except ImportError:
+    root_available = False
 
 
 def plot_correlation_matrix(model_wrapper, save_dir="."):
