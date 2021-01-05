@@ -1,6 +1,6 @@
 config:
     include:
-        - "share/zprime/train/default_1012_high.yaml"
+        - "share/zprime/train/high_mass_all_mass.yaml"
 
 job:
     job_name: "train-63"
@@ -8,34 +8,9 @@ job:
     save_dir: "run/zprime/high_mass"
 
 input:
-    norm_array: true
     bkg_key: "all"
     sig_key: "sig_Zp063"
-    # all features
-    selected_features:
-        - "mz1"
-        - "ptl1"
-        - "ptl2"
-        - "ptl3"
-        - "ptl4"
-        - "etal1"
-        - "etal2"
-        - "etal3"
-        - "etal4"
-        - "mz1_mz2"
-        - "ptz1"
-        - "ptz2"
-        - "mzz"
-        - "ptzz"
-        - "deltarl12"
-        - "deltarl34"
-        - "detal12"
-        - "detal34"
-    validation_features:
-        - "mz2"
     reset_feature: false
-    reset_feature_name: "mz1"
-    rm_negative_weight_events: true
     cut_features:
         - "quadtype"
         - "mz1"
@@ -48,32 +23,3 @@ input:
         - "="
         - ">"
         - "<"
-
-train:
-    model_name: "zprime_pdnn_model"
-    model_class: "Model_Sequential_Flat"
-    layers: 5
-    nodes: 128
-    dropout_rate: 0
-    momentum: 0.5
-    nesterov: true
-    test_rate: .2
-    val_split: .25
-    learn_rate: 0.0003
-    learn_rate_decay: 1.e-5
-    batch_size: 512
-    epochs: 100
-    sig_class_weight: 1.
-    bkg_class_weight: 1.
-    # early stop setups
-    use_early_stop: true
-    early_stop_paras:
-        monitor: "val_loss"
-        min_delta: 0
-        patience: 5
-        mode: "min"
-        restore_best_weights: true
-    # save model or not
-    save_model: true
-
-    verbose: 1
