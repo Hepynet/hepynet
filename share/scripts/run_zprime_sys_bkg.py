@@ -1,5 +1,5 @@
-import subprocess
 import os
+import subprocess
 
 bkg_ntuple_names = [
     "tree_NOMINAL",
@@ -202,5 +202,5 @@ bkg_ntuple_names = [
 command_template = "hepynet -d ./share/zprime/apply/high_mass_sys/high_mass_all-mass_apply_sys_bkg_{p_variation}.yaml"
 
 for variation in bkg_ntuple_names:
-    #subprocess.call()
+    # subprocess.call()
     os.system(command_template.format(p_variation=variation))
