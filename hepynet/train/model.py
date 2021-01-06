@@ -305,6 +305,7 @@ class Model_Sequential_Base(Model_Base):
         if job_config.job.job_type == "apply":
             feedbox.load_sig_arrays()
             feedbox.load_bkg_arrays()
+        self._model_meta["norm_dict"] = copy.deepcopy(feedbox.get_norm_dict())
         self.feedbox = feedbox
         self._array_prepared = feedbox._array_prepared
 

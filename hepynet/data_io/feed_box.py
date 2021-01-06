@@ -94,6 +94,9 @@ class Feedbox(object):
     def get_job_config(self):
         return self._job_config
 
+    def get_norm_dict(self):
+        return self._norm_dict
+
     def get_raw(self, input_type, array_key="all", add_validation_features=False):
         array_out = None
         weight_out = None
