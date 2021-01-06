@@ -7,3 +7,6 @@ platform_meta:
     "377913bc37c1":
         "Linux-5.4.72-microsoft-standard-WSL2-x86_64-with-Ubuntu-18.04-bionic":
             "data_path": "/data"
+    "gpuatum02":
+        "Linux-3.10.0-1127.19.1.el7.x86_64-x86_64-with-glibc2.10":
+            "data_path": "/net/s3_datae/yangz"
