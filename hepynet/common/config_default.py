@@ -17,6 +17,7 @@ DEFAULT_CFG = {
         "rdm_seed": 1024,
         "arr_path": "",
         "arr_version": "",
+        "variation": "",
         "campaign": "",
         "region": "",
         "channel": "",

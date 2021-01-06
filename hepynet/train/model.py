@@ -36,6 +36,7 @@ from keras.models import Sequential
 from keras.optimizers import SGD, Adagrad, Adam, RMSprop
 
 from hepynet.common import array_utils, common_utils
+from hepynet.data_io import feed_box
 from hepynet.train import evaluate, train_utils
 
 
@@ -237,6 +238,7 @@ class Model_Sequential_Base(Model_Base):
         self._job_config.update(paras_dict["job_config_dict"])
 
         model_meta_save = paras_dict["model_meta"]
+        self._model_meta = model_meta_save
         self._model_name = model_meta_save["model_name"]
         self._model_label = model_meta_save["model_label"]
         self._model_note = model_meta_save["model_note"]
@@ -294,11 +296,17 @@ class Model_Sequential_Base(Model_Base):
         with open(save_path, "w") as write_file:
             yaml.dump(paras_dict, write_file, indent=2)
 
-    def set_inputs(self, feedbox: dict) -> None:
+    def set_inputs(self, job_config) -> None:
         """Prepares array for training."""
+        feedbox = feed_box.Feedbox(
+            job_config,
+            model_meta=self.get_model_meta(),
+        )
+        if job_config.job.job_type == "apply":
+            feedbox.load_sig_arrays()
+            feedbox.load_bkg_arrays()
         self.feedbox = feedbox
         self._array_prepared = feedbox._array_prepared
-        self._model_meta["norm_dict"] = feedbox._norm_dict
 
     def train(
         self, job_config, model_save_dir=None, file_name=None,

@@ -149,3 +149,8 @@ def save_npy_array(
     save_path.cwd().mkdir(parents=True, exist_ok=True)
     with open(save_path, "wb") as f:
         np.save(f, npy_array)
+    logger.debug(f"Array saved to: {save_path}")
+    logger.debug(f"Array contents:\n {npy_array}")
+    logger.debug(f"Array average:\n {np.average(npy_array)}")
+    logger.debug(f"Array sum:\n {np.sum(npy_array)}")
+    

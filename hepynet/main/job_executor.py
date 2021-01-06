@@ -17,7 +17,7 @@ from sklearn.metrics import auc, roc_curve
 
 from hepynet.common import array_utils, common_utils, config_utils
 from hepynet.common.hepy_const import SCANNED_PARAS
-from hepynet.data_io import feed_box, numpy_io
+from hepynet.data_io import numpy_io
 from hepynet.evaluate import (
     importance,
     kinematics,
@@ -574,7 +574,7 @@ class job_executor(object):
         ic = self.job_config.input
         rc = self.job_config.run
         rc.datestr = datestr
-        rc.npy_path = f"{ic.arr_path}/{ic.arr_version}"
+        rc.npy_path = f"{ic.arr_path}/{ic.arr_version}/{ic.variation}"
         if ic.selected_features:
             rc.input_dim = len(ic.selected_features)
         rc.config_collected = True
@@ -631,19 +631,12 @@ class job_executor(object):
         jc = self.job_config.job
         rc = self.job_config.run
         tc = self.job_config.train
-        # setup feedbox
+        # load model for "apply" job
         if jc.job_type == "apply":
             self.model_wrapper.load_model(
                 rc.load_dir, tc.model_name, job_name=jc.load_job_name,
             )
-        feedbox = feed_box.Feedbox(
-            self.job_config,
-            model_meta=self.model_wrapper.get_model_meta(),
-        )
-        if jc.job_type == "apply":
-            feedbox.load_sig_arrays()
-            feedbox.load_bkg_arrays()
-        self.model_wrapper.set_inputs(feedbox)
+        self.model_wrapper.set_inputs(self.job_config)
 
     def set_save_dir(self) -> None:
         """Sets the directory to save the outputs"""

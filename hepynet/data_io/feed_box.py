@@ -57,6 +57,7 @@ class Feedbox(object):
                 no_norm_paras = False
         norm_dict = {}
         if no_norm_paras:
+            logger.info(f"No norm_dict found, recalculating norm parameters")
             if self._bkg_dict is not None:
                 xb_dict = self._bkg_dict
             else:
