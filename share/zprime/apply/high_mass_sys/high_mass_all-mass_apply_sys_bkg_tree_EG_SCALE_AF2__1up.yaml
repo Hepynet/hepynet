@@ -20,10 +20,30 @@ input:
     sig_list: []
     bkg_list:
         - "bkg_qcd"
-
+    selected_features:
+        - "mz1"
+        - "ptl1"
+        - "ptl2"
+        - "ptl3"
+        - "ptl4"
+        - "etal1"
+        - "etal2"
+        - "etal3"
+        - "etal4"
+        - "mz1_mz2"
+        - "ptz1"
+        - "ptz2"
+        - "mzz"
+        - "ptzz"
+        - "deltarl12"
+        - "deltarl34"
+        - "detal12"
+        - "detal34"
     validation_features:
         - "mz1"
         - "mz2"
+    feature_norm_alias:
+        mz1: "mz1_p"
 
 apply:
     book_fit_npy: true

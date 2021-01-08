@@ -15,7 +15,7 @@ input:
     arr_path: "zprime/arrays"
     arr_version: "1220-sys"
     variation: "tree_JET_PunchThrough_MC16__1up"
-    campaign: "mc16d"
+    campaign: "run2"
     channel: "dummy_channel"
     sig_list:
         - "sig_Zp042"
@@ -31,10 +31,30 @@ input:
         - "sig_Zp072"
         - "sig_Zp075"
     bkg_list: []
-
+    selected_features:
+        - "mz1"
+        - "ptl1"
+        - "ptl2"
+        - "ptl3"
+        - "ptl4"
+        - "etal1"
+        - "etal2"
+        - "etal3"
+        - "etal4"
+        - "mz1_mz2"
+        - "ptz1"
+        - "ptz2"
+        - "mzz"
+        - "ptzz"
+        - "deltarl12"
+        - "deltarl34"
+        - "detal12"
+        - "detal34"
     validation_features:
         - "mz1"
         - "mz2"
+    feature_norm_alias:
+        mz1: "mz1_p"
 
 apply:
     book_fit_npy: true
