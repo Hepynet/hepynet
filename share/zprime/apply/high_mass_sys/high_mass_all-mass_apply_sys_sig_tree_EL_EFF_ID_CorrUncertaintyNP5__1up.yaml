@@ -63,5 +63,5 @@ apply:
         fit_npy_branches:
             - "mz1"
             - "mz2"
-        npy_save_dir: "zprime/arrays_fit/1220-sys/tree_EL_EFF_ID_CorrUncertaintyNP5__1up"
+        npy_save_dir: "zprime/arrays_fit/1220-sys/high_mass/tree_EL_EFF_ID_CorrUncertaintyNP5__1up"
 

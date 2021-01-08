@@ -52,7 +52,7 @@ apply:
         fit_npy_branches:
             - "mz1"
             - "mz2"
-        npy_save_dir: "zprime/arrays_fit/1220-sys/{p_variation}"
+        npy_save_dir: "zprime/arrays_fit/1220-sys/low_mass/{p_variation}"
 
 """
 

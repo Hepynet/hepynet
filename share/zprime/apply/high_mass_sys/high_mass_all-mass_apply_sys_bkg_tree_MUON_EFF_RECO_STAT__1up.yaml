@@ -52,5 +52,5 @@ apply:
         fit_npy_branches:
             - "mz1"
             - "mz2"
-        npy_save_dir: "zprime/arrays_fit/1220-sys/tree_MUON_EFF_RECO_STAT__1up"
+        npy_save_dir: "zprime/arrays_fit/1220-sys/high_mass/tree_MUON_EFF_RECO_STAT__1up"
 

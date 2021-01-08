@@ -63,5 +63,5 @@ apply:
         fit_npy_branches:
             - "mz1"
             - "mz2"
-        npy_save_dir: "zprime/arrays_fit/1220-sys/tree_JET_EffectiveNP_Mixed3__1down"
+        npy_save_dir: "zprime/arrays_fit/1220-sys/high_mass/tree_JET_EffectiveNP_Mixed3__1down"
 
