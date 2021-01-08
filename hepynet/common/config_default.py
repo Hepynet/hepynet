@@ -8,6 +8,7 @@ DEFAULT_CFG = {
     },
     "input": {
         "norm_array": True,
+        "feature_norm_alias":{},
         "sig_sumofweight": 1000,
         "bkg_sumofweight": 1000,
         "data_sumofweight": 1000,

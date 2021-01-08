@@ -1,9 +1,9 @@
-temp = '''config:
+temp = """config:
     include:
-        - "share/zprime/train/high_mass_all_mass.yaml"
+        - "share/zprime/train/low_mass_all_mass.yaml"
 
 job:
-    job_name: "apply-all-mass-sys-sig"
+    job_name: "apply-all-mass-sys-bkg"
     job_type: "apply"
     load_job_name: "train-all-mass"
 
@@ -15,24 +15,13 @@ input:
     arr_path: "zprime/arrays"
     arr_version: "1220-sys"
     variation: "{p_variation}"
-    campaign: "run2"
+    campaign: "mc16d"
     channel: "dummy_channel"
-    sig_list:
-        - "sig_Zp042"
-        - "sig_Zp045"
-        - "sig_Zp048"
-        - "sig_Zp051"
-        - "sig_Zp054"
-        - "sig_Zp057"
-        - "sig_Zp060"
-        - "sig_Zp063"
-        - "sig_Zp066"
-        - "sig_Zp069"
-        - "sig_Zp072"
-        - "sig_Zp075"
-    bkg_list: []
+    sig_list: []
+    bkg_list:
+        - "bkg_qcd"
     selected_features:
-        - "mz1"
+        - "mz2"
         - "ptl1"
         - "ptl2"
         - "ptl3"
@@ -54,7 +43,7 @@ input:
         - "mz1"
         - "mz2"
     feature_norm_alias:
-        mz1: "mz1_p"
+        mz2: "mz2_p"
 
 apply:
     book_fit_npy: true
@@ -65,9 +54,9 @@ apply:
             - "mz2"
         npy_save_dir: "zprime/arrays_fit/1220-sys/{p_variation}"
 
-'''
+"""
 
-sig_ntuple_names = [
+bkg_ntuple_names = [
     "tree_NOMINAL",
     "tree_EG_RESOLUTION_ALL__1down",
     "tree_EG_RESOLUTION_ALL__1up",
@@ -265,7 +254,7 @@ sig_ntuple_names = [
     "tree_PRW_DATASF__1up",
 ]
 
-for variation in sig_ntuple_names:
-    with open(f"high_mass_all-mass_apply_sys_sig_{variation}.yaml", "w+") as file:
+for variation in bkg_ntuple_names:
+    with open(f"low_mass_all-mass_apply_sys_bkg_{variation}.yaml", "w+") as file:
         file.write(temp.format(p_variation=variation))
 

@@ -2,6 +2,8 @@ import csv
 import logging
 import pathlib
 
+import git
+
 import hepynet
 
 logger = logging.getLogger("hepynet")
@@ -23,12 +25,13 @@ def get_valid_cfg_path(path):
     if pathlib.Path(path).is_file():
         return path
     # Check try add share folder prefix
-    hepynet_dir = os.path.dirname(os.path.dirname(hepynet.__file__))
+    repo = git.Repo('.', search_parent_directories=True)
+    hepynet_dir = repo.working_tree_dir
     logger.debug(f"Get hepynet dir: {hepynet_dir}")
     cfg_path = f"{hepynet_dir}/{path}"
-    if os.path.isfile(cfg_path):
+    if pathlib.Path(cfg_path).is_file():
         return cfg_path
-    elif os.path.isdir(cfg_path):
+    elif pathlib.Path(cfg_path).is_dir():
         logger.critical(
             f"Expect a config file path but get directory path: {cfg_path}, please check .ini file."
         )

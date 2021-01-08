@@ -165,20 +165,49 @@ class Feedbox(object):
         norm_variances = []
         xb_dict = None
         for feature in self._ic.selected_features:
-            if feature not in self._norm_dict:
-                if xb_dict is None:
-                    xb_dict = numpy_io.load_npy_arrays(self._job_config, "bkg")
-                feature_array = np.concatenate(
-                    [sample_dict[feature] for sample_dict in xb_dict.values()]
-                )
-                weight_array = np.concatenate(
-                    [sample_dict["weight"] for sample_dict in xb_dict.values()]
-                )
-                mean = np.average(feature_array, weights=weight_array)
-                variance = np.average((feature_array - mean) ** 2, weights=weight_array)
-                self._norm_dict[feature] = {"mean": mean, "variance": variance}
-            norm_means.append(self._norm_dict[feature]["mean"])
-            norm_variances.append(self._norm_dict[feature]["variance"])
+            norm_alias = self._job_config.input.feature_norm_alias.get_config_dict()
+            mean = None
+            variance = None
+            if feature in self._norm_dict:
+                mean = self._norm_dict[feature]["mean"]
+                variance = self._norm_dict[feature]["variance"]
+            else:
+                found_norm_alias = False
+                # check feature normalization alias
+                if feature in norm_alias:
+                    alias_feature = norm_alias[feature]
+                    if alias_feature in self._norm_dict:
+                        logger.debug(f"Using norm_alias for: {feature}")
+                        mean = self._norm_dict[alias_feature]["mean"]
+                        variance = self._norm_dict[alias_feature]["variance"]
+                        found_norm_alias = True
+                    else:
+                        logger.warn(
+                            f"Specified but can't find norm_alias for: {feature}"
+                        )
+                # recalculate if no existing mean/variance found
+                if not found_norm_alias:
+                    logger.debug("Recalculating normalization parameters for {feature}")
+                    if xb_dict is None:
+                        xb_dict = numpy_io.load_npy_arrays(self._job_config, "bkg")
+                    if not xb_dict:
+                        logger.critical(
+                            f"Can't recalculate norm factor with empty background inputs, please check input.bkg_list"
+                        )
+                        exit(1)
+                    feature_array = np.concatenate(
+                        [sample_dict[feature] for sample_dict in xb_dict.values()]
+                    )
+                    weight_array = np.concatenate(
+                        [sample_dict["weight"] for sample_dict in xb_dict.values()]
+                    )
+                    mean = np.average(feature_array, weights=weight_array)
+                    variance = np.average(
+                        (feature_array - mean) ** 2, weights=weight_array
+                    )
+                    self._norm_dict[feature] = {"mean": mean, "variance": variance}
+            norm_means.append(mean)
+            norm_variances.append(variance)
         x_reshape = train_utils.norarray(
             x_reshape, average=norm_means, variance=norm_variances,
         )

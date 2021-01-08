@@ -31,6 +31,7 @@ setuptools.setup(
         "seaborn",
         "hyperopt",
         "eli5",
+	"gitpython",
     ],
     entry_points={"console_scripts": ["hepynet=hepynet.main.execute:execute"]},
 )

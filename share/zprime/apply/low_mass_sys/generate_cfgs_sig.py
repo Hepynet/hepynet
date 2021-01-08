@@ -1,6 +1,6 @@
 temp = '''config:
     include:
-        - "share/zprime/train/high_mass_all_mass.yaml"
+        - "share/zprime/train/low_mass_all_mass.yaml"
 
 job:
     job_name: "apply-all-mass-sys-sig"
@@ -32,7 +32,7 @@ input:
         - "sig_Zp075"
     bkg_list: []
     selected_features:
-        - "mz1"
+        - "mz2"
         - "ptl1"
         - "ptl2"
         - "ptl3"
@@ -54,7 +54,7 @@ input:
         - "mz1"
         - "mz2"
     feature_norm_alias:
-        mz1: "mz1_p"
+        mz2: "mz2_p"
 
 apply:
     book_fit_npy: true
@@ -266,6 +266,6 @@ sig_ntuple_names = [
 ]
 
 for variation in sig_ntuple_names:
-    with open(f"high_mass_all-mass_apply_sys_sig_{variation}.yaml", "w+") as file:
+    with open(f"low_mass_all-mass_apply_sys_sig_{variation}.yaml", "w+") as file:
         file.write(temp.format(p_variation=variation))
 
