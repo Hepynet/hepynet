@@ -15,7 +15,7 @@ input:
     arr_path: "zprime/arrays"
     arr_version: "1220-sys"
     variation: "tree_MUON_ID__1up"
-    campaign: "mc16d"
+    campaign: "run2"
     channel: "dummy_channel"
     sig_list: []
     bkg_list:
