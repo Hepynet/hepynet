@@ -13,7 +13,7 @@ input:
     rm_negative_weight_events: false
     # apply to sys trees
     arr_path: "zprime/arrays"
-    arr_version: "1220-sys"
+    arr_version: "21-0115-sys"
     variation: "{p_variation}"
     campaign: "run2"
     channel: "dummy_channel"
@@ -64,7 +64,7 @@ apply:
         fit_npy_branches:
             - "mz1"
             - "mz2"
-        npy_save_dir: "zprime/arrays_fit/1220-sys/low_mass/{p_variation}"
+        npy_save_dir: "zprime/arrays_fit/21-0115-sys/low_mass/{p_variation}"
 
 '''
 
