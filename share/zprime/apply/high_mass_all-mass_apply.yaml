@@ -87,7 +87,7 @@ apply:
         log: false
         save_format: "png"
 
-    book_kine_study: true
+    #book_kine_study: true
     book_cut_kine_study: true
     cfg_kine_study:
         separate_sig_bkg: true # only valid for no DNN cut kinematics
@@ -102,6 +102,10 @@ apply:
         bkg_color: royalblue
         mz1_p:
             range: [30, 110]
+        mz1:
+            range: [40, 80]
+        mz2:
+            range: [0, 45]
         ptl1:
             range: [0, 200]
         ptl2:
@@ -114,9 +118,11 @@ apply:
             range: [0, 200]
         ptz2:
             range: [0, 100]
+        ptzz:
+            range: [0, 80]
         dnn_cut_list:
             - 0.5
-            #- 0.6
+            - 0.7
             #- 0.8
 
     book_importance_study: true
@@ -127,7 +133,7 @@ apply:
     cfg_significance_scan:
         significance_algo: "s_sqrt_b_rel"
 
-    book_fit_npy: true
+    #book_fit_npy: true
     cfg_fit_npy:
         fit_npy_region:
         fit_npy_branches:
