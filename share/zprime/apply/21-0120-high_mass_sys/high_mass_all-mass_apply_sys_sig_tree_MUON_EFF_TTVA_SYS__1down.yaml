@@ -1,0 +1,67 @@
+config:
+    include:
+        - "share/zprime/train/high_mass_all_mass.yaml"
+
+job:
+    job_name: "apply-all-mass-sys-sig"
+    job_type: "apply"
+    load_job_name: "train-all-mass"
+
+input:
+    reset_feature: false
+    # only remove negative events for training
+    rm_negative_weight_events: false
+    # apply to sys trees
+    arr_path: "zprime/arrays"
+    arr_version: "21-0120-sys"
+    variation: "tree_MUON_EFF_TTVA_SYS__1down"
+    campaign: "run2"
+    channel: "dummy_channel"
+    sig_list:
+        - "sig_Zp042"
+        - "sig_Zp045"
+        - "sig_Zp048"
+        - "sig_Zp051"
+        - "sig_Zp054"
+        - "sig_Zp057"
+        - "sig_Zp060"
+        - "sig_Zp063"
+        - "sig_Zp066"
+        - "sig_Zp069"
+        - "sig_Zp072"
+        - "sig_Zp075"
+    bkg_list: []
+    selected_features:
+        - "mz1"
+        - "ptl1"
+        - "ptl2"
+        - "ptl3"
+        - "ptl4"
+        - "etal1"
+        - "etal2"
+        - "etal3"
+        - "etal4"
+        - "mz1_mz2"
+        - "ptz1"
+        - "ptz2"
+        - "mzz"
+        - "ptzz"
+        - "deltarl12"
+        - "deltarl34"
+        - "detal12"
+        - "detal34"
+    validation_features:
+        - "mz1"
+        - "mz2"
+    feature_norm_alias:
+        mz1: "mz1_p"
+
+apply:
+    book_fit_npy: true
+    cfg_fit_npy:
+        fit_npy_region:
+        fit_npy_branches:
+            - "mz1"
+            - "mz2"
+        npy_save_dir: "zprime/arrays_fit/21-0120-sys/high_mass/tree_MUON_EFF_TTVA_SYS__1down"
+
