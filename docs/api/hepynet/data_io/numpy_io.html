@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1" />
+<meta name="generator" content="pdoc 0.9.2" />
+<title>hepynet.data_io.numpy_io API documentation</title>
+<meta name="description" content="Loads arrays for training …" />
+<link rel="preload stylesheet" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/11.0.1/sanitize.min.css" integrity="sha256-PK9q560IAAa6WVRRh76LtCaI8pjTJ2z11v0miyNNjrs=" crossorigin>
+<link rel="preload stylesheet" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/11.0.1/typography.min.css" integrity="sha256-7l/o7C8jubJiy74VsKTidCy1yBkRtiUGbVkYBylBqUg=" crossorigin>
+<link rel="stylesheet preload" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.1.1/styles/github.min.css" crossorigin>
+<style>:root{--highlight-color:#fe9}.flex{display:flex !important}body{line-height:1.5em}#content{padding:20px}#sidebar{padding:30px;overflow:hidden}#sidebar > *:last-child{margin-bottom:2cm}.http-server-breadcrumbs{font-size:130%;margin:0 0 15px 0}#footer{font-size:.75em;padding:5px 30px;border-top:1px solid #ddd;text-align:right}#footer p{margin:0 0 0 1em;display:inline-block}#footer p:last-child{margin-right:30px}h1,h2,h3,h4,h5{font-weight:300}h1{font-size:2.5em;line-height:1.1em}h2{font-size:1.75em;margin:1em 0 .50em 0}h3{font-size:1.4em;margin:25px 0 10px 0}h4{margin:0;font-size:105%}h1:target,h2:target,h3:target,h4:target,h5:target,h6:target{background:var(--highlight-color);padding:.2em 0}a{color:#058;text-decoration:none;transition:color .3s ease-in-out}a:hover{color:#e82}.title code{font-weight:bold}h2[id^="header-"]{margin-top:2em}.ident{color:#900}pre code{background:#f8f8f8;font-size:.8em;line-height:1.4em}code{background:#f2f2f1;padding:1px 4px;overflow-wrap:break-word}h1 code{background:transparent}pre{background:#f8f8f8;border:0;border-top:1px solid #ccc;border-bottom:1px solid #ccc;margin:1em 0;padding:1ex}#http-server-module-list{display:flex;flex-flow:column}#http-server-module-list div{display:flex}#http-server-module-list dt{min-width:10%}#http-server-module-list p{margin-top:0}.toc ul,#index{list-style-type:none;margin:0;padding:0}#index code{background:transparent}#index h3{border-bottom:1px solid #ddd}#index ul{padding:0}#index h4{margin-top:.6em;font-weight:bold}@media (min-width:200ex){#index .two-column{column-count:2}}@media (min-width:300ex){#index .two-column{column-count:3}}dl{margin-bottom:2em}dl dl:last-child{margin-bottom:4em}dd{margin:0 0 1em 3em}#header-classes + dl > dd{margin-bottom:3em}dd dd{margin-left:2em}dd p{margin:10px 0}.name{background:#eee;font-weight:bold;font-size:.85em;padding:5px 10px;display:inline-block;min-width:40%}.name:hover{background:#e0e0e0}dt:target .name{background:var(--highlight-color)}.name > span:first-child{white-space:nowrap}.name.class > span:nth-child(2){margin-left:.4em}.inherited{color:#999;border-left:5px solid #eee;padding-left:1em}.inheritance em{font-style:normal;font-weight:bold}.desc h2{font-weight:400;font-size:1.25em}.desc h3{font-size:1em}.desc dt code{background:inherit}.source summary,.git-link-div{color:#666;text-align:right;font-weight:400;font-size:.8em;text-transform:uppercase}.source summary > *{white-space:nowrap;cursor:pointer}.git-link{color:inherit;margin-left:1em}.source pre{max-height:500px;overflow:auto;margin:0}.source pre code{font-size:12px;overflow:visible}.hlist{list-style:none}.hlist li{display:inline}.hlist li:after{content:',\2002'}.hlist li:last-child:after{content:none}.hlist .hlist{display:inline;padding-left:1em}img{max-width:100%}td{padding:0 .5em}.admonition{padding:.1em .5em;margin-bottom:1em}.admonition-title{font-weight:bold}.admonition.note,.admonition.info,.admonition.important{background:#aef}.admonition.todo,.admonition.versionadded,.admonition.tip,.admonition.hint{background:#dfd}.admonition.warning,.admonition.versionchanged,.admonition.deprecated{background:#fd4}.admonition.error,.admonition.danger,.admonition.caution{background:lightpink}</style>
+<style media="screen and (min-width: 700px)">@media screen and (min-width:700px){#sidebar{width:30%;height:100vh;overflow:auto;position:sticky;top:0}#content{width:70%;max-width:100ch;padding:3em 4em;border-left:1px solid #ddd}pre code{font-size:1em}.item .name{font-size:1em}main{display:flex;flex-direction:row-reverse;justify-content:flex-end}.toc ul ul,#index ul{padding-left:1.5em}.toc > ul > li{margin-top:.5em}}</style>
+<style media="print">@media print{#sidebar h1{page-break-before:always}.source{display:none}}@media print{*{background:transparent !important;color:#000 !important;box-shadow:none !important;text-shadow:none !important}a[href]:after{content:" (" attr(href) ")";font-size:90%}a[href][title]:after{content:none}abbr[title]:after{content:" (" attr(title) ")"}.ir a:after,a[href^="javascript:"]:after,a[href^="#"]:after{content:""}pre,blockquote{border:1px solid #999;page-break-inside:avoid}thead{display:table-header-group}tr,img{page-break-inside:avoid}img{max-width:100% !important}@page{margin:0.5cm}p,h2,h3{orphans:3;widows:3}h1,h2,h3,h4,h5,h6{page-break-after:avoid}}</style>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.1.1/highlight.min.js" integrity="sha256-Uv3H6lx7dJmRfRvH8TH6kJD1TSK1aFcwgx+mdg3epi8=" crossorigin></script>
+<script>window.addEventListener('DOMContentLoaded', () => hljs.initHighlighting())</script>
+</head>
+<body>
+<main>
+<article id="content">
+<header>
+<h1 class="title">Module <code>hepynet.data_io.numpy_io</code></h1>
+</header>
+<section id="section-intro">
+<p>Loads arrays for training.</p>
+<h2 id="note">Note</h2>
+<ol>
+<li>Arrays organized by dictionary, each key is corresponding to a sample component</li>
+<li>Each sample component is a sub-dictionary, each key is corresponding to a input feature's array</li>
+</ol>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">&#34;&#34;&#34;Loads arrays for training.
+
+Note:
+  1. Arrays organized by dictionary, each key is corresponding to a sample component
+  2. Each sample component is a sub-dictionary, each key is corresponding to a input feature&#39;s array 
+
+&#34;&#34;&#34;
+import logging
+import pathlib
+import numpy as np
+
+from hepynet.common import array_utils, common_utils, config_utils
+
+logger = logging.getLogger(&#34;hepynet&#34;)
+
+
+def load_npy_arrays(
+    job_config, array_type,
+):
+    &#34;&#34;&#34;Gets individual npy arrays with given info.
+
+    Return:
+        A dict of subdict for different samples
+            example: signal dict of rpv_500 rpv_1000 rpv_2000
+        Each subdict is a dict of different variable
+            examples: pT, eta, phi
+
+    &#34;&#34;&#34;
+    # get settings from config file
+    rc = job_config.run.clone()
+    ic = job_config.input.clone()
+    if array_type == &#34;sig&#34;:
+        samples = ic.sig_list
+    elif array_type == &#34;bkg&#34;:
+        samples = ic.bkg_list
+    elif array_type == &#34;data&#34;:
+        samples = ic.data_list
+    else:
+        logger.critical(f&#34;Unsupported array_type: {array_type}&#34;)
+        exit(1)
+
+    # check different situation
+    if type(samples) != list:
+        sample_list = [samples]
+    else:
+        sample_list = samples
+    if ic.campaign in [&#34;run2&#34;, &#34;all&#34;]:
+        campaign_list = [&#34;mc16a&#34;, &#34;mc16d&#34;, &#34;mc16e&#34;]
+    elif &#34;+&#34; in ic.campaign:
+        campaign_list = [camp.strip() for camp in ic.campaign.split(&#34;+&#34;)]
+    else:
+        campaign_list = [ic.campaign]
+
+    # load arrays
+    included_features = ic.selected_features[:]
+    if ic.validation_features is None:
+        ic.validation_features = (
+            []
+        )  # TODO: need to solve this using a global default config setting in the future
+    included_features = list(
+        set().union(included_features, ic.validation_features, [&#34;weight&#34;])
+    )
+    if (
+        ic.cut_features is None
+    ):  # TODO: need to solve this using a global default config setting in the future
+        ic.cut_features = []
+        ic.cut_values = []
+        ic.cut_types = []
+    ic.cut_features += [ic.channel]
+    ic.cut_values += [1]
+    ic.cut_types += [&#34;=&#34;]
+    out_dict = {}
+    platform_meta = config_utils.load_current_platform_meta()
+    data_directory = platform_meta[&#34;data_path&#34;]
+    if not data_directory:
+        current_hostname = common_utils.get_current_hostname()
+        current_platform = common_utils.get_current_platform_name()
+        logger.critical(
+            f&#34;Can&#39;t find data_path setting for current host {current_hostname} with platform {current_platform}, please update the config at share/cross_platform/pc_meta.yaml&#34;
+        )
+        exit(1)
+    for sample_component in sample_list:
+        # load sample array
+        sample_array_dict = {}
+        cut_array_dict = {}
+        for feature in set().union(included_features, ic.cut_features):
+            feature_array = None
+            if ic.campaign in [&#34;run2&#34;, &#34;all&#34;]:
+                try:
+                    for camp in campaign_list:
+                        temp_array = np.load(
+                            f&#34;{data_directory}/{rc.npy_path}/{camp}/{ic.region}/{sample_component}_{feature}.npy&#34;
+                        )
+                        temp_array = np.reshape(temp_array, (-1, 1))
+                        if feature_array is None:
+                            feature_array = temp_array
+                        else:
+                            feature_array = np.concatenate((feature_array, temp_array))
+                except:
+                    feature_array = np.load(
+                        f&#34;{data_directory}/{rc.npy_path}/{ic.campaign}/{ic.region}/{sample_component}_{feature}.npy&#34;
+                    )
+            else:
+                feature_array = np.load(
+                    f&#34;{data_directory}/{rc.npy_path}/{ic.campaign}/{ic.region}/{sample_component}_{feature}.npy&#34;
+                )
+            feature_array = feature_array.reshape((-1, 1))
+
+            if feature in included_features:
+                sample_array_dict[feature] = feature_array
+            if feature in ic.cut_features:
+                cut_array_dict[feature] = feature_array
+        # apply cuts
+        ## Get indexes that pass cuts
+        if not (
+            len(ic.cut_features) == len(ic.cut_values)
+            and len(ic.cut_features) == len(ic.cut_types)
+        ):
+            logger.critical(
+                &#34;cut_features and cut_values and cut_types should have same length&#34;
+            )
+            exit(1)
+        pass_index = None
+        for cut_feature, cut_value, cut_type in zip(
+            ic.cut_features, ic.cut_values, ic.cut_types
+        ):
+            temp_pass_index = array_utils.get_cut_index_value(
+                cut_array_dict[cut_feature], cut_value, cut_type
+            )
+            if pass_index is None:
+                pass_index = temp_pass_index
+            else:
+                pass_index = np.intersect1d(pass_index, temp_pass_index)
+        ## keep the events that pass the selection
+        for feature in sample_array_dict:
+            sample_array_dict[feature] = sample_array_dict[feature][
+                pass_index.flatten(), :
+            ]
+        total_weights = np.sum(sample_array_dict[&#34;weight&#34;])
+        logger.debug(f&#34;Total input {sample_component} weights: {total_weights}&#34;)
+        out_dict[sample_component] = sample_array_dict
+    return out_dict
+
+
+def save_npy_array(
+    npy_array, save_path,
+):
+    save_path = pathlib.Path(save_path)
+    save_path.cwd().mkdir(parents=True, exist_ok=True)
+    with open(save_path, &#34;wb&#34;) as f:
+        np.save(f, npy_array)
+    logger.debug(f&#34;Array saved to: {save_path}&#34;)
+    logger.debug(f&#34;Array contents:\n {npy_array}&#34;)
+    logger.debug(f&#34;Array average:\n {np.average(npy_array)}&#34;)
+    logger.debug(f&#34;Array sum:\n {np.sum(npy_array)}&#34;)
+    </code></pre>
+</details>
+</section>
+<section>
+</section>
+<section>
+</section>
+<section>
+<h2 class="section-title" id="header-functions">Functions</h2>
+<dl>
+<dt id="hepynet.data_io.numpy_io.load_npy_arrays"><code class="name flex">
+<span>def <span class="ident">load_npy_arrays</span></span>(<span>job_config, array_type)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Gets individual npy arrays with given info.</p>
+<h2 id="return">Return</h2>
+<p>A dict of subdict for different samples
+example: signal dict of rpv_500 rpv_1000 rpv_2000
+Each subdict is a dict of different variable
+examples: pT, eta, phi</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def load_npy_arrays(
+    job_config, array_type,
+):
+    &#34;&#34;&#34;Gets individual npy arrays with given info.
+
+    Return:
+        A dict of subdict for different samples
+            example: signal dict of rpv_500 rpv_1000 rpv_2000
+        Each subdict is a dict of different variable
+            examples: pT, eta, phi
+
+    &#34;&#34;&#34;
+    # get settings from config file
+    rc = job_config.run.clone()
+    ic = job_config.input.clone()
+    if array_type == &#34;sig&#34;:
+        samples = ic.sig_list
+    elif array_type == &#34;bkg&#34;:
+        samples = ic.bkg_list
+    elif array_type == &#34;data&#34;:
+        samples = ic.data_list
+    else:
+        logger.critical(f&#34;Unsupported array_type: {array_type}&#34;)
+        exit(1)
+
+    # check different situation
+    if type(samples) != list:
+        sample_list = [samples]
+    else:
+        sample_list = samples
+    if ic.campaign in [&#34;run2&#34;, &#34;all&#34;]:
+        campaign_list = [&#34;mc16a&#34;, &#34;mc16d&#34;, &#34;mc16e&#34;]
+    elif &#34;+&#34; in ic.campaign:
+        campaign_list = [camp.strip() for camp in ic.campaign.split(&#34;+&#34;)]
+    else:
+        campaign_list = [ic.campaign]
+
+    # load arrays
+    included_features = ic.selected_features[:]
+    if ic.validation_features is None:
+        ic.validation_features = (
+            []
+        )  # TODO: need to solve this using a global default config setting in the future
+    included_features = list(
+        set().union(included_features, ic.validation_features, [&#34;weight&#34;])
+    )
+    if (
+        ic.cut_features is None
+    ):  # TODO: need to solve this using a global default config setting in the future
+        ic.cut_features = []
+        ic.cut_values = []
+        ic.cut_types = []
+    ic.cut_features += [ic.channel]
+    ic.cut_values += [1]
+    ic.cut_types += [&#34;=&#34;]
+    out_dict = {}
+    platform_meta = config_utils.load_current_platform_meta()
+    data_directory = platform_meta[&#34;data_path&#34;]
+    if not data_directory:
+        current_hostname = common_utils.get_current_hostname()
+        current_platform = common_utils.get_current_platform_name()
+        logger.critical(
+            f&#34;Can&#39;t find data_path setting for current host {current_hostname} with platform {current_platform}, please update the config at share/cross_platform/pc_meta.yaml&#34;
+        )
+        exit(1)
+    for sample_component in sample_list:
+        # load sample array
+        sample_array_dict = {}
+        cut_array_dict = {}
+        for feature in set().union(included_features, ic.cut_features):
+            feature_array = None
+            if ic.campaign in [&#34;run2&#34;, &#34;all&#34;]:
+                try:
+                    for camp in campaign_list:
+                        temp_array = np.load(
+                            f&#34;{data_directory}/{rc.npy_path}/{camp}/{ic.region}/{sample_component}_{feature}.npy&#34;
+                        )
+                        temp_array = np.reshape(temp_array, (-1, 1))
+                        if feature_array is None:
+                            feature_array = temp_array
+                        else:
+                            feature_array = np.concatenate((feature_array, temp_array))
+                except:
+                    feature_array = np.load(
+                        f&#34;{data_directory}/{rc.npy_path}/{ic.campaign}/{ic.region}/{sample_component}_{feature}.npy&#34;
+                    )
+            else:
+                feature_array = np.load(
+                    f&#34;{data_directory}/{rc.npy_path}/{ic.campaign}/{ic.region}/{sample_component}_{feature}.npy&#34;
+                )
+            feature_array = feature_array.reshape((-1, 1))
+
+            if feature in included_features:
+                sample_array_dict[feature] = feature_array
+            if feature in ic.cut_features:
+                cut_array_dict[feature] = feature_array
+        # apply cuts
+        ## Get indexes that pass cuts
+        if not (
+            len(ic.cut_features) == len(ic.cut_values)
+            and len(ic.cut_features) == len(ic.cut_types)
+        ):
+            logger.critical(
+                &#34;cut_features and cut_values and cut_types should have same length&#34;
+            )
+            exit(1)
+        pass_index = None
+        for cut_feature, cut_value, cut_type in zip(
+            ic.cut_features, ic.cut_values, ic.cut_types
+        ):
+            temp_pass_index = array_utils.get_cut_index_value(
+                cut_array_dict[cut_feature], cut_value, cut_type
+            )
+            if pass_index is None:
+                pass_index = temp_pass_index
+            else:
+                pass_index = np.intersect1d(pass_index, temp_pass_index)
+        ## keep the events that pass the selection
+        for feature in sample_array_dict:
+            sample_array_dict[feature] = sample_array_dict[feature][
+                pass_index.flatten(), :
+            ]
+        total_weights = np.sum(sample_array_dict[&#34;weight&#34;])
+        logger.debug(f&#34;Total input {sample_component} weights: {total_weights}&#34;)
+        out_dict[sample_component] = sample_array_dict
+    return out_dict</code></pre>
+</details>
+</dd>
+<dt id="hepynet.data_io.numpy_io.save_npy_array"><code class="name flex">
+<span>def <span class="ident">save_npy_array</span></span>(<span>npy_array, save_path)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def save_npy_array(
+    npy_array, save_path,
+):
+    save_path = pathlib.Path(save_path)
+    save_path.cwd().mkdir(parents=True, exist_ok=True)
+    with open(save_path, &#34;wb&#34;) as f:
+        np.save(f, npy_array)
+    logger.debug(f&#34;Array saved to: {save_path}&#34;)
+    logger.debug(f&#34;Array contents:\n {npy_array}&#34;)
+    logger.debug(f&#34;Array average:\n {np.average(npy_array)}&#34;)
+    logger.debug(f&#34;Array sum:\n {np.sum(npy_array)}&#34;)</code></pre>
+</details>
+</dd>
+</dl>
+</section>
+<section>
+</section>
+</article>
+<nav id="sidebar">
+<h1>Index</h1>
+<div class="toc">
+<ul></ul>
+</div>
+<ul id="index">
+<li><h3>Super-module</h3>
+<ul>
+<li><code><a title="hepynet.data_io" href="index.html">hepynet.data_io</a></code></li>
+</ul>
+</li>
+<li><h3><a href="#header-functions">Functions</a></h3>
+<ul class="">
+<li><code><a title="hepynet.data_io.numpy_io.load_npy_arrays" href="#hepynet.data_io.numpy_io.load_npy_arrays">load_npy_arrays</a></code></li>
+<li><code><a title="hepynet.data_io.numpy_io.save_npy_array" href="#hepynet.data_io.numpy_io.save_npy_array">save_npy_array</a></code></li>
+</ul>
+</li>
+</ul>
+</nav>
+</main>
+<footer id="footer">
+<p>Generated by <a href="https://pdoc3.github.io/pdoc"><cite>pdoc</cite> 0.9.2</a>.</p>
+</footer>
+</body>
+</html>

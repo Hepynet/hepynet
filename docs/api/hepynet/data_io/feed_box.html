@@ -1,0 +1,1262 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1" />
+<meta name="generator" content="pdoc 0.9.2" />
+<title>hepynet.data_io.feed_box API documentation</title>
+<meta name="description" content="" />
+<link rel="preload stylesheet" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/11.0.1/sanitize.min.css" integrity="sha256-PK9q560IAAa6WVRRh76LtCaI8pjTJ2z11v0miyNNjrs=" crossorigin>
+<link rel="preload stylesheet" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/11.0.1/typography.min.css" integrity="sha256-7l/o7C8jubJiy74VsKTidCy1yBkRtiUGbVkYBylBqUg=" crossorigin>
+<link rel="stylesheet preload" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.1.1/styles/github.min.css" crossorigin>
+<style>:root{--highlight-color:#fe9}.flex{display:flex !important}body{line-height:1.5em}#content{padding:20px}#sidebar{padding:30px;overflow:hidden}#sidebar > *:last-child{margin-bottom:2cm}.http-server-breadcrumbs{font-size:130%;margin:0 0 15px 0}#footer{font-size:.75em;padding:5px 30px;border-top:1px solid #ddd;text-align:right}#footer p{margin:0 0 0 1em;display:inline-block}#footer p:last-child{margin-right:30px}h1,h2,h3,h4,h5{font-weight:300}h1{font-size:2.5em;line-height:1.1em}h2{font-size:1.75em;margin:1em 0 .50em 0}h3{font-size:1.4em;margin:25px 0 10px 0}h4{margin:0;font-size:105%}h1:target,h2:target,h3:target,h4:target,h5:target,h6:target{background:var(--highlight-color);padding:.2em 0}a{color:#058;text-decoration:none;transition:color .3s ease-in-out}a:hover{color:#e82}.title code{font-weight:bold}h2[id^="header-"]{margin-top:2em}.ident{color:#900}pre code{background:#f8f8f8;font-size:.8em;line-height:1.4em}code{background:#f2f2f1;padding:1px 4px;overflow-wrap:break-word}h1 code{background:transparent}pre{background:#f8f8f8;border:0;border-top:1px solid #ccc;border-bottom:1px solid #ccc;margin:1em 0;padding:1ex}#http-server-module-list{display:flex;flex-flow:column}#http-server-module-list div{display:flex}#http-server-module-list dt{min-width:10%}#http-server-module-list p{margin-top:0}.toc ul,#index{list-style-type:none;margin:0;padding:0}#index code{background:transparent}#index h3{border-bottom:1px solid #ddd}#index ul{padding:0}#index h4{margin-top:.6em;font-weight:bold}@media (min-width:200ex){#index .two-column{column-count:2}}@media (min-width:300ex){#index .two-column{column-count:3}}dl{margin-bottom:2em}dl dl:last-child{margin-bottom:4em}dd{margin:0 0 1em 3em}#header-classes + dl > dd{margin-bottom:3em}dd dd{margin-left:2em}dd p{margin:10px 0}.name{background:#eee;font-weight:bold;font-size:.85em;padding:5px 10px;display:inline-block;min-width:40%}.name:hover{background:#e0e0e0}dt:target .name{background:var(--highlight-color)}.name > span:first-child{white-space:nowrap}.name.class > span:nth-child(2){margin-left:.4em}.inherited{color:#999;border-left:5px solid #eee;padding-left:1em}.inheritance em{font-style:normal;font-weight:bold}.desc h2{font-weight:400;font-size:1.25em}.desc h3{font-size:1em}.desc dt code{background:inherit}.source summary,.git-link-div{color:#666;text-align:right;font-weight:400;font-size:.8em;text-transform:uppercase}.source summary > *{white-space:nowrap;cursor:pointer}.git-link{color:inherit;margin-left:1em}.source pre{max-height:500px;overflow:auto;margin:0}.source pre code{font-size:12px;overflow:visible}.hlist{list-style:none}.hlist li{display:inline}.hlist li:after{content:',\2002'}.hlist li:last-child:after{content:none}.hlist .hlist{display:inline;padding-left:1em}img{max-width:100%}td{padding:0 .5em}.admonition{padding:.1em .5em;margin-bottom:1em}.admonition-title{font-weight:bold}.admonition.note,.admonition.info,.admonition.important{background:#aef}.admonition.todo,.admonition.versionadded,.admonition.tip,.admonition.hint{background:#dfd}.admonition.warning,.admonition.versionchanged,.admonition.deprecated{background:#fd4}.admonition.error,.admonition.danger,.admonition.caution{background:lightpink}</style>
+<style media="screen and (min-width: 700px)">@media screen and (min-width:700px){#sidebar{width:30%;height:100vh;overflow:auto;position:sticky;top:0}#content{width:70%;max-width:100ch;padding:3em 4em;border-left:1px solid #ddd}pre code{font-size:1em}.item .name{font-size:1em}main{display:flex;flex-direction:row-reverse;justify-content:flex-end}.toc ul ul,#index ul{padding-left:1.5em}.toc > ul > li{margin-top:.5em}}</style>
+<style media="print">@media print{#sidebar h1{page-break-before:always}.source{display:none}}@media print{*{background:transparent !important;color:#000 !important;box-shadow:none !important;text-shadow:none !important}a[href]:after{content:" (" attr(href) ")";font-size:90%}a[href][title]:after{content:none}abbr[title]:after{content:" (" attr(title) ")"}.ir a:after,a[href^="javascript:"]:after,a[href^="#"]:after{content:""}pre,blockquote{border:1px solid #999;page-break-inside:avoid}thead{display:table-header-group}tr,img{page-break-inside:avoid}img{max-width:100% !important}@page{margin:0.5cm}p,h2,h3{orphans:3;widows:3}h1,h2,h3,h4,h5,h6{page-break-after:avoid}}</style>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.1.1/highlight.min.js" integrity="sha256-Uv3H6lx7dJmRfRvH8TH6kJD1TSK1aFcwgx+mdg3epi8=" crossorigin></script>
+<script>window.addEventListener('DOMContentLoaded', () => hljs.initHighlighting())</script>
+</head>
+<body>
+<main>
+<article id="content">
+<header>
+<h1 class="title">Module <code>hepynet.data_io.feed_box</code></h1>
+</header>
+<section id="section-intro">
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">import copy
+import logging
+import time
+from sys import getsizeof
+
+import numpy as np
+
+from hepynet.common import array_utils
+from hepynet.data_io import numpy_io
+from hepynet.train import train_utils
+
+logger = logging.getLogger(&#34;hepynet&#34;)
+
+
+class Feedbox(object):
+    &#34;&#34;&#34;DNN inputs management class.&#34;&#34;&#34;
+
+    def __init__(
+        self, job_config, model_meta=None,
+    ):
+        # get config
+        self._job_config = job_config.clone()
+        self._ic = self._job_config.input
+        self._tc = self._job_config.train
+        self._ac = self._job_config.apply
+        # meta info
+        if self._ic.reset_feature:
+            if self._ic.reset_feature_name in self._ic.selected_features:
+                self._reset_mass_id = self._ic.selected_features.index(
+                    self._ic.reset_feature_name
+                )
+            else:
+                logger.critical(
+                    f&#34;input.reset_feature is True but input.reset_feature_name {self._ic.reset_feature_name} is invalid, please check the config&#34;
+                )
+                exit(1)
+        else:
+            self._reset_mass_id = None
+        self._rdm_seed = self._ic.rdm_seed
+        self._array_prepared = False
+        # set random seed
+        if self._rdm_seed is None:
+            self._rdm_seed = int(time.time())
+        # set up array dict
+        self._sig_dict = None
+        self._bkg_dict = None
+        self._data_dict = None
+
+        # get normalization parameters
+        no_norm_paras = False
+        if model_meta is None:
+            no_norm_paras = True
+        else:
+            if model_meta[&#34;norm_dict&#34;] is None:
+                no_norm_paras = True
+            else:
+                no_norm_paras = False
+        norm_dict = {}
+        if no_norm_paras:
+            logger.info(f&#34;No norm_dict found, recalculating norm parameters&#34;)
+            if self._bkg_dict is not None:
+                xb_dict = self._bkg_dict
+            else:
+                xb_dict = numpy_io.load_npy_arrays(self._job_config, &#34;bkg&#34;)
+            weight_array = np.concatenate(
+                [sample_dict[&#34;weight&#34;] for sample_dict in xb_dict.values()]
+            )
+            for feature in self._ic.selected_features:
+                feature_array = np.concatenate(
+                    [sample_dict[feature] for sample_dict in xb_dict.values()]
+                )
+                mean = np.average(feature_array, weights=weight_array)
+                variance = np.average((feature_array - mean) ** 2, weights=weight_array)
+                norm_dict[feature] = {&#34;mean&#34;: mean, &#34;variance&#34;: variance}
+                logger.debug(f&#34;Feature {feature} mean: {mean}, variance: {variance}&#34;)
+        else:
+            norm_dict = model_meta[&#34;norm_dict&#34;]
+
+        self._norm_dict = norm_dict
+        self._array_prepared = True
+
+    def load_sig_arrays(self):
+        self._sig_dict = numpy_io.load_npy_arrays(self._job_config, &#34;sig&#34;)
+
+    def delete_sig_arrays(self):
+        self._sig_dict = None
+
+    def load_bkg_arrays(self):
+        self._bkg_dict = numpy_io.load_npy_arrays(self._job_config, &#34;bkg&#34;)
+
+    def delete_bkg_arrays(self):
+        self._bkg_dict = None
+
+    def get_job_config(self):
+        return self._job_config
+
+    def get_norm_dict(self):
+        return self._norm_dict
+
+    def get_raw(self, input_type, array_key=&#34;all&#34;, add_validation_features=False):
+        array_out = None
+        weight_out = None
+        # get dict
+        array_dict = None
+        if input_type == &#34;xs&#34;:
+            if self._sig_dict is not None:
+                array_dict = self._sig_dict
+            else:
+                array_dict = numpy_io.load_npy_arrays(self._job_config, &#34;sig&#34;)
+        elif input_type == &#34;xb&#34;:
+            if self._bkg_dict is not None:
+                array_dict = self._bkg_dict
+            else:
+                array_dict = numpy_io.load_npy_arrays(self._job_config, &#34;bkg&#34;)
+        elif input_type == &#34;xd&#34;:
+            if self._ac.apply_data:
+                array_dict = numpy_io.load_npy_arrays(self._job_config, &#34;data&#34;)
+            else:
+                logger.warn(
+                    &#34;Trying to get data array as apply_data option is set to False&#34;
+                )
+                return None
+        else:
+            logger.warn(&#34;Unknown input type&#34;)
+            return None
+        if add_validation_features:
+            if self._ic.validation_features is None:
+                validation_features = []
+            else:
+                validation_features = self._ic.validation_features
+            feature_list = self._ic.selected_features + validation_features
+        else:
+            feature_list = self._ic.selected_features
+        if array_key in list(array_dict.keys()):
+            array_out = np.concatenate(
+                [array_dict[array_key][feature] for feature in feature_list], axis=1,
+            )
+            weight_out = array_dict[array_key][&#34;weight&#34;]
+        elif array_key == &#34;all&#34; or array_key == &#34;all_norm&#34;:
+            array_components = []
+            weight_components = []
+            for temp_key in array_dict.keys():
+                temp_array = np.concatenate(
+                    [array_dict[temp_key][feature] for feature in feature_list], axis=1,
+                )
+                array_components.append(temp_array)
+                weight_component = array_dict[temp_key][&#34;weight&#34;]
+                if array_key == &#34;all&#34;:
+                    weight_components.append(weight_component)
+                else:
+                    sumofweights = np.sum(weight_component)
+                    weight_components.append(weight_component / sumofweights)
+            array_out = np.concatenate(array_components)
+            weight_out = np.concatenate(weight_components)
+        else:
+            logger.warn(&#34;Unknown array_key&#34;)
+            return None
+        if self._ic.rm_negative_weight_events:
+            weight_out = array_utils.clean_negative_weights(weight_out)
+        return array_out, weight_out.reshape((-1,))
+
+    def get_reshape(self, input_type, array_key=&#34;all&#34;):
+        x_reshape, weight_reshape = self.get_raw(input_type, array_key=array_key)
+        norm_means = []
+        norm_variances = []
+        xb_dict = None
+        for feature in self._ic.selected_features:
+            norm_alias = self._job_config.input.feature_norm_alias.get_config_dict()
+            mean = None
+            variance = None
+            if feature in self._norm_dict:
+                mean = self._norm_dict[feature][&#34;mean&#34;]
+                variance = self._norm_dict[feature][&#34;variance&#34;]
+            else:
+                found_norm_alias = False
+                # check feature normalization alias
+                if feature in norm_alias:
+                    alias_feature = norm_alias[feature]
+                    if alias_feature in self._norm_dict:
+                        logger.debug(f&#34;Using norm_alias for: {feature}&#34;)
+                        mean = self._norm_dict[alias_feature][&#34;mean&#34;]
+                        variance = self._norm_dict[alias_feature][&#34;variance&#34;]
+                        found_norm_alias = True
+                    else:
+                        logger.warn(
+                            f&#34;Specified but can&#39;t find norm_alias for: {feature}&#34;
+                        )
+                # recalculate if no existing mean/variance found
+                if not found_norm_alias:
+                    logger.debug(&#34;Recalculating normalization parameters for {feature}&#34;)
+                    if xb_dict is None:
+                        xb_dict = numpy_io.load_npy_arrays(self._job_config, &#34;bkg&#34;)
+                    if not xb_dict:
+                        logger.critical(
+                            f&#34;Can&#39;t recalculate norm factor with empty background inputs, please check input.bkg_list&#34;
+                        )
+                        exit(1)
+                    feature_array = np.concatenate(
+                        [sample_dict[feature] for sample_dict in xb_dict.values()]
+                    )
+                    weight_array = np.concatenate(
+                        [sample_dict[&#34;weight&#34;] for sample_dict in xb_dict.values()]
+                    )
+                    mean = np.average(feature_array, weights=weight_array)
+                    variance = np.average(
+                        (feature_array - mean) ** 2, weights=weight_array
+                    )
+                    self._norm_dict[feature] = {&#34;mean&#34;: mean, &#34;variance&#34;: variance}
+            norm_means.append(mean)
+            norm_variances.append(variance)
+        x_reshape = train_utils.norarray(
+            x_reshape, average=norm_means, variance=norm_variances,
+        )
+        return x_reshape.copy(), weight_reshape.copy()
+
+    def get_reweight(
+        self,
+        input_type,
+        array_key=&#34;all&#34;,
+        reset_mass=None,
+        reset_array_key=&#34;all&#34;,
+        norm=True,
+    ):
+        if reset_mass == None:
+            reset_mass = self._ic.reset_feature
+        if input_type == &#34;xs&#34;:
+            xs_reshape, xs_weight_reshape = self.get_reshape(&#34;xs&#34;, array_key=array_key)
+            return array_utils.modify_array(
+                xs_reshape,
+                xs_weight_reshape,
+                remove_negative_weight=self._ic.rm_negative_weight_events,
+                norm=norm,
+                sumofweight=self._ic.sig_sumofweight,
+            )
+        elif input_type == &#34;xb&#34;:
+            xb_reshape, xb_weight_reshape = self.get_reshape(&#34;xb&#34;, array_key=array_key)
+            if reset_mass:
+                reset_mass_arr, reset_mass_wts = self.get_reshape(
+                    &#34;xs&#34;, array_key=reset_array_key
+                )
+                xb_reshape, xb_weight_reshape = array_utils.modify_array(
+                    xb_reshape,
+                    xb_weight_reshape,
+                    reset_mass=True,
+                    reset_mass_array=reset_mass_arr,
+                    reset_mass_weights=reset_mass_wts,
+                    reset_mass_id=self._reset_mass_id,
+                )
+            return array_utils.modify_array(
+                xb_reshape,
+                xb_weight_reshape,
+                remove_negative_weight=self._ic.rm_negative_weight_events,
+                norm=norm,
+                sumofweight=self._ic.bkg_sumofweight,
+            )
+        elif input_type == &#34;xd&#34;:
+            xd_reshape, xd_weight_reshape = self.get_reshape(&#34;xd&#34;, array_key=array_key)
+            if reset_mass:
+                reset_mass_arr, reset_mass_wts = self.get_reshape(
+                    &#34;xs&#34;, array_key=reset_array_key
+                )
+                xd_reshape = array_utils.modify_array(
+                    xd_reshape,
+                    xd_weight_reshape,
+                    reset_mass=True,
+                    reset_mass_array=reset_mass_arr,
+                    reset_mass_weights=reset_mass_wts,
+                    reset_mass_id=self._reset_mass_id,
+                )
+            return array_utils.modify_array(
+                xd_reshape,
+                xd_weight_reshape,
+                remove_negative_weight=self._ic.rm_negative_weight_events,
+                norm=norm,
+                sumofweight=self._ic.data_weight,
+            )
+        else:
+            logger.warn(&#34;Unknown input_type&#34;)
+            return None
+
+    def get_train_test_arrays(
+        self,
+        sig_key=&#34;all&#34;,
+        bkg_key=&#34;all&#34;,
+        multi_class_bkgs=[],
+        reset_mass=None,
+        output_keys=[],
+    ):
+        if reset_mass == None:
+            reset_mass = self._ic.reset_feature
+
+        # deal with different number of output nodes
+        ## load sig
+        delete_sig_dict = False
+        if self._sig_dict is None:
+            self.load_sig_arrays()
+            delete_sig_dict = True
+        xs_reweight, xs_weight_reweight = self.get_reweight(
+            &#34;xs&#34;, array_key=sig_key, reset_mass=reset_mass, reset_array_key=sig_key
+        )
+        if delete_sig_dict:
+            self.delete_sig_arrays()
+        logger.debug(f&#34;xs_weight_reweight shape: {xs_weight_reweight.shape}&#34;)
+        ## load bkg
+        delete_bkg_dict = False
+        if self._bkg_dict is None:
+            self.load_bkg_arrays()
+            delete_bkg_dict = True
+        if multi_class_bkgs is not None and len(multi_class_bkgs) &gt; 0:
+            xb_reweight = None
+            xb_weight_reweight = None
+            yb = None
+            num_bkg_nodes = len(multi_class_bkgs)
+            ys_element = np.zeros(num_bkg_nodes + 1)
+            ys_element[0] = 1
+            ys = np.tile(ys_element, (len(xs_reweight), 1))
+            for node_num, bkg_node in enumerate(multi_class_bkgs):
+                bkg_node_list = (&#34;&#34;.join(bkg_node.split())).split(&#34;+&#34;)
+                xb_reweight_node = None
+                wt_reweight_node = None
+                for bkg_ele in bkg_node_list:
+                    xb_reweight_ele, xb_wt_reweight_ele = self.get_reweight(
+                        &#34;xb&#34;,
+                        array_key=bkg_ele,
+                        reset_mass=reset_mass,
+                        reset_array_key=sig_key,
+                    )
+                    if xb_reweight_node is None:
+                        xb_reweight_node = xb_reweight_ele
+                        wt_reweight_node = xb_wt_reweight_ele
+                    else:
+                        xb_reweight_node = np.concatenate(
+                            (xb_reweight_node, xb_reweight_ele)
+                        )
+                        wt_reweight_node = np.concatenate(
+                            (wt_reweight_node, xb_wt_reweight_ele)
+                        )
+                xb_reweight_node, wt_reweight_node = array_utils.modify_array(
+                    xb_reweight_node, wt_reweight_node, norm=True, sumofweight=1000,
+                )
+                yb_single_element = np.zeros(num_bkg_nodes + 1)
+                yb_single_element[node_num + 1] = 1
+                yb_single = np.tile(yb_single_element, (len(xb_reweight_node), 1))
+                if xb_reweight is None:
+                    xb_reweight = xb_reweight_node
+                    yb = yb_single
+                    xb_weight_reweight = wt_reweight_node
+                else:
+                    xb_reweight = np.concatenate((xb_reweight, xb_reweight_node))
+                    yb = np.concatenate((yb, yb_single))
+                    xb_weight_reweight = np.concatenate(
+                        (xb_weight_reweight, wt_reweight_node)
+                    )
+            xb_reweight, xb_weight_reweight = array_utils.modify_array(
+                xb_reweight,
+                xb_weight_reweight,
+                norm=True,
+                sumofweight=self._ic.bkg_sumofweight,
+            )
+            if delete_bkg_dict:
+                self.delete_bkg_arrays
+            return train_utils.split_and_combine(
+                xs_reweight,
+                xs_weight_reweight,
+                xb_reweight,
+                xb_weight_reweight,
+                ys=ys,
+                yb=yb,
+                output_keys=output_keys,
+                test_rate=self._tc.test_rate,
+                shuffle_seed=self._rdm_seed,
+            )
+        else:
+            xb_reweight, xb_weight_reweight = self.get_reweight(
+                &#34;xb&#34;, array_key=bkg_key, reset_mass=reset_mass, reset_array_key=sig_key
+            )
+            if delete_bkg_dict:
+                self.delete_bkg_arrays
+            return train_utils.split_and_combine(
+                xs_reweight,
+                xs_weight_reweight,
+                xb_reweight,
+                xb_weight_reweight,
+                output_keys=output_keys,
+                test_rate=self._tc.test_rate,
+                shuffle_seed=self._rdm_seed,
+            )</code></pre>
+</details>
+</section>
+<section>
+</section>
+<section>
+</section>
+<section>
+</section>
+<section>
+<h2 class="section-title" id="header-classes">Classes</h2>
+<dl>
+<dt id="hepynet.data_io.feed_box.Feedbox"><code class="flex name class">
+<span>class <span class="ident">Feedbox</span></span>
+<span>(</span><span>job_config, model_meta=None)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>DNN inputs management class.</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class Feedbox(object):
+    &#34;&#34;&#34;DNN inputs management class.&#34;&#34;&#34;
+
+    def __init__(
+        self, job_config, model_meta=None,
+    ):
+        # get config
+        self._job_config = job_config.clone()
+        self._ic = self._job_config.input
+        self._tc = self._job_config.train
+        self._ac = self._job_config.apply
+        # meta info
+        if self._ic.reset_feature:
+            if self._ic.reset_feature_name in self._ic.selected_features:
+                self._reset_mass_id = self._ic.selected_features.index(
+                    self._ic.reset_feature_name
+                )
+            else:
+                logger.critical(
+                    f&#34;input.reset_feature is True but input.reset_feature_name {self._ic.reset_feature_name} is invalid, please check the config&#34;
+                )
+                exit(1)
+        else:
+            self._reset_mass_id = None
+        self._rdm_seed = self._ic.rdm_seed
+        self._array_prepared = False
+        # set random seed
+        if self._rdm_seed is None:
+            self._rdm_seed = int(time.time())
+        # set up array dict
+        self._sig_dict = None
+        self._bkg_dict = None
+        self._data_dict = None
+
+        # get normalization parameters
+        no_norm_paras = False
+        if model_meta is None:
+            no_norm_paras = True
+        else:
+            if model_meta[&#34;norm_dict&#34;] is None:
+                no_norm_paras = True
+            else:
+                no_norm_paras = False
+        norm_dict = {}
+        if no_norm_paras:
+            logger.info(f&#34;No norm_dict found, recalculating norm parameters&#34;)
+            if self._bkg_dict is not None:
+                xb_dict = self._bkg_dict
+            else:
+                xb_dict = numpy_io.load_npy_arrays(self._job_config, &#34;bkg&#34;)
+            weight_array = np.concatenate(
+                [sample_dict[&#34;weight&#34;] for sample_dict in xb_dict.values()]
+            )
+            for feature in self._ic.selected_features:
+                feature_array = np.concatenate(
+                    [sample_dict[feature] for sample_dict in xb_dict.values()]
+                )
+                mean = np.average(feature_array, weights=weight_array)
+                variance = np.average((feature_array - mean) ** 2, weights=weight_array)
+                norm_dict[feature] = {&#34;mean&#34;: mean, &#34;variance&#34;: variance}
+                logger.debug(f&#34;Feature {feature} mean: {mean}, variance: {variance}&#34;)
+        else:
+            norm_dict = model_meta[&#34;norm_dict&#34;]
+
+        self._norm_dict = norm_dict
+        self._array_prepared = True
+
+    def load_sig_arrays(self):
+        self._sig_dict = numpy_io.load_npy_arrays(self._job_config, &#34;sig&#34;)
+
+    def delete_sig_arrays(self):
+        self._sig_dict = None
+
+    def load_bkg_arrays(self):
+        self._bkg_dict = numpy_io.load_npy_arrays(self._job_config, &#34;bkg&#34;)
+
+    def delete_bkg_arrays(self):
+        self._bkg_dict = None
+
+    def get_job_config(self):
+        return self._job_config
+
+    def get_norm_dict(self):
+        return self._norm_dict
+
+    def get_raw(self, input_type, array_key=&#34;all&#34;, add_validation_features=False):
+        array_out = None
+        weight_out = None
+        # get dict
+        array_dict = None
+        if input_type == &#34;xs&#34;:
+            if self._sig_dict is not None:
+                array_dict = self._sig_dict
+            else:
+                array_dict = numpy_io.load_npy_arrays(self._job_config, &#34;sig&#34;)
+        elif input_type == &#34;xb&#34;:
+            if self._bkg_dict is not None:
+                array_dict = self._bkg_dict
+            else:
+                array_dict = numpy_io.load_npy_arrays(self._job_config, &#34;bkg&#34;)
+        elif input_type == &#34;xd&#34;:
+            if self._ac.apply_data:
+                array_dict = numpy_io.load_npy_arrays(self._job_config, &#34;data&#34;)
+            else:
+                logger.warn(
+                    &#34;Trying to get data array as apply_data option is set to False&#34;
+                )
+                return None
+        else:
+            logger.warn(&#34;Unknown input type&#34;)
+            return None
+        if add_validation_features:
+            if self._ic.validation_features is None:
+                validation_features = []
+            else:
+                validation_features = self._ic.validation_features
+            feature_list = self._ic.selected_features + validation_features
+        else:
+            feature_list = self._ic.selected_features
+        if array_key in list(array_dict.keys()):
+            array_out = np.concatenate(
+                [array_dict[array_key][feature] for feature in feature_list], axis=1,
+            )
+            weight_out = array_dict[array_key][&#34;weight&#34;]
+        elif array_key == &#34;all&#34; or array_key == &#34;all_norm&#34;:
+            array_components = []
+            weight_components = []
+            for temp_key in array_dict.keys():
+                temp_array = np.concatenate(
+                    [array_dict[temp_key][feature] for feature in feature_list], axis=1,
+                )
+                array_components.append(temp_array)
+                weight_component = array_dict[temp_key][&#34;weight&#34;]
+                if array_key == &#34;all&#34;:
+                    weight_components.append(weight_component)
+                else:
+                    sumofweights = np.sum(weight_component)
+                    weight_components.append(weight_component / sumofweights)
+            array_out = np.concatenate(array_components)
+            weight_out = np.concatenate(weight_components)
+        else:
+            logger.warn(&#34;Unknown array_key&#34;)
+            return None
+        if self._ic.rm_negative_weight_events:
+            weight_out = array_utils.clean_negative_weights(weight_out)
+        return array_out, weight_out.reshape((-1,))
+
+    def get_reshape(self, input_type, array_key=&#34;all&#34;):
+        x_reshape, weight_reshape = self.get_raw(input_type, array_key=array_key)
+        norm_means = []
+        norm_variances = []
+        xb_dict = None
+        for feature in self._ic.selected_features:
+            norm_alias = self._job_config.input.feature_norm_alias.get_config_dict()
+            mean = None
+            variance = None
+            if feature in self._norm_dict:
+                mean = self._norm_dict[feature][&#34;mean&#34;]
+                variance = self._norm_dict[feature][&#34;variance&#34;]
+            else:
+                found_norm_alias = False
+                # check feature normalization alias
+                if feature in norm_alias:
+                    alias_feature = norm_alias[feature]
+                    if alias_feature in self._norm_dict:
+                        logger.debug(f&#34;Using norm_alias for: {feature}&#34;)
+                        mean = self._norm_dict[alias_feature][&#34;mean&#34;]
+                        variance = self._norm_dict[alias_feature][&#34;variance&#34;]
+                        found_norm_alias = True
+                    else:
+                        logger.warn(
+                            f&#34;Specified but can&#39;t find norm_alias for: {feature}&#34;
+                        )
+                # recalculate if no existing mean/variance found
+                if not found_norm_alias:
+                    logger.debug(&#34;Recalculating normalization parameters for {feature}&#34;)
+                    if xb_dict is None:
+                        xb_dict = numpy_io.load_npy_arrays(self._job_config, &#34;bkg&#34;)
+                    if not xb_dict:
+                        logger.critical(
+                            f&#34;Can&#39;t recalculate norm factor with empty background inputs, please check input.bkg_list&#34;
+                        )
+                        exit(1)
+                    feature_array = np.concatenate(
+                        [sample_dict[feature] for sample_dict in xb_dict.values()]
+                    )
+                    weight_array = np.concatenate(
+                        [sample_dict[&#34;weight&#34;] for sample_dict in xb_dict.values()]
+                    )
+                    mean = np.average(feature_array, weights=weight_array)
+                    variance = np.average(
+                        (feature_array - mean) ** 2, weights=weight_array
+                    )
+                    self._norm_dict[feature] = {&#34;mean&#34;: mean, &#34;variance&#34;: variance}
+            norm_means.append(mean)
+            norm_variances.append(variance)
+        x_reshape = train_utils.norarray(
+            x_reshape, average=norm_means, variance=norm_variances,
+        )
+        return x_reshape.copy(), weight_reshape.copy()
+
+    def get_reweight(
+        self,
+        input_type,
+        array_key=&#34;all&#34;,
+        reset_mass=None,
+        reset_array_key=&#34;all&#34;,
+        norm=True,
+    ):
+        if reset_mass == None:
+            reset_mass = self._ic.reset_feature
+        if input_type == &#34;xs&#34;:
+            xs_reshape, xs_weight_reshape = self.get_reshape(&#34;xs&#34;, array_key=array_key)
+            return array_utils.modify_array(
+                xs_reshape,
+                xs_weight_reshape,
+                remove_negative_weight=self._ic.rm_negative_weight_events,
+                norm=norm,
+                sumofweight=self._ic.sig_sumofweight,
+            )
+        elif input_type == &#34;xb&#34;:
+            xb_reshape, xb_weight_reshape = self.get_reshape(&#34;xb&#34;, array_key=array_key)
+            if reset_mass:
+                reset_mass_arr, reset_mass_wts = self.get_reshape(
+                    &#34;xs&#34;, array_key=reset_array_key
+                )
+                xb_reshape, xb_weight_reshape = array_utils.modify_array(
+                    xb_reshape,
+                    xb_weight_reshape,
+                    reset_mass=True,
+                    reset_mass_array=reset_mass_arr,
+                    reset_mass_weights=reset_mass_wts,
+                    reset_mass_id=self._reset_mass_id,
+                )
+            return array_utils.modify_array(
+                xb_reshape,
+                xb_weight_reshape,
+                remove_negative_weight=self._ic.rm_negative_weight_events,
+                norm=norm,
+                sumofweight=self._ic.bkg_sumofweight,
+            )
+        elif input_type == &#34;xd&#34;:
+            xd_reshape, xd_weight_reshape = self.get_reshape(&#34;xd&#34;, array_key=array_key)
+            if reset_mass:
+                reset_mass_arr, reset_mass_wts = self.get_reshape(
+                    &#34;xs&#34;, array_key=reset_array_key
+                )
+                xd_reshape = array_utils.modify_array(
+                    xd_reshape,
+                    xd_weight_reshape,
+                    reset_mass=True,
+                    reset_mass_array=reset_mass_arr,
+                    reset_mass_weights=reset_mass_wts,
+                    reset_mass_id=self._reset_mass_id,
+                )
+            return array_utils.modify_array(
+                xd_reshape,
+                xd_weight_reshape,
+                remove_negative_weight=self._ic.rm_negative_weight_events,
+                norm=norm,
+                sumofweight=self._ic.data_weight,
+            )
+        else:
+            logger.warn(&#34;Unknown input_type&#34;)
+            return None
+
+    def get_train_test_arrays(
+        self,
+        sig_key=&#34;all&#34;,
+        bkg_key=&#34;all&#34;,
+        multi_class_bkgs=[],
+        reset_mass=None,
+        output_keys=[],
+    ):
+        if reset_mass == None:
+            reset_mass = self._ic.reset_feature
+
+        # deal with different number of output nodes
+        ## load sig
+        delete_sig_dict = False
+        if self._sig_dict is None:
+            self.load_sig_arrays()
+            delete_sig_dict = True
+        xs_reweight, xs_weight_reweight = self.get_reweight(
+            &#34;xs&#34;, array_key=sig_key, reset_mass=reset_mass, reset_array_key=sig_key
+        )
+        if delete_sig_dict:
+            self.delete_sig_arrays()
+        logger.debug(f&#34;xs_weight_reweight shape: {xs_weight_reweight.shape}&#34;)
+        ## load bkg
+        delete_bkg_dict = False
+        if self._bkg_dict is None:
+            self.load_bkg_arrays()
+            delete_bkg_dict = True
+        if multi_class_bkgs is not None and len(multi_class_bkgs) &gt; 0:
+            xb_reweight = None
+            xb_weight_reweight = None
+            yb = None
+            num_bkg_nodes = len(multi_class_bkgs)
+            ys_element = np.zeros(num_bkg_nodes + 1)
+            ys_element[0] = 1
+            ys = np.tile(ys_element, (len(xs_reweight), 1))
+            for node_num, bkg_node in enumerate(multi_class_bkgs):
+                bkg_node_list = (&#34;&#34;.join(bkg_node.split())).split(&#34;+&#34;)
+                xb_reweight_node = None
+                wt_reweight_node = None
+                for bkg_ele in bkg_node_list:
+                    xb_reweight_ele, xb_wt_reweight_ele = self.get_reweight(
+                        &#34;xb&#34;,
+                        array_key=bkg_ele,
+                        reset_mass=reset_mass,
+                        reset_array_key=sig_key,
+                    )
+                    if xb_reweight_node is None:
+                        xb_reweight_node = xb_reweight_ele
+                        wt_reweight_node = xb_wt_reweight_ele
+                    else:
+                        xb_reweight_node = np.concatenate(
+                            (xb_reweight_node, xb_reweight_ele)
+                        )
+                        wt_reweight_node = np.concatenate(
+                            (wt_reweight_node, xb_wt_reweight_ele)
+                        )
+                xb_reweight_node, wt_reweight_node = array_utils.modify_array(
+                    xb_reweight_node, wt_reweight_node, norm=True, sumofweight=1000,
+                )
+                yb_single_element = np.zeros(num_bkg_nodes + 1)
+                yb_single_element[node_num + 1] = 1
+                yb_single = np.tile(yb_single_element, (len(xb_reweight_node), 1))
+                if xb_reweight is None:
+                    xb_reweight = xb_reweight_node
+                    yb = yb_single
+                    xb_weight_reweight = wt_reweight_node
+                else:
+                    xb_reweight = np.concatenate((xb_reweight, xb_reweight_node))
+                    yb = np.concatenate((yb, yb_single))
+                    xb_weight_reweight = np.concatenate(
+                        (xb_weight_reweight, wt_reweight_node)
+                    )
+            xb_reweight, xb_weight_reweight = array_utils.modify_array(
+                xb_reweight,
+                xb_weight_reweight,
+                norm=True,
+                sumofweight=self._ic.bkg_sumofweight,
+            )
+            if delete_bkg_dict:
+                self.delete_bkg_arrays
+            return train_utils.split_and_combine(
+                xs_reweight,
+                xs_weight_reweight,
+                xb_reweight,
+                xb_weight_reweight,
+                ys=ys,
+                yb=yb,
+                output_keys=output_keys,
+                test_rate=self._tc.test_rate,
+                shuffle_seed=self._rdm_seed,
+            )
+        else:
+            xb_reweight, xb_weight_reweight = self.get_reweight(
+                &#34;xb&#34;, array_key=bkg_key, reset_mass=reset_mass, reset_array_key=sig_key
+            )
+            if delete_bkg_dict:
+                self.delete_bkg_arrays
+            return train_utils.split_and_combine(
+                xs_reweight,
+                xs_weight_reweight,
+                xb_reweight,
+                xb_weight_reweight,
+                output_keys=output_keys,
+                test_rate=self._tc.test_rate,
+                shuffle_seed=self._rdm_seed,
+            )</code></pre>
+</details>
+<h3>Methods</h3>
+<dl>
+<dt id="hepynet.data_io.feed_box.Feedbox.delete_bkg_arrays"><code class="name flex">
+<span>def <span class="ident">delete_bkg_arrays</span></span>(<span>self)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def delete_bkg_arrays(self):
+    self._bkg_dict = None</code></pre>
+</details>
+</dd>
+<dt id="hepynet.data_io.feed_box.Feedbox.delete_sig_arrays"><code class="name flex">
+<span>def <span class="ident">delete_sig_arrays</span></span>(<span>self)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def delete_sig_arrays(self):
+    self._sig_dict = None</code></pre>
+</details>
+</dd>
+<dt id="hepynet.data_io.feed_box.Feedbox.get_job_config"><code class="name flex">
+<span>def <span class="ident">get_job_config</span></span>(<span>self)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def get_job_config(self):
+    return self._job_config</code></pre>
+</details>
+</dd>
+<dt id="hepynet.data_io.feed_box.Feedbox.get_norm_dict"><code class="name flex">
+<span>def <span class="ident">get_norm_dict</span></span>(<span>self)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def get_norm_dict(self):
+    return self._norm_dict</code></pre>
+</details>
+</dd>
+<dt id="hepynet.data_io.feed_box.Feedbox.get_raw"><code class="name flex">
+<span>def <span class="ident">get_raw</span></span>(<span>self, input_type, array_key='all', add_validation_features=False)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def get_raw(self, input_type, array_key=&#34;all&#34;, add_validation_features=False):
+    array_out = None
+    weight_out = None
+    # get dict
+    array_dict = None
+    if input_type == &#34;xs&#34;:
+        if self._sig_dict is not None:
+            array_dict = self._sig_dict
+        else:
+            array_dict = numpy_io.load_npy_arrays(self._job_config, &#34;sig&#34;)
+    elif input_type == &#34;xb&#34;:
+        if self._bkg_dict is not None:
+            array_dict = self._bkg_dict
+        else:
+            array_dict = numpy_io.load_npy_arrays(self._job_config, &#34;bkg&#34;)
+    elif input_type == &#34;xd&#34;:
+        if self._ac.apply_data:
+            array_dict = numpy_io.load_npy_arrays(self._job_config, &#34;data&#34;)
+        else:
+            logger.warn(
+                &#34;Trying to get data array as apply_data option is set to False&#34;
+            )
+            return None
+    else:
+        logger.warn(&#34;Unknown input type&#34;)
+        return None
+    if add_validation_features:
+        if self._ic.validation_features is None:
+            validation_features = []
+        else:
+            validation_features = self._ic.validation_features
+        feature_list = self._ic.selected_features + validation_features
+    else:
+        feature_list = self._ic.selected_features
+    if array_key in list(array_dict.keys()):
+        array_out = np.concatenate(
+            [array_dict[array_key][feature] for feature in feature_list], axis=1,
+        )
+        weight_out = array_dict[array_key][&#34;weight&#34;]
+    elif array_key == &#34;all&#34; or array_key == &#34;all_norm&#34;:
+        array_components = []
+        weight_components = []
+        for temp_key in array_dict.keys():
+            temp_array = np.concatenate(
+                [array_dict[temp_key][feature] for feature in feature_list], axis=1,
+            )
+            array_components.append(temp_array)
+            weight_component = array_dict[temp_key][&#34;weight&#34;]
+            if array_key == &#34;all&#34;:
+                weight_components.append(weight_component)
+            else:
+                sumofweights = np.sum(weight_component)
+                weight_components.append(weight_component / sumofweights)
+        array_out = np.concatenate(array_components)
+        weight_out = np.concatenate(weight_components)
+    else:
+        logger.warn(&#34;Unknown array_key&#34;)
+        return None
+    if self._ic.rm_negative_weight_events:
+        weight_out = array_utils.clean_negative_weights(weight_out)
+    return array_out, weight_out.reshape((-1,))</code></pre>
+</details>
+</dd>
+<dt id="hepynet.data_io.feed_box.Feedbox.get_reshape"><code class="name flex">
+<span>def <span class="ident">get_reshape</span></span>(<span>self, input_type, array_key='all')</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def get_reshape(self, input_type, array_key=&#34;all&#34;):
+    x_reshape, weight_reshape = self.get_raw(input_type, array_key=array_key)
+    norm_means = []
+    norm_variances = []
+    xb_dict = None
+    for feature in self._ic.selected_features:
+        norm_alias = self._job_config.input.feature_norm_alias.get_config_dict()
+        mean = None
+        variance = None
+        if feature in self._norm_dict:
+            mean = self._norm_dict[feature][&#34;mean&#34;]
+            variance = self._norm_dict[feature][&#34;variance&#34;]
+        else:
+            found_norm_alias = False
+            # check feature normalization alias
+            if feature in norm_alias:
+                alias_feature = norm_alias[feature]
+                if alias_feature in self._norm_dict:
+                    logger.debug(f&#34;Using norm_alias for: {feature}&#34;)
+                    mean = self._norm_dict[alias_feature][&#34;mean&#34;]
+                    variance = self._norm_dict[alias_feature][&#34;variance&#34;]
+                    found_norm_alias = True
+                else:
+                    logger.warn(
+                        f&#34;Specified but can&#39;t find norm_alias for: {feature}&#34;
+                    )
+            # recalculate if no existing mean/variance found
+            if not found_norm_alias:
+                logger.debug(&#34;Recalculating normalization parameters for {feature}&#34;)
+                if xb_dict is None:
+                    xb_dict = numpy_io.load_npy_arrays(self._job_config, &#34;bkg&#34;)
+                if not xb_dict:
+                    logger.critical(
+                        f&#34;Can&#39;t recalculate norm factor with empty background inputs, please check input.bkg_list&#34;
+                    )
+                    exit(1)
+                feature_array = np.concatenate(
+                    [sample_dict[feature] for sample_dict in xb_dict.values()]
+                )
+                weight_array = np.concatenate(
+                    [sample_dict[&#34;weight&#34;] for sample_dict in xb_dict.values()]
+                )
+                mean = np.average(feature_array, weights=weight_array)
+                variance = np.average(
+                    (feature_array - mean) ** 2, weights=weight_array
+                )
+                self._norm_dict[feature] = {&#34;mean&#34;: mean, &#34;variance&#34;: variance}
+        norm_means.append(mean)
+        norm_variances.append(variance)
+    x_reshape = train_utils.norarray(
+        x_reshape, average=norm_means, variance=norm_variances,
+    )
+    return x_reshape.copy(), weight_reshape.copy()</code></pre>
+</details>
+</dd>
+<dt id="hepynet.data_io.feed_box.Feedbox.get_reweight"><code class="name flex">
+<span>def <span class="ident">get_reweight</span></span>(<span>self, input_type, array_key='all', reset_mass=None, reset_array_key='all', norm=True)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def get_reweight(
+    self,
+    input_type,
+    array_key=&#34;all&#34;,
+    reset_mass=None,
+    reset_array_key=&#34;all&#34;,
+    norm=True,
+):
+    if reset_mass == None:
+        reset_mass = self._ic.reset_feature
+    if input_type == &#34;xs&#34;:
+        xs_reshape, xs_weight_reshape = self.get_reshape(&#34;xs&#34;, array_key=array_key)
+        return array_utils.modify_array(
+            xs_reshape,
+            xs_weight_reshape,
+            remove_negative_weight=self._ic.rm_negative_weight_events,
+            norm=norm,
+            sumofweight=self._ic.sig_sumofweight,
+        )
+    elif input_type == &#34;xb&#34;:
+        xb_reshape, xb_weight_reshape = self.get_reshape(&#34;xb&#34;, array_key=array_key)
+        if reset_mass:
+            reset_mass_arr, reset_mass_wts = self.get_reshape(
+                &#34;xs&#34;, array_key=reset_array_key
+            )
+            xb_reshape, xb_weight_reshape = array_utils.modify_array(
+                xb_reshape,
+                xb_weight_reshape,
+                reset_mass=True,
+                reset_mass_array=reset_mass_arr,
+                reset_mass_weights=reset_mass_wts,
+                reset_mass_id=self._reset_mass_id,
+            )
+        return array_utils.modify_array(
+            xb_reshape,
+            xb_weight_reshape,
+            remove_negative_weight=self._ic.rm_negative_weight_events,
+            norm=norm,
+            sumofweight=self._ic.bkg_sumofweight,
+        )
+    elif input_type == &#34;xd&#34;:
+        xd_reshape, xd_weight_reshape = self.get_reshape(&#34;xd&#34;, array_key=array_key)
+        if reset_mass:
+            reset_mass_arr, reset_mass_wts = self.get_reshape(
+                &#34;xs&#34;, array_key=reset_array_key
+            )
+            xd_reshape = array_utils.modify_array(
+                xd_reshape,
+                xd_weight_reshape,
+                reset_mass=True,
+                reset_mass_array=reset_mass_arr,
+                reset_mass_weights=reset_mass_wts,
+                reset_mass_id=self._reset_mass_id,
+            )
+        return array_utils.modify_array(
+            xd_reshape,
+            xd_weight_reshape,
+            remove_negative_weight=self._ic.rm_negative_weight_events,
+            norm=norm,
+            sumofweight=self._ic.data_weight,
+        )
+    else:
+        logger.warn(&#34;Unknown input_type&#34;)
+        return None</code></pre>
+</details>
+</dd>
+<dt id="hepynet.data_io.feed_box.Feedbox.get_train_test_arrays"><code class="name flex">
+<span>def <span class="ident">get_train_test_arrays</span></span>(<span>self, sig_key='all', bkg_key='all', multi_class_bkgs=[], reset_mass=None, output_keys=[])</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def get_train_test_arrays(
+    self,
+    sig_key=&#34;all&#34;,
+    bkg_key=&#34;all&#34;,
+    multi_class_bkgs=[],
+    reset_mass=None,
+    output_keys=[],
+):
+    if reset_mass == None:
+        reset_mass = self._ic.reset_feature
+
+    # deal with different number of output nodes
+    ## load sig
+    delete_sig_dict = False
+    if self._sig_dict is None:
+        self.load_sig_arrays()
+        delete_sig_dict = True
+    xs_reweight, xs_weight_reweight = self.get_reweight(
+        &#34;xs&#34;, array_key=sig_key, reset_mass=reset_mass, reset_array_key=sig_key
+    )
+    if delete_sig_dict:
+        self.delete_sig_arrays()
+    logger.debug(f&#34;xs_weight_reweight shape: {xs_weight_reweight.shape}&#34;)
+    ## load bkg
+    delete_bkg_dict = False
+    if self._bkg_dict is None:
+        self.load_bkg_arrays()
+        delete_bkg_dict = True
+    if multi_class_bkgs is not None and len(multi_class_bkgs) &gt; 0:
+        xb_reweight = None
+        xb_weight_reweight = None
+        yb = None
+        num_bkg_nodes = len(multi_class_bkgs)
+        ys_element = np.zeros(num_bkg_nodes + 1)
+        ys_element[0] = 1
+        ys = np.tile(ys_element, (len(xs_reweight), 1))
+        for node_num, bkg_node in enumerate(multi_class_bkgs):
+            bkg_node_list = (&#34;&#34;.join(bkg_node.split())).split(&#34;+&#34;)
+            xb_reweight_node = None
+            wt_reweight_node = None
+            for bkg_ele in bkg_node_list:
+                xb_reweight_ele, xb_wt_reweight_ele = self.get_reweight(
+                    &#34;xb&#34;,
+                    array_key=bkg_ele,
+                    reset_mass=reset_mass,
+                    reset_array_key=sig_key,
+                )
+                if xb_reweight_node is None:
+                    xb_reweight_node = xb_reweight_ele
+                    wt_reweight_node = xb_wt_reweight_ele
+                else:
+                    xb_reweight_node = np.concatenate(
+                        (xb_reweight_node, xb_reweight_ele)
+                    )
+                    wt_reweight_node = np.concatenate(
+                        (wt_reweight_node, xb_wt_reweight_ele)
+                    )
+            xb_reweight_node, wt_reweight_node = array_utils.modify_array(
+                xb_reweight_node, wt_reweight_node, norm=True, sumofweight=1000,
+            )
+            yb_single_element = np.zeros(num_bkg_nodes + 1)
+            yb_single_element[node_num + 1] = 1
+            yb_single = np.tile(yb_single_element, (len(xb_reweight_node), 1))
+            if xb_reweight is None:
+                xb_reweight = xb_reweight_node
+                yb = yb_single
+                xb_weight_reweight = wt_reweight_node
+            else:
+                xb_reweight = np.concatenate((xb_reweight, xb_reweight_node))
+                yb = np.concatenate((yb, yb_single))
+                xb_weight_reweight = np.concatenate(
+                    (xb_weight_reweight, wt_reweight_node)
+                )
+        xb_reweight, xb_weight_reweight = array_utils.modify_array(
+            xb_reweight,
+            xb_weight_reweight,
+            norm=True,
+            sumofweight=self._ic.bkg_sumofweight,
+        )
+        if delete_bkg_dict:
+            self.delete_bkg_arrays
+        return train_utils.split_and_combine(
+            xs_reweight,
+            xs_weight_reweight,
+            xb_reweight,
+            xb_weight_reweight,
+            ys=ys,
+            yb=yb,
+            output_keys=output_keys,
+            test_rate=self._tc.test_rate,
+            shuffle_seed=self._rdm_seed,
+        )
+    else:
+        xb_reweight, xb_weight_reweight = self.get_reweight(
+            &#34;xb&#34;, array_key=bkg_key, reset_mass=reset_mass, reset_array_key=sig_key
+        )
+        if delete_bkg_dict:
+            self.delete_bkg_arrays
+        return train_utils.split_and_combine(
+            xs_reweight,
+            xs_weight_reweight,
+            xb_reweight,
+            xb_weight_reweight,
+            output_keys=output_keys,
+            test_rate=self._tc.test_rate,
+            shuffle_seed=self._rdm_seed,
+        )</code></pre>
+</details>
+</dd>
+<dt id="hepynet.data_io.feed_box.Feedbox.load_bkg_arrays"><code class="name flex">
+<span>def <span class="ident">load_bkg_arrays</span></span>(<span>self)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def load_bkg_arrays(self):
+    self._bkg_dict = numpy_io.load_npy_arrays(self._job_config, &#34;bkg&#34;)</code></pre>
+</details>
+</dd>
+<dt id="hepynet.data_io.feed_box.Feedbox.load_sig_arrays"><code class="name flex">
+<span>def <span class="ident">load_sig_arrays</span></span>(<span>self)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def load_sig_arrays(self):
+    self._sig_dict = numpy_io.load_npy_arrays(self._job_config, &#34;sig&#34;)</code></pre>
+</details>
+</dd>
+</dl>
+</dd>
+</dl>
+</section>
+</article>
+<nav id="sidebar">
+<h1>Index</h1>
+<div class="toc">
+<ul></ul>
+</div>
+<ul id="index">
+<li><h3>Super-module</h3>
+<ul>
+<li><code><a title="hepynet.data_io" href="index.html">hepynet.data_io</a></code></li>
+</ul>
+</li>
+<li><h3><a href="#header-classes">Classes</a></h3>
+<ul>
+<li>
+<h4><code><a title="hepynet.data_io.feed_box.Feedbox" href="#hepynet.data_io.feed_box.Feedbox">Feedbox</a></code></h4>
+<ul class="">
+<li><code><a title="hepynet.data_io.feed_box.Feedbox.delete_bkg_arrays" href="#hepynet.data_io.feed_box.Feedbox.delete_bkg_arrays">delete_bkg_arrays</a></code></li>
+<li><code><a title="hepynet.data_io.feed_box.Feedbox.delete_sig_arrays" href="#hepynet.data_io.feed_box.Feedbox.delete_sig_arrays">delete_sig_arrays</a></code></li>
+<li><code><a title="hepynet.data_io.feed_box.Feedbox.get_job_config" href="#hepynet.data_io.feed_box.Feedbox.get_job_config">get_job_config</a></code></li>
+<li><code><a title="hepynet.data_io.feed_box.Feedbox.get_norm_dict" href="#hepynet.data_io.feed_box.Feedbox.get_norm_dict">get_norm_dict</a></code></li>
+<li><code><a title="hepynet.data_io.feed_box.Feedbox.get_raw" href="#hepynet.data_io.feed_box.Feedbox.get_raw">get_raw</a></code></li>
+<li><code><a title="hepynet.data_io.feed_box.Feedbox.get_reshape" href="#hepynet.data_io.feed_box.Feedbox.get_reshape">get_reshape</a></code></li>
+<li><code><a title="hepynet.data_io.feed_box.Feedbox.get_reweight" href="#hepynet.data_io.feed_box.Feedbox.get_reweight">get_reweight</a></code></li>
+<li><code><a title="hepynet.data_io.feed_box.Feedbox.get_train_test_arrays" href="#hepynet.data_io.feed_box.Feedbox.get_train_test_arrays">get_train_test_arrays</a></code></li>
+<li><code><a title="hepynet.data_io.feed_box.Feedbox.load_bkg_arrays" href="#hepynet.data_io.feed_box.Feedbox.load_bkg_arrays">load_bkg_arrays</a></code></li>
+<li><code><a title="hepynet.data_io.feed_box.Feedbox.load_sig_arrays" href="#hepynet.data_io.feed_box.Feedbox.load_sig_arrays">load_sig_arrays</a></code></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</nav>
+</main>
+<footer id="footer">
+<p>Generated by <a href="https://pdoc3.github.io/pdoc"><cite>pdoc</cite> 0.9.2</a>.</p>
+</footer>
+</body>
+</html>
