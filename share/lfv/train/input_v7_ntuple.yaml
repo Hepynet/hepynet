@@ -1,7 +1,3 @@
-config:
-    include:
-        - "share/lfv/train/default.yaml"
-
 input:
     campaign: ""
     arr_path: "lfv/arrays"

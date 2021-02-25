@@ -1,6 +1,6 @@
 config:
     include:
-        - "share/lfv/train/default_emu.yaml"
+        - "share/lfv/train/emu_pnn.yaml"
 
 job:
     job_name: "emu-s1_b10"

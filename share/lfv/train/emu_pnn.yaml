@@ -1,9 +1,9 @@
 config:
     include:
-        - "share/lfv/train/default_v7_ntuple.yaml"
+        - "share/lfv/train/input_v7_ntuple.yaml"
 
 job:
-    job_name: "emu-default"
+    job_name: "emu-pnn"
     job_type: "train"
     save_dir: "run/lfv/emu"
 
@@ -12,18 +12,39 @@ input:
     norm_array: true
     bkg_key: "all"
     sig_key: "all_norm"
+    bkg_sumofweight: 1000
+    sig_sumofweight: 5000
     # all features
+    #selected_features:
+    #    - "m_ll_p"
+    #    - "ele_pt"
+    #    - "mu_pt"
+    #    - "pt_ll"
+    #    - "dr_ll"
+    #    - "met"
     selected_features:
-        - "m_ll"
+        - "m_ll_p"
         - "ele_pt"
+        - "ele_eta"
+        - "ele_phi"
+        - "ele_e"
+    #    - "ele_istight"
+        - "ele_c"
         - "mu_pt"
+        - "mu_eta"
+        - "mu_phi"
+        - "mu_e"
+    #    - "mu_istight"
+        - "mu_c"
+        - "met"
+        - "met_phi"
+        - "met_mT"
         - "pt_ll"
         - "dr_ll"
-        - "met"
     validation_features:
         - "m_ll"
     reset_feature: true
-    reset_feature_name: "m_ll"
+    reset_feature_name: "m_ll_p"
     rm_negative_weight_events: true
 
 train:
@@ -39,7 +60,7 @@ train:
     learn_rate: 0.003
     learn_rate_decay: 1.e-4
     batch_size: 64
-    epochs: 100
+    epochs: 50
     sig_class_weight: 1.
     bkg_class_weight: 1.
     # early stop setups

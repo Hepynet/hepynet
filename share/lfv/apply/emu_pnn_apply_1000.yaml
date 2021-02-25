@@ -1,0 +1,17 @@
+config:
+    include:
+        - "share/lfv/apply/emu_pnn.yaml"
+
+job:
+    job_name: "emu-pnn-apply-1000"
+    job_type: "apply"
+    load_job_name: "emu-pnn"
+
+input:
+    # only remove negative events for training
+    rm_negative_weight_events: false
+
+    sig_list:
+        - "sig_zpr_1000"
+    bkg_sumofweight: 1000
+    sig_sumofweight: 1000
