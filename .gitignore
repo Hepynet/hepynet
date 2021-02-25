@@ -1,14 +1,16 @@
 # Don't track content of these folders
 
 # Temparary folders
+.vscode
 apply/*
 backups/*
-test/*
-run/*
-hepynet.egg-info/*
+build/*
+dist/*
 env_setup/*
-.vscode
+hepynet.egg-info/*
 html
+run/*
+test/*
 
 # Side files that are not needed to be saved #
 *.bak

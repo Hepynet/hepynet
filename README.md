@@ -1,6 +1,6 @@
 # **Hepynet**
 
-**H**igh **e**nergy physics, **py**thon-based, neural-**net**work framework
+**H**igh **e**nergy physics, **py**thon-based, neural-**net**work assistant framework
 
 ![forthebadge](https://img.shields.io/badge/hepynet-v0.4.0-blue)
 
@@ -48,14 +48,15 @@ git clone --recursive git@github.com:StarPrecursor/hepynet.git
 
   Note: if the Docker image is not installed yet, this will automatically pull the required image from [Docker Hub](https://hub.docker.com/)
 
-- **Method 2** - Install with Pip
+- **Method 2** - Use [Conda](https://www.anaconda.com/)
 
   ```bash
-  pip install -e .
+  conda create -n hepynet python=3.8
+  conda activate hepynet
+  cd src
+  pip install .
+  cd ..
   ```
-
-  You can also install the package in your [conda](https://www.anaconda.com/) environment
-
 
 ### GPU support
 
@@ -95,10 +96,19 @@ git clone --recursive git@github.com:StarPrecursor/hepynet.git
 
   please refer to [config_preparing.md](docs/config_preparing.md) for more details
 
-## **Execute jobs**
+## **Usage**
 
 ```bash
-hepynet [-h] [-d] [-v] [yaml_configs [yaml_configs ...]]
+hepynet -h
+usage: hepynet [-h] [-d] [-v] [yaml_configs [yaml_configs ...]]
+
+positional arguments:
+  yaml_configs
+
+optional arguments:
+  -h, --help     show this help message and exit
+  -d, --debug    run in debug mode
+  -v, --verbose  verbose debug infomation
 ```
 
 ## **Release note - v0.4.0**
