@@ -224,4 +224,3 @@ def shuffle_and_split(x, y, wt, split_ratio=0.0, shuffle_seed=None):
         first_part_wt,
         last_part_wt,
     )
-

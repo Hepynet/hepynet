@@ -10,7 +10,6 @@ import typing
 
 logger = logging.getLogger("hepynet")
 import keras
-import numpy as np
 import pandas as pd
 import tensorflow as tf
 import yaml
@@ -298,10 +297,7 @@ class Model_Sequential_Base(Model_Base):
 
     def set_inputs(self, job_config) -> None:
         """Prepares array for training."""
-        feedbox = feed_box.Feedbox(
-            job_config,
-            model_meta=self.get_model_meta(),
-        )
+        feedbox = feed_box.Feedbox(job_config, model_meta=self.get_model_meta(),)
         if job_config.job.job_type == "apply":
             feedbox.load_sig_arrays()
             feedbox.load_bkg_arrays()
@@ -561,4 +557,3 @@ class Model_Sequential_Flat(Model_Sequential_Base):
             weighted_metrics=weighted_metrics,
         )
         self._model_is_compiled = True
-

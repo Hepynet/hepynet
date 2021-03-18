@@ -1,23 +1,13 @@
-import ast
-import csv
 import datetime
 import logging
 import math
 import pathlib
-import re
-import time
 
 import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
-import seaborn as sns
-from hyperopt import Trials, fmin, hp, tpe
-from hyperopt.pyll.stochastic import sample
-from sklearn.metrics import auc, roc_curve
 
-from hepynet.common import array_utils, common_utils, config_utils
-from hepynet.common.hepy_const import SCANNED_PARAS
-from hepynet.data_io import numpy_io
+from hepynet.common import common_utils, config_utils
+
+# from hepynet.common.hepy_const import SCANNED_PARAS
 from hepynet.evaluate import (
     importance,
     kinematics,
@@ -28,6 +18,7 @@ from hepynet.evaluate import (
 )
 from hepynet.main import job_utils
 from hepynet.train import model, train_utils
+
 logger = logging.getLogger("hepynet")
 
 

@@ -121,4 +121,3 @@ def has_none(list):
         if ele is None:
             return True
     return False
-

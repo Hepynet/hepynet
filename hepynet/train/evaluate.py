@@ -19,6 +19,7 @@ from hepynet.train import train_utils
 
 try:
     import ROOT
+
     root_available = True
     from easy_atlas_plot.plot_utils import plot_utils_root, th1_tools
 except ImportError:

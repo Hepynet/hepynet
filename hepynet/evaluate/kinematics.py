@@ -12,6 +12,7 @@ logger = logging.getLogger("hepynet")
 
 try:
     import ROOT
+
     root_available = True
     from easy_atlas_plot.plot_utils import plot_utils_root, th1_tools
 except ImportError:
@@ -77,9 +78,7 @@ def plot_input_distributions(
         bkg_array, bkg_fill_weights = feedbox.get_reshape("xb", array_key=ic.bkg_key)
         sig_array, sig_fill_weights = feedbox.get_reshape("xs", array_key=ic.sig_key)
     else:
-        plot_feature_list = (
-            ic.selected_features + ic.validation_features
-        )
+        plot_feature_list = ic.selected_features + ic.validation_features
         bkg_array, bkg_fill_weights = feedbox.get_raw(
             "xb", array_key=ic.bkg_key, add_validation_features=True
         )
@@ -612,4 +611,3 @@ def plot_input_distributions_root(
             ratio_plot.print_ratio(
                 save_path=f"{save_dir}/{feature}_sig_ratio_table.txt"
             )
-

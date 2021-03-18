@@ -7,6 +7,7 @@ Note:
 """
 import logging
 import pathlib
+from typing import List, Optional
 import numpy as np
 
 from hepynet.common import array_utils, common_utils, config_utils
@@ -15,7 +16,7 @@ logger = logging.getLogger("hepynet")
 
 
 def load_npy_arrays(
-    job_config, array_type,
+    job_config, array_type, part_features:Optional[List[str]]=None
 ):
     """Gets individual npy arrays with given info.
 
@@ -27,8 +28,9 @@ def load_npy_arrays(
 
     """
     # get settings from config file
-    rc = job_config.run.clone()
-    ic = job_config.input.clone()
+    job_config_copy = job_config.clone()
+    rc = job_config_copy.run
+    ic = job_config_copy.input
     if array_type == "sig":
         samples = ic.sig_list
     elif array_type == "bkg":
@@ -44,69 +46,57 @@ def load_npy_arrays(
         sample_list = [samples]
     else:
         sample_list = samples
-    if ic.campaign in ["run2", "all"]:
-        campaign_list = ["mc16a", "mc16d", "mc16e"]
-    elif "+" in ic.campaign:
-        campaign_list = [camp.strip() for camp in ic.campaign.split("+")]
-    else:
-        campaign_list = [ic.campaign]
 
     # load arrays
-    included_features = ic.selected_features[:]
-    if ic.validation_features is None:
-        ic.validation_features = (
-            []
-        )  # TODO: need to solve this using a global default config setting in the future
-    included_features = list(
-        set().union(included_features, ic.validation_features, ["weight"])
-    )
-    if (
-        ic.cut_features is None
-    ):  # TODO: need to solve this using a global default config setting in the future
-        ic.cut_features = []
-        ic.cut_values = []
-        ic.cut_types = []
+    out_features = list()
+    if part_features is None:
+        out_features = ic.selected_features[:]
+        out_features = list(
+            set().union(out_features, ic.validation_features, ["weight"])
+        )
+    else:
+        out_features = list(
+            set().union(part_features, ["weight"])
+        )
     ic.cut_features += [ic.channel]
     ic.cut_values += [1]
     ic.cut_types += ["="]
     out_dict = {}
     platform_meta = config_utils.load_current_platform_meta()
     data_directory = platform_meta["data_path"]
+    ## check data_root_directory
     if not data_directory:
         current_hostname = common_utils.get_current_hostname()
         current_platform = common_utils.get_current_platform_name()
-        logger.critical(
-            f"Can't find data_path setting for current host {current_hostname} with platform {current_platform}, please update the config at share/cross_platform/pc_meta.yaml"
+        logger.info(
+            f"NO data_path setting for current host {current_hostname} with platform {current_platform} found at share/cross_platform/pc_meta.yaml, will consider using absolute path for input data"
         )
-        exit(1)
+        data_directory = ""
+    ## get campaign list
+    campaign_list = list()
+    if "+" in ic.campaign:
+        campaign_list = [camp.strip() for camp in ic.campaign.split("+")]
+    else:
+        campaign_list = [ic.campaign]
+    ## load sample array
     for sample_component in sample_list:
-        # load sample array
         sample_array_dict = {}
         cut_array_dict = {}
-        for feature in set().union(included_features, ic.cut_features):
+        for feature in set().union(out_features, ic.cut_features):
             feature_array = None
-            if ic.campaign in ["run2", "all"]:
-                try:
-                    for camp in campaign_list:
-                        temp_array = np.load(
-                            f"{data_directory}/{rc.npy_path}/{camp}/{ic.region}/{sample_component}_{feature}.npy"
-                        )
-                        temp_array = np.reshape(temp_array, (-1, 1))
-                        if feature_array is None:
-                            feature_array = temp_array
-                        else:
-                            feature_array = np.concatenate((feature_array, temp_array))
-                except:
-                    feature_array = np.load(
-                        f"{data_directory}/{rc.npy_path}/{ic.campaign}/{ic.region}/{sample_component}_{feature}.npy"
-                    )
-            else:
-                feature_array = np.load(
-                    f"{data_directory}/{rc.npy_path}/{ic.campaign}/{ic.region}/{sample_component}_{feature}.npy"
+            for camp in campaign_list:
+                temp_array = np.load(
+                    f"{data_directory}/{rc.npy_path}/{camp}/{ic.region}/{sample_component}_{feature}.npy "
                 )
+                temp_array = np.reshape(temp_array, (-1, 1))
+                if feature_array is None:
+                    feature_array = temp_array
+                else:
+                    feature_array = np.concatenate((feature_array, temp_array))
+
             feature_array = feature_array.reshape((-1, 1))
 
-            if feature in included_features:
+            if feature in out_features:
                 sample_array_dict[feature] = feature_array
             if feature in ic.cut_features:
                 cut_array_dict[feature] = feature_array
@@ -153,4 +143,3 @@ def save_npy_array(
     logger.debug(f"Array contents:\n {npy_array}")
     logger.debug(f"Array average:\n {np.average(npy_array)}")
     logger.debug(f"Array sum:\n {np.sum(npy_array)}")
-    

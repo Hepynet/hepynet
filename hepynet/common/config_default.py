@@ -8,7 +8,7 @@ DEFAULT_CFG = {
     },
     "input": {
         "norm_array": True,
-        "feature_norm_alias":{},
+        "feature_norm_alias": {},
         "sig_sumofweight": 1000,
         "bkg_sumofweight": 1000,
         "data_sumofweight": 1000,
@@ -49,6 +49,7 @@ DEFAULT_CFG = {
         "bkg_class_weight": 1,
         "test_rate": 0.2,
         "val_split": 0.25,
+        "k_folds": None,
         "use_early_stop": False,
         "early_stop_paras": {
             "monitor": "val_loss",
