@@ -84,7 +84,6 @@ def modify_array(
     norm=False,
     sumofweight=1000,
     shuffle=False,
-    shuffle_seed=None,
 ):
     """Modifies numpy array with given setup.
 
@@ -106,10 +105,6 @@ def modify_array(
             Total normalized weight.
         shuffle: bool, optional (default=None)
             Whether to randomize the output array.
-        shuffle_seed: int or None, optional (default=None)
-            Seed for randomization process.
-            Set to None to use current time as seed.
-            Set to a specific value to get an unchanged shuffle result.
 
       Returns:
           new: numpy array
@@ -139,11 +134,7 @@ def modify_array(
     # shuffle array
     if shuffle == True:
         new_array, _, _, _, new_weight, _ = shuffle_and_split(
-            new_array,
-            np.zeros(len(new_array)),
-            new_weight,
-            split_ratio=0.0,
-            shuffle_seed=shuffle_seed,
+            new_array, np.zeros(len(new_array)), new_weight, split_ratio=0.0,
         )
     # return result
     return new_array, new_weight
@@ -175,11 +166,8 @@ def norweight(weight_array, norm=1000):
     return new
 
 
-def reset_col(reset_array, ref_array, ref_weights, col=0, shuffle_seed=None):
+def reset_col(reset_array, ref_array, ref_weights, col=0):
     """Resets one column in an array based on the distribution of reference."""
-    if common_utils.has_none([shuffle_seed]):
-        shuffle_seed = int(time.time())
-    np.random.seed(shuffle_seed)
     new = reset_array.copy()
     total_events = len(new)
     positive_weights = (ref_weights.copy()).clip(min=0)
@@ -195,7 +183,7 @@ def reset_col(reset_array, ref_array, ref_weights, col=0, shuffle_seed=None):
     return new
 
 
-def shuffle_and_split(x, y, wt, split_ratio=0.0, shuffle_seed=None):
+def shuffle_and_split(x, y, wt, split_ratio=0.0):
     """Self defined function to replace train_test_split in sklearn to allow
     more flexibility.
     """
@@ -203,7 +191,6 @@ def shuffle_and_split(x, y, wt, split_ratio=0.0, shuffle_seed=None):
     if len(x) != len(y):
         raise ValueError("Length of x and y is not same.")
     array_len = len(y)
-    np.random.seed(shuffle_seed)
     # get index for the first part of the split array
     first_part_index = np.random.choice(
         range(array_len), int(array_len * 1.0 * split_ratio), replace=False

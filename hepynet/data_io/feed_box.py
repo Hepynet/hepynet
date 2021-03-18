@@ -36,11 +36,7 @@ class Feedbox(object):
                 exit(1)
         else:
             self._reset_mass_id = None
-        self._rdm_seed = self._ic.rdm_seed
         self._array_prepared = False
-        # set random seed
-        if self._rdm_seed is None:
-            self._rdm_seed = int(time.time())
 
         # get normalization parameters
         no_norm_paras = False
@@ -65,8 +61,10 @@ class Feedbox(object):
             self._norm_dict = model_meta["norm_dict"]
         self._array_prepared = True
 
-    def update_norm_dict(self, features:Optional[List[str]]=None):
-        xb_dict = numpy_io.load_npy_arrays(self._job_config, "bkg", part_features=features)
+    def update_norm_dict(self, features: Optional[List[str]] = None):
+        xb_dict = numpy_io.load_npy_arrays(
+            self._job_config, "bkg", part_features=features
+        )
         weight_array = np.concatenate(
             [sample_dict["weight"] for sample_dict in xb_dict.values()]
         )
@@ -306,7 +304,6 @@ class Feedbox(object):
                 yb=yb,
                 output_keys=output_keys,
                 test_rate=self._tc.test_rate,
-                shuffle_seed=self._rdm_seed,
             )
         else:
             xb_reweight, xb_weight_reweight = self.get_reweight(
@@ -319,7 +316,6 @@ class Feedbox(object):
                 xb_weight_reweight,
                 output_keys=output_keys,
                 test_rate=self._tc.test_rate,
-                shuffle_seed=self._rdm_seed,
             )
 
     def get_train_test_arrays_k_fold(
@@ -330,7 +326,7 @@ class Feedbox(object):
         reset_mass: Optional[bool] = None,
         output_keys: List[str] = [],
         num_folds: int = 2,
-    ):
+    ) -> List[Dict[str, np.ndarray]]:
         """Gets the k-fold training train/test inputs
 
         Args:

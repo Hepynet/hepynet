@@ -2,12 +2,13 @@ import datetime
 import logging
 import math
 import pathlib
+import random as python_random
 
 import matplotlib.pyplot as plt
+import numpy as np
+import tensorflow as tf
 
 from hepynet.common import common_utils, config_utils
-
-# from hepynet.common.hepy_const import SCANNED_PARAS
 from hepynet.evaluate import (
     importance,
     kinematics,
@@ -18,6 +19,9 @@ from hepynet.evaluate import (
 )
 from hepynet.main import job_utils
 from hepynet.train import model, train_utils
+
+# from hepynet.common.hepy_const import SCANNED_PARAS
+
 
 logger = logging.getLogger("hepynet")
 
@@ -67,12 +71,12 @@ class job_executor(object):
             if rc.load_dir == None:
                 rc.load_dir = jc.save_dir
 
-        # set up model
+        if jc.fix_rdm_seed:
+            self.fix_random_seed()
+
         self.set_model()
-        # set up inputs
         self.set_model_input()
 
-        # train or apply
         if jc.job_type == "train":
             self.execute_train_job()
         elif jc.job_type == "apply":
@@ -540,6 +544,31 @@ class job_executor(object):
         print(">>> loss: {}".format(loss_value))
         return loss_value
     '''
+
+    def fix_random_seed(self) -> None:
+        """Fixes random seed
+
+        Ref:
+            https://keras.io/getting_started/faq/#how-can-i-obtain-reproducible-results-using-keras-during-development
+
+        Note:
+            The seed setting funcions called in this function shouldn't be set 
+            again in later code, otherwise extra randomness will be introduced 
+            (even if set same seed). The reason is unknown yet.
+
+        """
+        seed = self.job_config.job.rdm_seed
+        # The below is necessary for starting Numpy generated random numbers
+        # in a well-defined initial state.
+        np.random.seed(seed)
+        # The below is necessary for starting core Python generated random numbers
+        # in a well-defined state.
+        python_random.seed(seed)
+        # The below set_seed() will make random number generation
+        # in the TensorFlow backend have a well-defined initial state.
+        # For further details, see:
+        # https://www.tensorflow.org/api_docs/python/tf/random/set_seed
+        tf.random.set_seed(seed)
 
     def get_config(self, yaml_path):
         """Retrieves configurations from yaml file."""

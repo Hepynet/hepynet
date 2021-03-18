@@ -29,6 +29,7 @@ if gpus:
         # Memory growth must be set before GPUs have been initialized
         logger.error(e)
 from keras import backend as K
+from keras import initializers
 from keras.callbacks import ModelCheckpoint, TensorBoard, callbacks
 from keras.layers import Dense, Dropout
 from keras.models import Sequential
@@ -298,9 +299,6 @@ class Model_Sequential_Base(Model_Base):
     def set_inputs(self, job_config) -> None:
         """Prepares array for training."""
         feedbox = feed_box.Feedbox(job_config, model_meta=self.get_model_meta(),)
-        if job_config.job.job_type == "apply":
-            feedbox.load_sig_arrays()
-            feedbox.load_bkg_arrays()
         self._model_meta["norm_dict"] = copy.deepcopy(feedbox.get_norm_dict())
         self.feedbox = feedbox
         self._array_prepared = feedbox._array_prepared
@@ -381,6 +379,7 @@ class Model_Sequential_Base(Model_Base):
             batch_size=tc.batch_size,
             epochs=tc.epochs,
             validation_split=tc.val_split,
+            shuffle=False,
             sample_weight=wt_train,
             callbacks=train_callbacks,
             verbose=tc.verbose,

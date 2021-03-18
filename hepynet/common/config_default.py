@@ -5,6 +5,8 @@ DEFAULT_CFG = {
         "job_type": "JOB_TYPE_DEF",
         "save_dir": ".",
         "load_job_name": "LOAD_JOB_NAME_DEF",
+        "fix_rdm_seed": True,
+        "rdm_seed": 1024,
     },
     "input": {
         "norm_array": True,
@@ -15,7 +17,6 @@ DEFAULT_CFG = {
         "reset_feature": False,
         "reset_feature_name": "RESET_FEATURE_NAME_DEF",
         "rm_negative_weight_events": False,
-        "rdm_seed": 1024,
         "arr_path": "",
         "arr_version": "",
         "variation": "",

@@ -135,15 +135,13 @@ def get_model_epoch_path_list(
     return model_path_list
 
 
-def generate_shuffle_index(array_len, shuffle_seed=None):
+def generate_shuffle_index(array_len):
     """Generates array shuffle index.
 
     To use a consist shuffle index to have different arrays shuffle in same way.
 
     """
     shuffle_index = np.array(range(array_len))
-    if shuffle_seed is not None:
-        np.random.seed(shuffle_seed)
     np.random.shuffle(shuffle_index)
     return shuffle_index
 
@@ -196,7 +194,6 @@ def split_and_combine(
     output_keys=None,
     test_rate=0.2,
     shuffle_combined_array=True,
-    shuffle_seed=None,
 ):
     """Prepares array for training & validation
 
@@ -209,10 +206,6 @@ def split_and_combine(
         Portion of samples (array rows) to be used as independent test samples.
         shuffle_combined_array: bool, optional (default=True)
         Whether to shuffle outputs arrays before return.
-        shuffle_seed: int or None, optional (default=None)
-        Seed for randomization process.
-        Set to None to use current time as seed.
-        Set to a specific value to get an unchanged shuffle result.
 
     Returns:
         x_train/x_test/y_train/y_test: numpy array
@@ -242,9 +235,7 @@ def split_and_combine(
         arr_sepa.ys_test,
         arr_sepa.wts_train,
         arr_sepa.wts_test,
-    ) = array_utils.shuffle_and_split(
-        xs, ys, xs_weight, split_ratio=1 - test_rate, shuffle_seed=shuffle_seed
-    )
+    ) = array_utils.shuffle_and_split(xs, ys, xs_weight, split_ratio=1 - test_rate)
     (
         arr_sepa.xb_train,
         arr_sepa.xb_test,
@@ -252,9 +243,7 @@ def split_and_combine(
         arr_sepa.yb_test,
         arr_sepa.wtb_train,
         arr_sepa.wtb_test,
-    ) = array_utils.shuffle_and_split(
-        xb, yb, xb_weight, split_ratio=1 - test_rate, shuffle_seed=shuffle_seed
-    )
+    ) = array_utils.shuffle_and_split(xb, yb, xb_weight, split_ratio=1 - test_rate)
 
     if has_comb:
         arr_comb.x_train = np.concatenate((arr_sepa.xs_train, arr_sepa.xb_train))
@@ -267,16 +256,12 @@ def split_and_combine(
             arr_sepa = None
         if shuffle_combined_array:
             # shuffle train dataset
-            shuffle_index = generate_shuffle_index(
-                len(arr_comb.y_train), shuffle_seed=shuffle_seed
-            )
+            shuffle_index = generate_shuffle_index(len(arr_comb.y_train))
             arr_comb.x_train = arr_comb.x_train[shuffle_index]
             arr_comb.y_train = arr_comb.y_train[shuffle_index]
             arr_comb.wt_train = arr_comb.wt_train[shuffle_index]
             # shuffle test dataset
-            shuffle_index = generate_shuffle_index(
-                len(arr_comb.y_test), shuffle_seed=shuffle_seed
-            )
+            shuffle_index = generate_shuffle_index(len(arr_comb.y_test))
             arr_comb.x_test = arr_comb.x_test[shuffle_index]
             arr_comb.y_test = arr_comb.y_test[shuffle_index]
             arr_comb.wt_test = arr_comb.wt_test[shuffle_index]

@@ -181,7 +181,6 @@ def plot_2d_significance_scan(
             bkg_weight=ic.bkg_sumofweight,
             data_weight=ic.data_sumofweight,
             test_rate=ic.test_rate,
-            rdm_seed=None,
             model_meta=job_wrapper.model_wrapper.model_meta,
             verbose=tc.verbose,
         )

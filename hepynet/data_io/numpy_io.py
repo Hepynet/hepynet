@@ -15,9 +15,7 @@ from hepynet.common import array_utils, common_utils, config_utils
 logger = logging.getLogger("hepynet")
 
 
-def load_npy_arrays(
-    job_config, array_type, part_features:Optional[List[str]]=None
-):
+def load_npy_arrays(job_config, array_type, part_features: Optional[List[str]] = None):
     """Gets individual npy arrays with given info.
 
     Return:
@@ -55,9 +53,7 @@ def load_npy_arrays(
             set().union(out_features, ic.validation_features, ["weight"])
         )
     else:
-        out_features = list(
-            set().union(part_features, ["weight"])
-        )
+        out_features = list(set().union(part_features, ["weight"]))
     ic.cut_features += [ic.channel]
     ic.cut_values += [1]
     ic.cut_types += ["="]
