@@ -5,7 +5,7 @@ import numpy as np
 from matplotlib.ticker import NullFormatter
 from sklearn.metrics import auc, roc_auc_score, roc_curve
 
-from hepynet.common import array_utils, common_utils
+from hepynet.data_io import array_utils
 
 logger = logging.getLogger("hepynet")
 

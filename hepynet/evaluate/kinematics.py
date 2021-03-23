@@ -6,7 +6,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 
-from hepynet.common import array_utils, config_utils
+from hepynet.common import config_utils
+from hepynet.data_io import array_utils
 
 logger = logging.getLogger("hepynet")
 

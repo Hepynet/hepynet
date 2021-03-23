@@ -1,51 +1,15 @@
 # -*- coding: utf-8 -*-
-"""Functions used for pDNN training.
-
-This module is a collection of functions used for pDNN training. Include: array
-manipulation, making plots, evaluation functions and so on.
-
-"""
-
 import glob
 import logging
 import pathlib
-import sys
-import time
-from math import sqrt
 
-import matplotlib.pyplot as plt
 import numpy as np
-from sklearn.metrics import accuracy_score, auc, classification_report
+from sklearn.model_selection import StratifiedKFold
 
-from hepynet.common import array_utils, config_utils
+from hepynet.common import config_utils
 from hepynet.data_io import numpy_io
 
 logger = logging.getLogger("hepynet")
-
-
-SEPA_KEYS = [
-    "xs_train",
-    "xs_test",
-    "ys_train",
-    "ys_test",
-    "wts_train",
-    "wts_test",
-    "xb_train",
-    "xb_test",
-    "yb_train",
-    "yb_test",
-    "wtb_train",
-    "wtb_test",
-]
-
-COMB_KEYS = [
-    "x_train",
-    "x_test",
-    "y_train",
-    "y_test",
-    "wt_train",
-    "wt_test",
-]
 
 
 def dump_fit_npy(
@@ -135,17 +99,6 @@ def get_model_epoch_path_list(
     return model_path_list
 
 
-def generate_shuffle_index(array_len):
-    """Generates array shuffle index.
-
-    To use a consist shuffle index to have different arrays shuffle in same way.
-
-    """
-    shuffle_index = np.array(range(array_len))
-    np.random.shuffle(shuffle_index)
-    return shuffle_index
-
-
 def get_mean_var(array, axis=None, weights=None):
     """Calculate average and variance of an array."""
     average = np.average(array, axis=axis, weights=weights)
@@ -155,7 +108,32 @@ def get_mean_var(array, axis=None, weights=None):
     return average, variance + 0.000001
 
 
-def norarray(array, average=None, variance=None, axis=None, weights=None):
+def get_train_val_indices(x, y, wt, val_split, k_folds=None):
+    """Gets indices to separates train datasets to train/validation"""
+    train_indices_list = list()
+    validation_indices_list = list()
+    if isinstance(k_folds, int) and k_folds >= 2:
+        # skf = KFold(n_splits=k_folds, shuffle=True)
+        skf = StratifiedKFold(n_splits=k_folds, shuffle=True)
+        for train_index, val_index in skf.split(x, y):
+            train_indices_list.append(train_index)
+            validation_indices_list.append(val_index)
+    else:
+        if isinstance(k_folds, int) and k_folds <= 2:
+            logger.error(
+                f"Invalid train.k_folds value {k_folds} detected, will not use k-fold validation"
+            )
+        array_len = len(wt)
+        val_index = np.random.choice(
+            range(array_len), int(array_len * 1.0 * val_split), replace=False
+        )
+        train_index = np.setdiff1d(np.array(range(array_len)), val_index)
+        train_indices_list.append(train_index)
+        validation_indices_list.append(val_index)
+    return train_indices_list, validation_indices_list
+
+
+def norm_array(array, average=None, variance=None):
     """Normalizes input array for each feature.
 
     Note:
@@ -163,17 +141,14 @@ def norarray(array, average=None, variance=None, axis=None, weights=None):
         in the same way. (i.e. use same average and variance for normalization.)
 
     """
-    if len(array) == 0:
-        return array
-    else:
+    if len(array) != 0:
         if (average is None) or (variance is None):
-            logger.warn("Unspecified average or variance.")
-            average, variance = get_mean_var(array, axis=axis, weights=weights)
-        output_array = (array.copy() - average) / np.sqrt(variance)
-        return output_array
+            logger.error("Unspecified average or variance.")
+            return
+        array[:] = (array - average) / np.sqrt(variance)
 
 
-def norarray_min_max(array, min, max, axis=None):
+def norm_array_min_max(array, min, max, axis=None):
     """Normalizes input array to (-1, +1)"""
     middle = (min + max) / 2.0
     output_array = array.copy() - middle
@@ -183,136 +158,3 @@ def norarray_min_max(array, min, max, axis=None):
     ratio = (max - min) / 2.0
     output_array = output_array / ratio
 
-
-def split_and_combine(
-    xs,
-    xs_weight,
-    xb,
-    xb_weight,
-    ys=None,
-    yb=None,
-    output_keys=None,
-    test_rate=0.2,
-    shuffle_combined_array=True,
-):
-    """Prepares array for training & validation
-
-    Args:
-        xs: numpy array
-        Signal array for training.
-        xb: numpy array
-        Background array for training.
-        test_rate: float, optional (default = 0.2)
-        Portion of samples (array rows) to be used as independent test samples.
-        shuffle_combined_array: bool, optional (default=True)
-        Whether to shuffle outputs arrays before return.
-
-    Returns:
-        x_train/x_test/y_train/y_test: numpy array
-        Array for training/testing.
-        Contain mixed signal and background. 
-        xs_test/xb_test: numpy array
-        Array for scores plotting.
-        Signal/background separated.
-
-    """
-    # prepare
-    if output_keys is None:
-        output_keys = COMB_KEYS + SEPA_KEYS
-    has_sepa = output_keys_has_sepa(output_keys)
-    has_comb = output_keys_has_comb(output_keys)
-    arr_sepa = DNN_Arrays_Separate()
-    arr_comb = DNN_Arrays_Combined()
-    if ys is None:
-        ys = np.ones(len(xs)).reshape(-1, 1)
-    if yb is None:
-        yb = np.zeros(len(xb)).reshape(-1, 1)
-
-    (
-        arr_sepa.xs_train,
-        arr_sepa.xs_test,
-        arr_sepa.ys_train,
-        arr_sepa.ys_test,
-        arr_sepa.wts_train,
-        arr_sepa.wts_test,
-    ) = array_utils.shuffle_and_split(xs, ys, xs_weight, split_ratio=1 - test_rate)
-    (
-        arr_sepa.xb_train,
-        arr_sepa.xb_test,
-        arr_sepa.yb_train,
-        arr_sepa.yb_test,
-        arr_sepa.wtb_train,
-        arr_sepa.wtb_test,
-    ) = array_utils.shuffle_and_split(xb, yb, xb_weight, split_ratio=1 - test_rate)
-
-    if has_comb:
-        arr_comb.x_train = np.concatenate((arr_sepa.xs_train, arr_sepa.xb_train))
-        arr_comb.y_train = np.concatenate((arr_sepa.ys_train, arr_sepa.yb_train))
-        arr_comb.wt_train = np.concatenate((arr_sepa.wts_train, arr_sepa.wtb_train))
-        arr_comb.x_test = np.concatenate((arr_sepa.xs_test, arr_sepa.xb_test))
-        arr_comb.y_test = np.concatenate((arr_sepa.ys_test, arr_sepa.yb_test))
-        arr_comb.wt_test = np.concatenate((arr_sepa.wts_test, arr_sepa.wtb_test))
-        if not has_sepa:
-            arr_sepa = None
-        if shuffle_combined_array:
-            # shuffle train dataset
-            shuffle_index = generate_shuffle_index(len(arr_comb.y_train))
-            arr_comb.x_train = arr_comb.x_train[shuffle_index]
-            arr_comb.y_train = arr_comb.y_train[shuffle_index]
-            arr_comb.wt_train = arr_comb.wt_train[shuffle_index]
-            # shuffle test dataset
-            shuffle_index = generate_shuffle_index(len(arr_comb.y_test))
-            arr_comb.x_test = arr_comb.x_test[shuffle_index]
-            arr_comb.y_test = arr_comb.y_test[shuffle_index]
-            arr_comb.wt_test = arr_comb.wt_test[shuffle_index]
-
-    out_arrays = {}
-    for key in output_keys:
-        if key in SEPA_KEYS:
-            out_arrays[key] = getattr(arr_sepa, key)
-        elif key in COMB_KEYS:
-            out_arrays[key] = getattr(arr_comb, key)
-        else:
-            logger.error(f"Unknown output_key: {key}")
-
-    return out_arrays
-
-
-def output_keys_has_sepa(output_keys):
-    for key in output_keys:
-        if key in SEPA_KEYS:
-            return True
-    return False
-
-
-def output_keys_has_comb(output_keys):
-    for key in output_keys:
-        if key in COMB_KEYS:
-            return True
-    return False
-
-
-class DNN_Arrays_Separate(object):
-    def __init__(self):
-        self.xs_train = None
-        self.xs_test = None
-        self.ys_train = None
-        self.ys_test = None
-        self.wts_train = None
-        self.wts_test = None
-        self.xb_train = None
-        self.xb_test = None
-        self.yb_train = None
-        self.yb_test = None
-        self.wtb_train = None
-        self.wtb_test = None
-
-
-class DNN_Arrays_Combined(object):
-    def __init__(self):
-        self.x_train = None
-        self.x_test = None
-        self.y_train = None
-        self.y_test = None
-        self.wt_train = None
-        self.wt_test = None

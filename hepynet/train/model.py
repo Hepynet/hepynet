@@ -4,12 +4,12 @@ import copy
 import datetime
 import glob
 import logging
-import math
 import pathlib
-import typing
+from typing import Iterable, Optional
 
 logger = logging.getLogger("hepynet")
 import keras
+import numpy as np
 import pandas as pd
 import tensorflow as tf
 import yaml
@@ -29,16 +29,13 @@ if gpus:
         # Memory growth must be set before GPUs have been initialized
         logger.error(e)
 from keras import backend as K
-from keras import initializers
 from keras.callbacks import ModelCheckpoint, TensorBoard, callbacks
 from keras.layers import Dense, Dropout
 from keras.models import Sequential
 from keras.optimizers import SGD, Adagrad, Adam, RMSprop
 
-from hepynet.common import array_utils, common_utils
-from hepynet.data_io import feed_box
-from hepynet.train import evaluate, train_utils
-
+from hepynet.data_io import array_utils, feed_box
+from hepynet.train import train_utils
 
 # self-defined metrics functions
 def plain_acc(y_true, y_pred):
@@ -58,7 +55,7 @@ class Model_Base(object):
     """Base model of deep neural network
     """
 
-    def __init__(self, name):
+    def __init__(self, job_config):
         """Initialize model.
 
         Args:
@@ -66,14 +63,201 @@ class Model_Base(object):
             Name of the model.
 
         """
+        self._job_config = job_config.clone()
         self._model_create_time = str(datetime.datetime.now())
         self._model_is_compiled = False
         self._model_is_loaded = False
         self._model_is_saved = False
         self._model_is_trained = False
-        self._model_name = name
+        self._model_name = self._job_config.train.model_name
         self._model_save_path = None
-        self._train_history = None
+        self._train_history = list()
+
+        num_folds = self._job_config.train.k_folds
+        if isinstance(num_folds, int) and num_folds >= 2:
+            self._num_folds = num_folds
+        else:
+            self._num_folds = 1
+
+    def compile(self):
+        logger.warn(
+            "The virtual function Model_Base.compile() is called, please implement override funcion!"
+        )
+
+    def get_corrcoef(self) -> dict:
+        features = self._job_config.input.selected_features
+        bkg_array, _ = self.feedbox.get_reweight(
+            "xb", array_key="all", reset_mass=False
+        )
+        d_bkg = pd.DataFrame(data=bkg_array, columns=list(features),)
+        bkg_matrix = d_bkg.corr()
+        sig_array, _ = self.feedbox.get_reweight(
+            "xs", array_key="all", reset_mass=False
+        )
+        d_sig = pd.DataFrame(data=sig_array, columns=list(features),)
+        sig_matrix = d_sig.corr()
+        corrcoef_matrix_dict = {}
+        corrcoef_matrix_dict["bkg"] = bkg_matrix
+        corrcoef_matrix_dict["sig"] = sig_matrix
+        return corrcoef_matrix_dict
+
+    def get_model(self, fold_num=0):
+        """Returns model."""
+        if not self._model_is_compiled:
+            logger.warning("Model is not compiled")
+        return self._model[fold_num]
+
+    def get_model_meta(self):
+        return self._model_meta
+
+    def get_model_save_dir(self, fold_num=None):
+        save_dir = f"{self._job_config.run.save_sub_dir}/models"
+        if fold_num is not None:
+            save_dir += f"/fold_{fold_num}"
+        return save_dir
+
+    def get_train_history(self, fold_num=0):
+        """Returns train history."""
+        fold_train_history = self._train_history[fold_num]
+        if not self._model_is_compiled:
+            logger.warning("Model is not compiled")
+        if len(fold_train_history) == 0:
+            logger.warning("Empty training history found")
+        return fold_train_history
+
+    def set_inputs(self, job_config) -> None:
+        """Prepares array for training."""
+        feedbox = feed_box.Feedbox(job_config, model_meta=self.get_model_meta(),)
+        self._model_meta["norm_dict"] = copy.deepcopy(feedbox.get_norm_dict())
+        self.feedbox = feedbox
+        self._array_prepared = feedbox._array_prepared
+
+    def load_model(self, load_dir, job_name="*", date="*", version="*"):
+        """Loads saved model."""
+        # Search possible files
+        search_pattern = (
+            load_dir + "/" + date + "_" + job_name + "_" + version + "/models"
+        )
+        model_dir_list = glob.glob(search_pattern)
+        if not model_dir_list:
+            search_pattern = "/work/" + search_pattern
+            logger.debug(f"search pattern:{search_pattern}")
+            model_dir_list = glob.glob(search_pattern)
+        model_dir_list = sorted(model_dir_list)
+        # Choose the newest one
+        if len(model_dir_list) < 1:
+            raise FileNotFoundError("Model file that matched the pattern not found.")
+        model_dir = model_dir_list[-1]
+        if len(model_dir_list) > 1:
+            logger.info(
+                "More than one valid model file found, maybe you should try to specify more infomation."
+            )
+            logger.info(f"Loading the last matched model path: {model_dir}")
+        else:
+            logger.info(f"Loading model at: {model_dir}")
+        # load model(s)
+        self._model = list()
+        for fold_num in range(self._num_folds):
+            fold_model = keras.models.load_model(
+                f"{model_dir}/fold_{fold_num}/{self._model_name}.h5",
+                custom_objects={"plain_acc": plain_acc},
+            )  # it's important to specify
+            self._model.append(fold_model)
+        self._model_is_loaded = True
+        # Load parameters
+        self.load_model_parameters(model_dir)
+        self.model_paras_is_loaded = True
+        logger.info("Model loaded.")
+
+    def load_model_with_path(self, model_path, paras_path=None, fold_num=0):
+        """Loads model with given path
+
+        Note:
+            Should load model parameters manually.
+        """
+        self._model[fold_num] = keras.models.load_model(
+            model_path, custom_objects={"plain_acc": plain_acc},
+        )  # it's important to specify
+        if paras_path is not None:
+            try:
+                self.load_model_parameters(paras_path)
+                self.model_paras_is_loaded = True
+            except:
+                logger.warning("Model parameters not successfully loaded.")
+        logger.info("Model loaded.")
+
+    def load_model_parameters(self, model_dir):
+        """Retrieves model parameters from yaml file."""
+        paras_path = f"{model_dir}/fold_{0}/{self._model_name}_paras.yaml"
+        with open(paras_path, "r") as paras_file:
+            paras_dict = yaml.load(paras_file, Loader=yaml.UnsafeLoader)
+        # update meta data
+        model_meta_save = paras_dict["model_meta"]
+        self._model_meta = model_meta_save
+        self._model_name = model_meta_save["model_name"]
+        self._model_label = model_meta_save["model_label"]
+        self._model_note = model_meta_save["model_note"]
+        self._model_create_time = model_meta_save["model_create_time"]
+        self._model_is_compiled = model_meta_save["model_is_compiled"]
+        self._model_is_saved = model_meta_save["model_is_saved"]
+        self._model_is_trained = model_meta_save["model_is_trained"]
+        # load train history
+        for fold_num in range(self._num_folds):
+            paras_path = f"{model_dir}/fold_{fold_num}/{self._model_name}_paras.yaml"
+            with open(paras_path, "r") as paras_file:
+                fold_paras_dict = yaml.load(paras_file, Loader=yaml.UnsafeLoader)
+            self._train_history[fold_num] = fold_paras_dict["train_history"]
+
+    def save_model(self, file_name=None, fold_num=None):
+        """Saves trained model.
+
+        Args:
+            save_dir: str
+            Path to save model.
+
+        """
+        # Define save path
+        save_dir = self.get_model_save_dir(fold_num=fold_num)
+        if file_name is None:
+            # datestr = datetime.date.today().strftime("%Y-%m-%d")
+            # file_name = self._model_name + "_" + self._model_label + "_" + datestr
+            file_name = self._model_name
+        # Check path
+        save_path = f"{save_dir}/{file_name}.h5"
+        pathlib.Path(save_dir).mkdir(parents=True, exist_ok=True)
+        # Save
+        if fold_num is not None:
+            self._model[fold_num].save(save_path)
+        else:
+            self._model[0].save(save_path)
+        self._model_save_path = save_path
+        logger.debug(f"model: {self._model_name} has been saved to: {save_path}")
+        self._model_is_saved = True
+
+    def save_model_paras(self, file_name=None, fold_num=None):
+        """Save model parameters to yaml file."""
+        # prepare paras
+        paras_dict = dict()
+        model_meta_save = copy.deepcopy(self._model_meta)
+        model_meta_save["model_name"] = self._model_name
+        model_meta_save["model_label"] = self._model_label
+        model_meta_save["model_note"] = self._model_note
+        model_meta_save["model_create_time"] = self._model_create_time
+        model_meta_save["model_is_compiled"] = self._model_is_compiled
+        model_meta_save["model_is_saved"] = self._model_is_saved
+        model_meta_save["model_is_trained"] = self._model_is_trained
+        paras_dict["model_meta"] = model_meta_save
+        paras_dict["train_history"] = self._train_history[fold_num]
+        # save to file
+        save_dir = self.get_model_save_dir(fold_num=fold_num)
+        if file_name is None:
+            # datestr = datetime.date.today().strftime("%Y-%m-%d")
+            # file_name = self._model_name + "_" + self._model_label + "_" + datestr
+            file_name = self._model_name
+        save_path = f"{save_dir}/{file_name}_paras.yaml"
+        with open(save_path, "w") as write_file:
+            yaml.dump(paras_dict, write_file, indent=2)
+        logger.debug(f"model parameters has been saved to: {save_path}")
 
 
 class Model_Sequential_Base(Model_Base):
@@ -83,22 +267,27 @@ class Model_Sequential_Base(Model_Base):
         This class should not be used directly
     """
 
-    def __init__(
-        self, job_config,
-    ):
+    def __init__(self, job_config):
         """Initialize model."""
-        self._job_config = job_config.clone()
+        super().__init__(job_config)
         tc = self._job_config.train
         ic = self._job_config.input
-        super().__init__(tc.model_name)
         # Model parameters
         self._model_label = "mod_seq_base"
         self._model_note = "Basic sequential model."
         self._model_input_dim = len(ic.selected_features)
-        self._model = Sequential()
+        if isinstance(tc.k_folds, int) and tc.k_folds >= 2:
+            self._num_folds = tc.k_folds
+            models = list()
+            for _ in range(tc.k_folds):
+                models.append(Sequential())
+            self._model = models
+        else:
+            self._num_folds = 1
+            self._model = [Sequential()]
+        self._train_history = [None] * self._num_folds
         # Arrays
         self._array_prepared = False
-        self._selected_features = ic.selected_features
         self._model_meta = {
             "norm_dict": None,
         }
@@ -106,22 +295,41 @@ class Model_Sequential_Base(Model_Base):
         self._save_tb_logs = tc.save_tb_logs
         self._tb_logs_path = tc.tb_logs_path
 
-    def get_model(self):
-        """Returns model."""
-        if not self._model_is_compiled:
-            logger.warning("Model is not compiled")
-        return self._model
-
-    def get_model_meta(self):
-        return self._model_meta
-
-    def get_train_history(self):
-        """Returns train history."""
-        if not self._model_is_compiled:
-            logger.warning("Model is not compiled")
-        if self._train_history is None:
-            logger.warning("Empty training history found")
-        return self._train_history
+    def get_train_callbacks(
+        self, file_name: Optional[str] = None, fold_num: Optional[int] = None
+    ) -> list:
+        train_callbacks = []
+        tc = self._job_config.train
+        if self._save_tb_logs:  # TODO: add back this function
+            pass
+            # if self._tb_logs_path is None:
+            #    self._tb_logs_path = "temp_logs/{}".format(self._model_label)
+            #    logger.warning(
+            #        "TensorBoard logs path not specified, set path to: {}".format(
+            #            self._tb_logs_path
+            #        )
+            #    )
+            # tb_callback = TensorBoard(log_dir=self._tb_logs_path, histogram_freq=1)
+            # train_callbacks.append(tb_callback)
+        if tc.use_early_stop:
+            early_stop_callback = callbacks.EarlyStopping(
+                monitor=tc.early_stop_paras.monitor,
+                min_delta=tc.early_stop_paras.min_delta,
+                patience=tc.early_stop_paras.patience,
+                mode=tc.early_stop_paras.mode,
+                restore_best_weights=tc.early_stop_paras.restore_best_weights,
+            )
+            train_callbacks.append(early_stop_callback)
+        ## set up check point to save model in each epoch
+        if tc.save_model:
+            model_save_dir = self.get_model_save_dir(fold_num=fold_num)
+            pathlib.Path(model_save_dir).mkdir(parents=True, exist_ok=True)
+            if file_name is None:
+                file_name = self._model_name
+            path_pattern = f"{model_save_dir}/{file_name}_epoch{{epoch}}.h5"
+            checkpoint = ModelCheckpoint(path_pattern, monitor="val_loss")
+            train_callbacks.append(checkpoint)
+        return train_callbacks
 
     def get_train_performance_meta(self):
         """Returns meta data of training performance
@@ -159,153 +367,7 @@ class Model_Sequential_Base(Model_Base):
             pass
         return performance_meta_dict
 
-    def get_corrcoef(self) -> dict:
-        bkg_array, _ = self.feedbox.get_reweight(
-            "xb", array_key="all", reset_mass=False
-        )
-        d_bkg = pd.DataFrame(data=bkg_array, columns=list(self._selected_features),)
-        bkg_matrix = d_bkg.corr()
-        sig_array, _ = self.feedbox.get_reweight(
-            "xs", array_key="all", reset_mass=False
-        )
-        d_sig = pd.DataFrame(data=sig_array, columns=list(self._selected_features),)
-        sig_matrix = d_sig.corr()
-        corrcoef_matrix_dict = {}
-        corrcoef_matrix_dict["bkg"] = bkg_matrix
-        corrcoef_matrix_dict["sig"] = sig_matrix
-        return corrcoef_matrix_dict
-
-    def load_model(self, load_dir, _model_name, job_name="*", date="*", version="*"):
-        """Loads saved model."""
-        # Search possible files
-        search_pattern = (
-            load_dir + "/" + date + "_" + job_name + "_" + version + "/models"
-        )
-        model_dir_list = glob.glob(search_pattern)
-        if not model_dir_list:
-            search_pattern = "/work/" + search_pattern
-            logger.debug(f"search pattern:{search_pattern}")
-            model_dir_list = glob.glob(search_pattern)
-        model_dir_list = sorted(model_dir_list)
-        # Choose the newest one
-        if len(model_dir_list) < 1:
-            raise FileNotFoundError("Model file that matched the pattern not found.")
-        model_dir = model_dir_list[-1]
-        if len(model_dir_list) > 1:
-            logger.info(
-                "More than one valid model file found, maybe you should try to specify more infomation."
-            )
-            logger.info(f"Loading the last matched model path: {model_dir}")
-        else:
-            logger.info(f"Loading model at: {model_dir}")
-        self._model = keras.models.load_model(
-            model_dir + "/" + _model_name + ".h5",
-            custom_objects={"plain_acc": plain_acc},
-        )  # it's important to specify
-        # custom objects
-        self._model_is_loaded = True
-        # Load parameters
-        # try:
-        paras_path = model_dir + "/" + _model_name + "_paras.yaml"
-        self.load_model_parameters(paras_path)
-        self.model_paras_is_loaded = True
-        # except:
-        #    logger.warning("Model parameters not successfully loaded.")
-        logger.info("Model loaded.")
-
-    def load_model_with_path(self, model_path, paras_path=None):
-        """Loads model with given path
-
-        Note:
-            Should load model parameters manually.
-        """
-        self._model = keras.models.load_model(
-            model_path, custom_objects={"plain_acc": plain_acc},
-        )  # it's important to specify
-        if paras_path is not None:
-            try:
-                self.load_model_parameters(paras_path)
-                self.model_paras_is_loaded = True
-            except:
-                logger.warning("Model parameters not successfully loaded.")
-        logger.info("Model loaded.")
-
-    def load_model_parameters(self, paras_path):
-        """Retrieves model parameters from yaml file."""
-        with open(paras_path, "r") as paras_file:
-            paras_dict = yaml.load(paras_file, Loader=yaml.UnsafeLoader)
-        # sorted by alphabet
-        self._job_config.update(paras_dict["job_config_dict"])
-
-        model_meta_save = paras_dict["model_meta"]
-        self._model_meta = model_meta_save
-        self._model_name = model_meta_save["model_name"]
-        self._model_label = model_meta_save["model_label"]
-        self._model_note = model_meta_save["model_note"]
-        self._model_create_time = model_meta_save["model_create_time"]
-        self._model_is_compiled = model_meta_save["model_is_compiled"]
-        self._model_is_saved = model_meta_save["model_is_saved"]
-        self._model_is_trained = model_meta_save["model_is_trained"]
-
-        self._train_history = paras_dict["train_history"]
-
-    def save_model(self, save_dir=None, file_name=None):
-        """Saves trained model.
-
-        Args:
-            save_dir: str
-            Path to save model.
-
-        """
-        # Define save path
-        if save_dir is None:
-            save_dir = "./models"
-        if file_name is None:
-            datestr = datetime.date.today().strftime("%Y-%m-%d")
-            file_name = self._model_name + "_" + self._model_label + "_" + datestr
-        # Check path
-        save_path = save_dir + "/" + file_name + ".h5"
-        pathlib.Path(save_dir).mkdir(parents=True, exist_ok=True)
-        # Save
-        self._model.save(save_path)
-        self._model_save_path = save_path
-        logger.debug(f"model: {self._model_name} has been saved to: {save_path}")
-        # update path for yaml
-        save_path = save_dir + "/" + file_name + "_paras.yaml"
-        self.save_model_paras(save_path)
-        logger.debug(f"model parameters has been saved to: {save_path}")
-        self._model_is_saved = True
-
-    def save_model_paras(self, save_path):
-        """Save model parameters to yaml file."""
-        paras_dict = dict()
-        paras_dict["job_config_dict"] = self._job_config.get_config_dict()
-
-        model_meta_save = copy.deepcopy(self._model_meta)
-        model_meta_save["model_name"] = self._model_name
-        model_meta_save["model_label"] = self._model_label
-        model_meta_save["model_note"] = self._model_note
-        model_meta_save["model_create_time"] = self._model_create_time
-        model_meta_save["model_is_compiled"] = self._model_is_compiled
-        model_meta_save["model_is_saved"] = self._model_is_saved
-        model_meta_save["model_is_trained"] = self._model_is_trained
-        paras_dict["model_meta"] = model_meta_save
-
-        paras_dict["train_history"] = self._train_history
-
-        with open(save_path, "w") as write_file:
-            yaml.dump(paras_dict, write_file, indent=2)
-
-    def set_inputs(self, job_config) -> None:
-        """Prepares array for training."""
-        feedbox = feed_box.Feedbox(job_config, model_meta=self.get_model_meta(),)
-        self._model_meta["norm_dict"] = copy.deepcopy(feedbox.get_norm_dict())
-        self.feedbox = feedbox
-        self._array_prepared = feedbox._array_prepared
-
-    def train(
-        self, job_config, model_save_dir=None, file_name=None,
-    ):
+    def train(self, file_name=None):
         """Performs training."""
 
         # prepare config alias
@@ -313,55 +375,23 @@ class Model_Sequential_Base(Model_Base):
         tc = self._job_config.train
 
         # Check
-        if self._model_is_compiled == False:
-            logging.critical("DNN model is not yet compiled")
-            exit(1)
-        if self._array_prepared == False:
-            logging.critical("Training data is not ready.")
+        if not self._model_is_compiled:
+            logger.critical("DNN model is not yet compiled, recompiling")
+            self.compile()
+        if not self._array_prepared:
+            logger.critical("Training data is not ready, pleas set up inputs")
             exit(1)
 
         # Train
         logger.info("-" * 40)
         logger.info(f"Training start. Using model: {self._model_name}")
         logger.info(f"Model info: {self._model_note}")
-        self.class_weight = {1: tc.sig_class_weight, 0: tc.bkg_class_weight}
-        ## setup callbacks
-        train_callbacks = []
-        if self._save_tb_logs:  # TODO: add back this function
-            pass
-            # if self._tb_logs_path is None:
-            #    self._tb_logs_path = "temp_logs/{}".format(self._model_label)
-            #    logger.warning(
-            #        "TensorBoard logs path not specified, set path to: {}".format(
-            #            self._tb_logs_path
-            #        )
-            #    )
-            # tb_callback = TensorBoard(log_dir=self._tb_logs_path, histogram_freq=1)
-            # train_callbacks.append(tb_callback)
-        if tc.use_early_stop:
-            early_stop_callback = callbacks.EarlyStopping(
-                monitor=tc.early_stop_paras.monitor,
-                min_delta=tc.early_stop_paras.min_delta,
-                patience=tc.early_stop_paras.patience,
-                mode=tc.early_stop_paras.mode,
-                restore_best_weights=tc.early_stop_paras.restore_best_weights,
-            )
-            train_callbacks.append(early_stop_callback)
-        ## set up check point to save model in each epoch
-        if model_save_dir is None:
-            model_save_dir = "./models"
-        pathlib.Path(model_save_dir).mkdir(parents=True, exist_ok=True)
-        if file_name is None:
-            file_name = self._model_name
-        path_pattern = model_save_dir + "/" + file_name + "_epoch{epoch:03d}.h5"
-        checkpoint = ModelCheckpoint(path_pattern, monitor="val_loss")
-        train_callbacks.append(checkpoint)
-        ## check input
+        ## get input
         train_test_dict = self.feedbox.get_train_test_arrays(
             sig_key=ic.sig_key,
             bkg_key=ic.bkg_key,
             multi_class_bkgs=tc.output_bkg_node_names,
-            output_keys=train_utils.COMB_KEYS,
+            output_keys=array_utils.COMB_KEYS,
         )
         self.feedbox = None
         x_train = train_test_dict["x_train"]
@@ -371,33 +401,56 @@ class Model_Sequential_Base(Model_Base):
         wt_train = train_test_dict["wt_train"]
         wt_test = train_test_dict["wt_test"]
         train_test_dict = None
-        self.get_model().summary()
         ## train
-        history_obj = self.get_model().fit(
-            x_train,
-            y_train,
-            batch_size=tc.batch_size,
-            epochs=tc.epochs,
-            validation_split=tc.val_split,
-            shuffle=False,
-            sample_weight=wt_train,
-            callbacks=train_callbacks,
-            verbose=tc.verbose,
+        train_index_list, validation_index_list = train_utils.get_train_val_indices(
+            x_train, y_train, wt_train, tc.val_split, k_folds=tc.k_folds
         )
-        self._train_history = history_obj.history
-        logger.info("Training finished.")
-
-        # Evaluation
-        logger.info("Evaluate with test dataset:")
-        score = self.get_model().evaluate(
-            x_test, y_test, verbose=tc.verbose, sample_weight=wt_test,
-        )
-
-        if not isinstance(score, typing.Iterable):
-            logger.info(f"> test loss: {score}")
-        else:
-            for i, metric in enumerate(self.get_model().metrics_names):
-                logger.info(f"> test - {metric}: {score[i]}")
+        for fold_num in range(self._num_folds):
+            if self._num_folds >= 2:
+                logger.info(
+                    f"Performing k-fold training {fold_num + 1}/{self._num_folds}"
+                )
+            fold_model = self.get_model(fold_num=fold_num)
+            fold_model.summary()
+            train_index = train_index_list[fold_num]
+            val_index = validation_index_list[fold_num]
+            x_fold = x_train[train_index]
+            y_fold = y_train[train_index]
+            wt_fold = wt_train[train_index]
+            val_x_fold = x_train[val_index]
+            val_y_fold = y_train[val_index]
+            val_wt_fold = wt_train[val_index]
+            val_fold = (val_x_fold, val_y_fold, val_wt_fold)
+            history_obj = fold_model.fit(
+                x_fold,
+                y_fold,
+                batch_size=tc.batch_size,
+                epochs=tc.epochs,
+                # validation_split=tc.val_split,
+                validation_data=val_fold,
+                shuffle=False,
+                class_weight={1: tc.sig_class_weight, 0: tc.bkg_class_weight},
+                sample_weight=wt_fold,
+                callbacks=self.get_train_callbacks(
+                    file_name=file_name, fold_num=fold_num
+                ),
+                verbose=tc.verbose,
+            )
+            logger.info("Training finished.")
+            # evaluation
+            logger.info("Evaluate with test dataset:")
+            score = fold_model.evaluate(
+                x_test, y_test, verbose=tc.verbose, sample_weight=wt_test,
+            )
+            if not isinstance(score, Iterable):
+                logger.info(f"> test loss: {score}")
+            else:
+                for i, metric in enumerate(fold_model.metrics_names):
+                    logger.info(f"> test - {metric}: {score[i]}")
+            # save training details
+            self._train_history[fold_num] = history_obj.history
+            self.save_model(fold_num=fold_num)
+            self.save_model_paras(fold_num=fold_num)
 
         # update status
         self._model_is_trained = True
@@ -496,13 +549,19 @@ class Model_Sequential_Flat(Model_Sequential_Base):
         self._model_note = "Sequential model with flexible layers and nodes."
 
     def compile(self):
+        for fold_num in range(self._num_folds):
+            self.compile_single(fold_num=fold_num)
+        self._model_is_compiled = True
+
+    def compile_single(self, fold_num):
         """ Compile model, function to be changed in the future."""
         tc = self._job_config.train
+        fold_model = self._model[fold_num]
         # Add layers
         for layer in range(tc.layers):
             # input layer
             if layer == 0:
-                self._model.add(
+                fold_model.add(
                     Dense(
                         tc.nodes,
                         kernel_initializer="glorot_uniform",
@@ -512,7 +571,7 @@ class Model_Sequential_Flat(Model_Sequential_Base):
                 )
             # hidden layers
             else:
-                self._model.add(
+                fold_model.add(
                     Dense(
                         tc.nodes,
                         kernel_initializer="glorot_uniform",
@@ -520,13 +579,13 @@ class Model_Sequential_Flat(Model_Sequential_Base):
                     )
                 )
             if tc.dropout_rate != 0:
-                self._model.add(Dropout(tc.dropout_rate))
+                fold_model.add(Dropout(tc.dropout_rate))
         # output layer
         if tc.output_bkg_node_names:
             num_nodes_out = len(tc.output_bkg_node_names) + 1
         else:
             num_nodes_out = 1
-        self._model.add(
+        fold_model.add(
             Dense(
                 num_nodes_out,
                 kernel_initializer="glorot_uniform",
@@ -544,7 +603,7 @@ class Model_Sequential_Flat(Model_Sequential_Base):
             index = weighted_metrics.index("plain_acc")
             weighted_metrics[index] = plain_acc
         # compile model
-        self._model.compile(
+        fold_model.compile(
             loss="binary_crossentropy",
             optimizer=SGD(
                 lr=tc.learn_rate,
@@ -555,4 +614,3 @@ class Model_Sequential_Flat(Model_Sequential_Base):
             metrics=metrics,
             weighted_metrics=weighted_metrics,
         )
-        self._model_is_compiled = True

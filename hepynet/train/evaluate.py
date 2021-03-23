@@ -1,20 +1,12 @@
 # -*- coding: utf-8 -*-
 """Functions for making plots"""
 
-import copy
-import json
 import logging
 import math
-import warnings
 
-import matplotlib.pyplot as plt
 import numpy as np
-import seaborn as sns
-from scipy.special import softmax
-from sklearn.metrics import auc, roc_auc_score, roc_curve
 
-from hepynet.common import array_utils, common_utils
-from hepynet.data_io import feed_box, numpy_io
+from hepynet.data_io import array_utils, feed_box, numpy_io
 from hepynet.train import train_utils
 
 try:

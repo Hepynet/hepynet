@@ -95,17 +95,7 @@ class job_executor(object):
     def execute_train_job(self):
         # train
         self.model_wrapper.compile()
-        mod_save_path = f"{self.job_config.run.save_sub_dir}/models"
-        self.model_wrapper.train(
-            self.job_config, model_save_dir=mod_save_path,
-        )
-        # save model and meta data
-        tc = self.job_config.train
-        if tc.save_model:
-            model_save_name = tc.model_name
-            self.model_wrapper.save_model(
-                save_dir=mod_save_path, file_name=model_save_name
-            )
+        self.model_wrapper.train()
 
     def execute_apply_job(self):
         jc = self.job_config.job
@@ -654,7 +644,7 @@ class job_executor(object):
         # load model for "apply" job
         if jc.job_type == "apply":
             self.model_wrapper.load_model(
-                rc.load_dir, tc.model_name, job_name=jc.load_job_name,
+                rc.load_dir, job_name=jc.load_job_name,
             )
         self.model_wrapper.set_inputs(self.job_config)
 

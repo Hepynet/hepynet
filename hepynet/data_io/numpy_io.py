@@ -8,9 +8,11 @@ Note:
 import logging
 import pathlib
 from typing import List, Optional
+
 import numpy as np
 
-from hepynet.common import array_utils, common_utils, config_utils
+from hepynet.common import common_utils, config_utils
+from hepynet.data_io import array_utils
 
 logger = logging.getLogger("hepynet")
 
