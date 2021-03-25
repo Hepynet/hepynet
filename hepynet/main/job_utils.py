@@ -4,8 +4,6 @@ import pathlib
 
 import git
 
-import hepynet
-
 logger = logging.getLogger("hepynet")
 
 MAIN_DIR_NAMES = ["pdnn-lfv", "work"]
@@ -25,7 +23,7 @@ def get_valid_cfg_path(path):
     if pathlib.Path(path).is_file():
         return path
     # Check try add share folder prefix
-    repo = git.Repo('.', search_parent_directories=True)
+    repo = git.Repo(".", search_parent_directories=True)
     hepynet_dir = repo.working_tree_dir
     logger.debug(f"Get hepynet dir: {hepynet_dir}")
     cfg_path = f"{hepynet_dir}/{path}"

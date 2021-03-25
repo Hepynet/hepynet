@@ -1,24 +1,17 @@
 # -*- coding: utf-8 -*-
 """Functions for making plots"""
 
-import copy
-import json
 import logging
 import math
-import warnings
 
-import matplotlib.pyplot as plt
 import numpy as np
-import seaborn as sns
-from scipy.special import softmax
-from sklearn.metrics import auc, roc_auc_score, roc_curve
 
-from hepynet.common import array_utils, common_utils
-from hepynet.data_io import feed_box, numpy_io
+from hepynet.data_io import array_utils, feed_box, numpy_io
 from hepynet.train import train_utils
 
 try:
     import ROOT
+
     root_available = True
     from easy_atlas_plot.plot_utils import plot_utils_root, th1_tools
 except ImportError:
@@ -180,7 +173,6 @@ def plot_2d_significance_scan(
             bkg_weight=ic.bkg_sumofweight,
             data_weight=ic.data_sumofweight,
             test_rate=ic.test_rate,
-            rdm_seed=None,
             model_meta=job_wrapper.model_wrapper.model_meta,
             verbose=tc.verbose,
         )

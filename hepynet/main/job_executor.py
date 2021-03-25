@@ -1,24 +1,16 @@
-import ast
-import csv
 import datetime
 import logging
-import math
 import pathlib
-import re
-import time
+import random as python_random
 
+import atlas_mpl_style as ampl
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
-import seaborn as sns
-from hyperopt import Trials, fmin, hp, tpe
-from hyperopt.pyll.stochastic import sample
-from sklearn.metrics import auc, roc_curve
+import tensorflow as tf
 
-from hepynet.common import array_utils, common_utils, config_utils
-from hepynet.common.hepy_const import SCANNED_PARAS
-from hepynet.data_io import numpy_io
+from hepynet.common import common_utils, config_utils
 from hepynet.evaluate import (
+    evaluate_utils,
     importance,
     kinematics,
     mva_scores,
@@ -27,8 +19,15 @@ from hepynet.evaluate import (
     train_history,
 )
 from hepynet.main import job_utils
-from hepynet.train import model, train_utils
+from hepynet.train import hep_model
+
+# from hepynet.common.hepy_const import SCANNED_PARAS
+
+
 logger = logging.getLogger("hepynet")
+
+# set up style
+ampl.use_atlas_style()
 
 
 class job_executor(object):
@@ -76,12 +75,12 @@ class job_executor(object):
             if rc.load_dir == None:
                 rc.load_dir = jc.save_dir
 
-        # set up model
+        if jc.fix_rdm_seed:
+            self.fix_random_seed()
+
         self.set_model()
-        # set up inputs
         self.set_model_input()
 
-        # train or apply
         if jc.job_type == "train":
             self.execute_train_job()
         elif jc.job_type == "apply":
@@ -100,17 +99,7 @@ class job_executor(object):
     def execute_train_job(self):
         # train
         self.model_wrapper.compile()
-        mod_save_path = f"{self.job_config.run.save_sub_dir}/models"
-        self.model_wrapper.train(
-            self.job_config, model_save_dir=mod_save_path,
-        )
-        # save model and meta data
-        tc = self.job_config.train
-        if tc.save_model:
-            model_save_name = tc.model_name
-            self.model_wrapper.save_model(
-                save_dir=mod_save_path, file_name=model_save_name
-            )
+        self.model_wrapper.train()
 
     def execute_apply_job(self):
         jc = self.job_config.job
@@ -123,432 +112,145 @@ class job_executor(object):
         rc.save_dir = f"{rc.save_sub_dir}/apply/{jc.job_name}"
         pathlib.Path(rc.save_dir).mkdir(parents=True, exist_ok=True)
 
-        # save metrics curve
+        # Studies not depending on models
+        ## metrics curves
         if ac.book_history:
             train_history.plot_history(
                 self.model_wrapper, self.job_config, save_dir=rc.save_dir
             )
-
-        # save kinematic plots
+        ## input kinematic plots
         if ac.book_kine_study:
             logger.info("Making input distribution plots")
-            kinematics.plot_input_distributions(
+            kinematics.plot_input(
                 self.model_wrapper,
                 self.job_config,
                 save_dir=f"{rc.save_sub_dir}/kinematics/raw",
             )
-            kinematics.plot_input_distributions(
+            kinematics.plot_input(
                 self.model_wrapper,
                 self.job_config,
                 save_dir=f"{rc.save_sub_dir}/kinematics/processed",
                 show_reshaped=True,
             )
-        # Make correlation plot
+        ## correlation matrix
         if ac.book_cor_matrix:
-            logger.info("Making correlation plot")
+            logger.info("Making correlation matrix")
             kinematics.plot_correlation_matrix(
                 self.model_wrapper, save_dir=rc.save_sub_dir
             )
+        ## generate fit ntuples
+        if ac.book_fit_npy:
+            save_region = ac.cfg_fit_npy.fit_npy_region
+            if save_region is None:
+                save_region = ic.region
+            npy_dir = f"{ac.cfg_fit_npy.npy_save_dir}/{ic.campaign}/{save_region}"
+            logger.info("Dumping numpy arrays for fitting.")
+            evaluate_utils.dump_fit_npy(
+                self.model_wrapper, self.job_config, npy_dir=npy_dir,
+            )
 
-        # Check models in different epochs, check only final if not specified
-        model_path_list = ["_final"]
+        # Studies depending on models
+        epoch_checklist = [None]
         if ac.check_model_epoch:
-            if jc.job_type == "apply":
-                model_dir = rc.load_dir
-                job_name = jc.load_job_name
+            for epoch_id in range(tc.epochs):
+                epoch = epoch_id + 1
+                if epoch % ac.epoch_check_interval == 1:
+                    epoch_checklist.append(epoch)
+        for epoch in epoch_checklist:
+            logger.info(">" * 80)
+            if epoch is None:
+                logger.info(f"Checking model(s) at final epoch")
+                epoch_str = "final"
             else:
-                model_dir = rc.save_dir
-                job_name = jc.job_name
-            model_path_list += train_utils.get_model_epoch_path_list(
-                model_dir, tc.model_name, job_name=job_name,
+                logger.info(f"Checking model(s) at epoch {epoch}")
+                epoch_str = str(epoch)
+            self.model_wrapper.load_model(epoch=epoch)
+
+            # create epoch sub-directory
+            epoch_subdir = evaluate_utils.create_epoch_subdir(
+                rc.save_dir, epoch, len(str(tc.epochs))
             )
-        max_epoch = 10
-        total_models = len(model_path_list)
-        epoch_interval = 1
-        if total_models > max_epoch:
-            epoch_interval = math.ceil(total_models / max_epoch)
-            if epoch_interval > 5:
-                epoch_interval = 5
-        for model_num, model_path in enumerate(model_path_list):
-            if model_num % epoch_interval == 0 or model_num == 1:
-                logger.info(">" * 80)
-                logger.info(f"Checking model:{model_path}")
-                identifier = "final"
-                if model_path != "_final":
-                    identifier = "epoch{:02d}".format(model_num)
-                    self.model_wrapper.load_model_with_path(model_path)
-                # Overtrain check
-                if ac.book_roc:
-                    logger.info("Making roc curve plot")
-                    roc.plot_multi_class_roc(
-                        self.model_wrapper, self.job_config,
-                    )
-                if ac.book_train_test_compare:
-                    logger.info("Making train/test compare plots")
-                    mva_scores.plot_train_test_compare(
-                        self.model_wrapper, self.job_config
-                    )
-                # Make feature importance check
-                if ac.book_importance_study:
-                    logger.info("Checking input feature importance")
-                    importance.plot_feature_importance(
+            if epoch_subdir is None:
+                logger.error(
+                    f"Can't create epoch subdir, skip evaluation at epoch {epoch_str}!"
+                )
+                return
+
+            # roc
+            if ac.book_roc:
+                logger.info("Making roc curve plot")
+                roc.plot_multi_class_roc(
+                    self.model_wrapper, self.job_config, epoch_subdir
+                )
+            # overtrain check
+            if ac.book_train_test_compare:
+                logger.info("Making train/test compare plots")
+                mva_scores.plot_train_test_compare(
+                    self.model_wrapper, self.job_config, epoch_subdir
+                )
+            # feature permuted importance
+            if ac.book_importance_study:
+                logger.info("Checking input feature importance")
+                importance.plot_feature_importance(
+                    self.model_wrapper, self.job_config, epoch_subdir
+                )
+            # data/mc scores comparison
+            if ac.book_mva_scores_data_mc:
+                logger.info("Making data/mc scores distributions plots")
+                mva_scores.plot_mva_scores(
+                    self.model_wrapper, self.job_config, epoch_subdir,
+                )
+            # Make significance scan plot
+            if ac.book_significance_scan:
+                significance.plot_significance_scan(
+                    self.model_wrapper,
+                    ic.sig_key,
+                    ic.bkg_key,
+                    epoch_subdir,
+                    significance_algo=ac.cfg_significance_scan.significance_algo,
+                )
+            # kinematics with DNN cuts
+            if ac.book_cut_kine_study:
+                logger.info("Making kinematic plots with different DNN cut")
+                for dnn_cut in ac.cfg_cut_kine_study.dnn_cut_list:
+                    dnn_kine_path = epoch_subdir / f"kine_cut_dnn_p{dnn_cut * 100}"
+                    dnn_kine_path.mkdir(parents=True, exist_ok=True)
+                    kinematics.plot_input_dnn(
                         self.model_wrapper,
                         self.job_config,
-                        identifier=identifier,
-                        max_feature=12,
+                        dnn_cut=dnn_cut,
+                        save_dir=dnn_kine_path,
+                        compare_cut_sb_separated=True,
                     )
-                # Extra plots (use model on non-mass-reset arrays)
-                if ac.book_mva_scores_data_mc:
-                    logger.info("Making data/mc scores distributions plots")
-                    mva_scores.plot_mva_scores(
-                        self.model_wrapper,
-                        self.job_config,
-                        file_name=f"mva_scores_{identifier}",
-                    )
-                # show kinemetics at different dnn cut
-                if ac.book_cut_kine_study:
-                    logger.info("Making kinematic plots with different DNN cut")
-                    for dnn_cut in ac.cfg_kine_study.dnn_cut_list:
-                        kinematics.plot_input_distributions(
-                            self.model_wrapper,
-                            self.job_config,
-                            dnn_cut=dnn_cut,
-                            save_dir=f"{rc.save_sub_dir}/kinematics/model_{identifier}_cut_p{dnn_cut * 100}",
-                            compare_cut_sb_separated=True,
-                        )
-                # Make significance scan plot
-                if ac.book_significance_scan:
-                    fig, ax = plt.subplots(figsize=(8, 6))
-                    ax.set_title("significance scan")
-                    significance.plot_significance_scan(
-                        ax,
-                        self.model_wrapper,
-                        ic.sig_key,
-                        ic.bkg_key,
-                        save_dir=rc.save_dir,
-                        significance_algo=ac.cfg_significance_scan.significance_algo,
-                        suffix="_" + identifier,
-                    )
-                    fig_save_path = (
-                        rc.save_dir + "/significance_scan_" + identifier + ".png"
-                    )
-                    self.fig_significance_scan_path = fig_save_path
-                    fig.savefig(fig_save_path)
-                # TODO: 2d significance scan
-                """
-                if ac.book_2d_significance_scan:
-                    # save original model wrapper
-                    temp_model_wrapper = self.model_wrapper
-                    # set up model wrapper for significance scan
-                    model_class = model.get_model_class(tc.model_class)
-                    scan_model_wrapper = model_class(
-                        tc.model_name, ic.selected_features, rc.hypers
-                    )
-                    if model_path != "_final":
-                        scan_model_wrapper.load_model_with_path(model_path)
-                    else:
-                        scan_model_wrapper.load_model(
-                            rc.load_dir, tc.model_name, job_name=jc.load_job_name,
-                        )
-                    scan_model_wrapper.set_inputs(temp_model_wrapper.feedbox)
-                    self.model_wrapper = scan_model_wrapper
-                    save_dir = f"{rc.save_sub_dir}/apply/{jc.job_name}"
-                    if not os.path.exists(save_dir):
-                        os.makedirs(save_dir)
-                    cut_ranges_dn = ac.cfg_2d_significance_scan[
-                        "significance_cut_ranges_dn"
-                    ]
-                    cut_ranges_up = ac.cfg_2d_significance_scan[
-                        "significance_cut_ranges_up"
-                    ]
-                    # 2D density
-                    evaluate.plot_2d_density(
-                        self,
-                        save_plot=True,
-                        save_dir=save_dir,
-                        save_file_name="2D_density_" + identifier,
-                    )
-                    # 2D significance scan
-                    evaluate.plot_2d_significance_scan(
-                        self,
-                        save_plot=True,
-                        save_dir=save_dir,
-                        save_file_name="2D_scan_significance_" + identifier,
-                        cut_ranges_dn=cut_ranges_dn,
-                        cut_ranges_up=cut_ranges_up,
-                        dnn_cut_min=ac.cfg_2d_significance_scan[
-                            "significance_dnn_cut_min"
-                        ],
-                        dnn_cut_max=ac.cfg_2d_significance_scan[
-                            "significance_dnn_cut_max"
-                        ],
-                        dnn_cut_step=ac.cfg_2d_significance_scan[
-                            "significance_dnn_cut_step"
-                        ],
-                    )
-                    # restore original model wrapper
-                    self.model_wrapper = temp_model_wrapper
-                """
 
-                if ac.book_fit_npy:
-                    save_region = ac.cfg_fit_npy.fit_npy_region
-                    if save_region is None:
-                        save_region = ic.region
-                    npy_dir = (
-                        f"{ac.cfg_fit_npy.npy_save_dir}/{ic.campaign}/{save_region}"
-                    )
-                    feedbox = self.model_wrapper.feedbox
-                    keras_model = self.model_wrapper.get_model()
-                    logger.info("Dumping numpy arrays for fitting.")
-                    train_utils.dump_fit_npy(
-                        feedbox,
-                        keras_model,
-                        ac.cfg_fit_npy.fit_npy_branches,
-                        tc.output_bkg_node_names,
-                        npy_dir=npy_dir,
-                    )
-                logger.info("<" * 80)
+            logger.info("<" * 80)
 
-    '''
-        def execute_tuning_jobs(self):
-            print("#" * 80)
-            print("Executing parameters scanning.")
-            space = self.space
-            # prepare history record file
-            self.tuning_history_file = self.save_sub_dir + "/tuning_history.csv"
-            if not os.path.exists(self.save_sub_dir):
-                os.makedirs(self.save_sub_dir)
-            history_file = open(self.tuning_history_file, "w")
-            writer = csv.writer(history_file)
-            writer.writerow(["loss", "auc", "iteration", "epochs", "train_time", "params"])
-            history_file.close()
-            # perform Bayesion tuning
-            self.iteration = 0
-            bayes_trials = Trials()
-            best_set = fmin(
-                fn=self.execute_tuning_job,
-                space=space,
-                algo=tpe.suggest,
-                max_evals=self.max_scan_iterations,
-                trials=bayes_trials,
-            )
-            self.best_hyper_set = best_set
-            print("#" * 80)
-            print("best hyperparameters set:")
-            print(best_set)
-            # make plots
-            results = pd.read_csv(self.tuning_history_file)
-            bayes_params = pd.DataFrame(
-                columns=list(ast.literal_eval(results.loc[0, "params"]).keys()),
-                index=list(range(len(results))),
-            )
-            # Add the results with each parameter a different column
-            for i, params in enumerate(results["params"]):
-                bayes_params.loc[i, :] = list(ast.literal_eval(params).values())
+        return
 
-            bayes_params["iteration"] = results["iteration"]
-            bayes_params["loss"] = results["loss"]
-            bayes_params["auc"] = results["auc"]
-            bayes_params["epochs"] = results["epochs"]
-            bayes_params["train_time"] = results["train_time"]
+    def fix_random_seed(self) -> None:
+        """Fixes random seed
 
-            bayes_params.head()
+        Ref:
+            https://keras.io/getting_started/faq/#how-can-i-obtain-reproducible-results-using-keras-during-development
 
-            # Plot the random search distribution and the bayes search distribution
-            print("#" * 80)
-            print("Making scan plots")
-            save_dir_distributions = self.save_sub_dir + "/hyper_distributions"
-            if not os.path.exists(save_dir_distributions):
-                os.makedirs(save_dir_distributions)
-            save_dir_evo = self.save_sub_dir + "/hyper_evolvements"
-            if not os.path.exists(save_dir_evo):
-                os.makedirs(save_dir_evo)
-            for hyper in list(self.space.keys()):
-                # plot distributions
-                fig, ax = plt.subplots(figsize=(14, 6))
-                sns.kdeplot(
-                    [sample(space[hyper]) for _ in range(100000)],
-                    label="Sampling Distribution",
-                    ax=ax,
-                )
-                sns.kdeplot(bayes_params[hyper], label="Bayes Optimization")
-                ax.axvline(x=best_set[hyper], color="orange", linestyle="-.")
-                ax.legend(loc=1)
-                ax.set_title("{} Distribution".format(hyper))
-                ax.set_xlabel("{}".format(hyper))
-                ax.set_ylabel("Density")
-                fig.savefig(save_dir_distributions + "/" + hyper + "_distribution.png")
-                # plot evolvements
-                fig, ax = plt.subplots(figsize=(14, 6))
-                sns.regplot("iteration", hyper, data=bayes_params)
-                ax.set(
-                    xlabel="Iteration",
-                    ylabel="{}".format(hyper),
-                    title="{} over Search".format(hyper),
-                )
-                fig.savefig(save_dir_evo + "/" + hyper + "_evo.png")
-                plt.close("all")
-            # plot extra evolvements
-            for hyper in ["loss", "auc", "epochs", "train_time"]:
-                fig, ax = plt.subplots(figsize=(14, 6))
-                sns.regplot("iteration", hyper, data=bayes_params)
-                ax.set(
-                    xlabel="Iteration",
-                    ylabel="{}".format(hyper),
-                    title="{} over Search".format(hyper),
-                )
-                fig.savefig(save_dir_evo + "/" + hyper + "_evo.png")
-                plt.close("all")
+        Note:
+            The seed setting funcions called in this function shouldn't be set 
+            again in later code, otherwise extra randomness will be introduced 
+            (even if set same seed). The reason is unknown yet.
 
-        def execute_tuning_job(self, params, loss_type="val_loss"):
-        """Execute one quick DNN training for hyperparameter tuning."""
-        print("+ {}".format(params))
-        job_start_time = time.perf_counter()
-        # Keep track of evals
-        self.iteration += 1
-        try:
-            # set parameters
-            keys = list(params.keys())
-            for key in keys:
-                value = params[key]
-                if type(value) is float:
-                    if value.is_integer():
-                        value = int(value)
-                setattr(self, key, value)
-            # Prepare
-            if self.use_early_stop:
-                self.early_stop_paras = {}
-                self.early_stop_paras["monitor"] = self.early_stop_monitor
-                self.early_stop_paras["min_delta"] = self.early_stop_min_delta
-                self.early_stop_paras["patience"] = self.early_stop_patience
-                self.early_stop_paras["mode"] = self.early_stop_mode
-                self.early_stop_paras[
-                    "restore_best_weights"
-                ] = self.early_stop_restore_best_weights
-            else:
-                self.early_stop_paras = {}
-            hypers = {}
-            hypers["layers"] = self.layers
-            hypers["nodes"] = self.nodes
-            hypers["output_bkg_node_names"] = self.output_bkg_node_names
-            hypers["learn_rate"] = self.learn_rate
-            hypers["decay"] = self.learn_rate_decay
-            hypers["dropout_rate"] = self.dropout_rate
-            hypers["metrics"] = self.train_metrics
-            hypers["weighted_metrics"] = self.train_metrics_weighted
-            hypers["use_early_stop"] = self.use_early_stop
-            hypers["early_stop_paras"] = self.early_stop_paras
-            hypers["momentum"] = self.momentum
-            hypers["nesterov"] = self.nesterov
-            self.model_wrapper = getattr(model, self.model_class)(
-                self.model_name,
-                self.selected_features,
-                hypers,
-                sig_key=self.sig_key,
-                bkg_key=self.bkg_key,
-                data_key=self.data_key,
-            )
-            # Set up training or loading model
-            bkg_dict = numpy_io.load_npy_arrays(
-                self.npy_path,
-                self.campaign,
-                self.region,
-                self.channel,
-                self.bkg_list,
-                self.selected_features,
-                cut_features=self.cut_features,
-                cut_values=self.cut_values,
-                cut_types=self.cut_types,
-            )
-            sig_dict = numpy_io.load_npy_arrays(
-                self.npy_path,
-                self.campaign,
-                self.region,
-                self.channel,
-                self.sig_list,
-                self.selected_features,
-                cut_features=self.cut_features,
-                cut_values=self.cut_values,
-                cut_types=self.cut_types,
-            )
-            if self.apply_data:
-                data_dict = numpy_io.load_npy_arrays(
-                    self.npy_path,
-                    self.campaign,
-                    self.region,
-                    self.channel,
-                    self.data_list,
-                    self.selected_features,
-                    cut_features=self.cut_features,
-                    cut_values=self.cut_values,
-                    cut_types=self.cut_types,
-                )
-            else:
-                data_dict = None
-            feedbox = feed_box.Feedbox(
-                sig_dict,
-                bkg_dict,
-                xd_dict=data_dict,
-                selected_features=self.selected_features,
-                apply_data=self.apply_data,
-                reshape_array=self.norm_array,
-                reset_mass=self.reset_feature,
-                reset_mass_name=self.reset_feature_name,
-                remove_negative_weight=self.rm_negative_weight_events,
-                sig_weight=self.sig_sumofweight,
-                bkg_weight=self.bkg_sumofweight,
-                data_weight=self.data_sumofweight,
-                test_rate=self.test_rate,
-                rdm_seed=940926,
-                model_meta=self.model_wrapper.model_meta,
-                verbose=0,
-            )
-            self.model_wrapper.set_inputs(feedbox, apply_data=self.apply_data)
-            self.model_wrapper.compile()
-            final_loss = self.model_wrapper.tuning_train(
-                batch_size=self.batch_size,
-                epochs=self.epochs,
-                val_split=self.val_split,
-                sig_class_weight=self.sig_class_weight,
-                bkg_class_weight=self.bkg_class_weight,
-                verbose=0,
-            )
-            # Calculate auc
-            try:
-                fpr_dm, tpr_dm, _ = roc_curve(
-                    self.model_wrapper.y_val,
-                    self.model_wrapper.get_model().predict(self.model_wrapper.x_val),
-                    sample_weight=self.model_wrapper.wt_val,
-                )
-                val_auc = auc(fpr_dm, tpr_dm)
-            except:
-                val_auc = 0
-            # Get epochs
-            epochs = len(self.model_wrapper.train_history.history["loss"])
-        except:
-            final_loss = 1000
-            val_auc = 0
-            epochs = 0
-        # post procedure
-        job_end_time = time.perf_counter()
-        history_file = open(self.tuning_history_file, "a")
-        writer = csv.writer(history_file)
-        writer.writerow(
-            [final_loss, val_auc, self.iteration, epochs, self.job_execute_time, params]
-        )
-        history_file.close()
-        # return loss value
-        loss_value = None
-        loss_type = self.scan_loss_type
-        if loss_type == "val_loss":
-            loss_value = final_loss
-        elif loss_type == "1_val_auc":
-            loss_value = 1 - val_auc
-        else:
-            raise ValueError("Unsupported loss_type")
-        print(">>> loss: {}".format(loss_value))
-        return loss_value
-    '''
+        """
+        seed = self.job_config.job.rdm_seed
+        # The below is necessary for starting Numpy generated random numbers
+        # in a well-defined initial state.
+        np.random.seed(seed)
+        # The below is necessary for starting core Python generated random numbers
+        # in a well-defined state.
+        python_random.seed(seed)
+        # The below set_seed() will make random number generation
+        # in the TensorFlow backend have a well-defined initial state.
+        # For further details, see:
+        # https://www.tensorflow.org/api_docs/python/tf/random/set_seed
+        tf.random.set_seed(seed)
 
     def get_config(self, yaml_path):
         """Retrieves configurations from yaml file."""
@@ -623,19 +325,16 @@ class job_executor(object):
     def set_model(self) -> None:
         logger.info("Setting up model")
         tc = self.job_config.train
-        model_class = model.get_model_class(tc.model_class)
+        model_class = hep_model.get_model_class(tc.model_class)
         self.model_wrapper = model_class(self.job_config)
 
     def set_model_input(self) -> None:
         logger.info("Processing inputs")
         jc = self.job_config.job
         rc = self.job_config.run
-        tc = self.job_config.train
         # load model for "apply" job
         if jc.job_type == "apply":
-            self.model_wrapper.load_model(
-                rc.load_dir, tc.model_name, job_name=jc.load_job_name,
-            )
+            self.model_wrapper.load_model()
         self.model_wrapper.set_inputs(self.job_config)
 
     def set_save_dir(self) -> None:

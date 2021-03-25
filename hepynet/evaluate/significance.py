@@ -1,12 +1,16 @@
 import csv
+
+from hepynet.evaluate import evaluate_utils
 import logging
 import math
+import pathlib
 
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.ticker import NullFormatter
 
 from hepynet.common import common_utils
+from hepynet.train import hep_model
 
 logger = logging.getLogger("hepynet")
 
@@ -55,7 +59,7 @@ def calculate_significance(sig, bkg, sig_total=None, bkg_total=None, algo="asimo
 
 
 def get_significances(
-    model_wrapper,
+    model_wrapper: hep_model.Model_Base,
     sig_key,
     bkg_key,
     significance_algo="asimov",
@@ -72,15 +76,19 @@ def get_significances(
             )
     
     """
-    feedbox = model_wrapper.feedbox
+    feedbox = model_wrapper.get_feedbox()
     # prepare signal
-    sig_arr, sig_weights = feedbox.get_reshape("xs", array_key=sig_key)
-    sig_predictions = model_wrapper.get_model().predict(sig_arr)
+    sig_arr, sig_weights = feedbox.get_reshape_merged("xs", array_key=sig_key)
+    sig_predictions, _, _ = evaluate_utils.k_folds_predict(
+        model_wrapper.get_model(), sig_arr
+    )
     if sig_predictions.ndim == 2:
         sig_predictions = sig_predictions[:, multi_class_cut_branch]
     # prepare background
-    bkg_arr, bkg_weights = feedbox.get_reshape("xb", array_key=bkg_key)
-    bkg_predictions = model_wrapper.get_model().predict(bkg_arr)
+    bkg_arr, bkg_weights = feedbox.get_reshape_merged("xb", array_key=bkg_key)
+    bkg_predictions, _, _ = evaluate_utils.k_folds_predict(
+        model_wrapper.get_model(), bkg_arr
+    )
     if bkg_predictions.ndim == 2:
         bkg_predictions = bkg_predictions[:, multi_class_cut_branch]
     # prepare thresholds
@@ -118,13 +126,7 @@ def get_significances(
 
 
 def plot_significance_scan(
-    ax,
-    model_wrapper,
-    sig_key,
-    bkg_key,
-    save_dir=".",
-    significance_algo="asimov",
-    suffix="",
+    model_wrapper, sig_key, bkg_key, save_dir: pathlib.Path, significance_algo="asimov",
 ) -> None:
     """Shows significance change with threshold.
 
@@ -158,6 +160,8 @@ def plot_significance_scan(
         bkg_total=total_bkg_weight,
         algo=significance_algo,
     )
+    fig, ax = plt.subplots()
+    ax.set_title("significance scan")
     ax.axhline(y=original_significance, color="grey", linestyle="--")
     # significance scan curve
     ax.plot(plot_thresholds, significances_no_nan, color="r", label=significance_algo)
@@ -187,13 +191,13 @@ def plot_significance_scan(
     )
     ax.text(
         0.05,
-        0.9,
+        0.05,
         content,
-        verticalalignment="top",
+        verticalalignment="bottom",
         horizontalalignment="left",
         transform=ax.transAxes,
-        color="green",
-        fontsize=12,
+        # color="green",
+        # fontsize=12,
     )
     # set up plot
     ax.set_title("significance scan")
@@ -206,13 +210,16 @@ def plot_significance_scan(
     ax.legend(loc="center left")
     ax2.legend(loc="center right")
     # ax2.set_yscale("log")
+    fig_save_path = save_dir / "significance_scan_.png"
+    fig.savefig(fig_save_path)
+
     # collect meta data
     model_wrapper.original_significance = original_significance
     model_wrapper.max_significance = max_significance
     model_wrapper.max_significance_threshold = max_significance_threshold
     # make extra cut table 0.1, 0.2 ... 0.8, 0.9
     # make table for different DNN cut scores
-    save_path = save_dir + "/scan_DNN_cut" + suffix + ".csv"
+    save_path = save_dir / "scan_DNN_cut.csv"
     with open(save_path, "w", newline="") as file:
         writer = csv.writer(file)
         row_list = [
@@ -248,7 +255,7 @@ def plot_significance_scan(
         )
         writer.writerows(row_list)
     # make table for different sig efficiency
-    save_path = save_dir + "/scan_sig_eff" + suffix + ".csv"
+    save_path = save_dir / "scan_sig_eff.csv"
     with open(save_path, "w", newline="") as file:
         writer = csv.writer(file)
         row_list = [
@@ -287,7 +294,7 @@ def plot_significance_scan(
         )
         writer.writerows(row_list)
     # make table for different bkg efficiency
-    save_path = save_dir + "/scan_bkg_eff" + suffix + ".csv"
+    save_path = save_dir / "scan_bkg_eff.csv"
     with open(save_path, "w", newline="") as file:
         writer = csv.writer(file)
         row_list = [

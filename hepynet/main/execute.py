@@ -1,8 +1,8 @@
 import argparse
 import logging
 import os
-import sys
 import time
+
 logger = logging.getLogger("hepynet")
 # Show tensorflow warnings and errors only
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"
@@ -56,4 +56,3 @@ def execute():
         logger.info("#" * 80)
         logger.info("Done!")
         logger.info("#" * 80)
-
