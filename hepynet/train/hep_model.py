@@ -2,15 +2,12 @@
 """Model wrapper class for DNN training"""
 import copy
 import datetime
-import glob
 import logging
 import pathlib
 from typing import Iterable, Optional
 
 logger = logging.getLogger("hepynet")
 import keras
-import numpy as np
-import pandas as pd
 import tensorflow as tf
 import yaml
 
@@ -86,26 +83,33 @@ class Model_Base(object):
 
     def get_corrcoef(self) -> dict:
         features = self._job_config.input.selected_features
-        bkg_array, _ = self.feedbox.get_reweight(
+        bkg_array, bkg_weight = self._feedbox.get_reweight_merged(
             "xb", array_key="all", reset_mass=False
         )
-        d_bkg = pd.DataFrame(data=bkg_array, columns=list(features),)
-        bkg_matrix = d_bkg.corr()
-        sig_array, _ = self.feedbox.get_reweight(
+        bkg_matrix = array_utils.corr_matrix(bkg_array, bkg_weight)
+        logger.debug(f"bkg_corr_matrix: {bkg_matrix}")
+        sig_array, sig_weight = self._feedbox.get_reweight_merged(
             "xs", array_key="all", reset_mass=False
         )
-        d_sig = pd.DataFrame(data=sig_array, columns=list(features),)
-        sig_matrix = d_sig.corr()
+        sig_matrix = array_utils.corr_matrix(sig_array, sig_weight)
+        logger.debug(f"sig_corr_matrix: {sig_matrix}")
         corrcoef_matrix_dict = {}
         corrcoef_matrix_dict["bkg"] = bkg_matrix
         corrcoef_matrix_dict["sig"] = sig_matrix
+        corrcoef_matrix_dict["labels"] = features
         return corrcoef_matrix_dict
 
-    def get_model(self, fold_num=0):
+    def get_feedbox(self) -> feed_box.Feedbox:
+        return self._feedbox
+
+    def get_model(self, fold_num=None):
         """Returns model."""
         if not self._model_is_compiled:
             logger.warning("Model is not compiled")
-        return self._model[fold_num]
+        if fold_num is None:
+            return self._model
+        else:
+            return self._model[fold_num]
 
     def get_model_meta(self):
         return self._model_meta
@@ -129,62 +133,78 @@ class Model_Base(object):
         """Prepares array for training."""
         feedbox = feed_box.Feedbox(job_config, model_meta=self.get_model_meta(),)
         self._model_meta["norm_dict"] = copy.deepcopy(feedbox.get_norm_dict())
-        self.feedbox = feedbox
+        self._feedbox = feedbox
         self._array_prepared = feedbox._array_prepared
 
-    def load_model(self, load_dir, job_name="*", date="*", version="*"):
+    def load_model(self, epoch=None):
         """Loads saved model."""
-        # Search possible files
-        search_pattern = (
-            load_dir + "/" + date + "_" + job_name + "_" + version + "/models"
-        )
-        model_dir_list = glob.glob(search_pattern)
-        if not model_dir_list:
-            search_pattern = "/work/" + search_pattern
-            logger.debug(f"search pattern:{search_pattern}")
-            model_dir_list = glob.glob(search_pattern)
-        model_dir_list = sorted(model_dir_list)
-        # Choose the newest one
-        if len(model_dir_list) < 1:
-            raise FileNotFoundError("Model file that matched the pattern not found.")
-        model_dir = model_dir_list[-1]
-        if len(model_dir_list) > 1:
-            logger.info(
-                "More than one valid model file found, maybe you should try to specify more infomation."
-            )
-            logger.info(f"Loading the last matched model path: {model_dir}")
-        else:
-            logger.info(f"Loading model at: {model_dir}")
+        # # Search possible files
+        # search_pattern = (
+        #     load_dir + "/" + date + "_" + job_name + "_" + version + "/models"
+        # )
+        # model_dir_list = glob.glob(search_pattern)
+        # if not model_dir_list:
+        #     search_pattern = "/work/" + search_pattern
+        #     logger.debug(f"search pattern:{search_pattern}")
+        #     model_dir_list = glob.glob(search_pattern)
+        # model_dir_list = sorted(model_dir_list)
+        # # Choose the newest one
+        # if len(model_dir_list) < 1:
+        #     raise FileNotFoundError("Model file that matched the pattern not found.")
+        # model_dir = model_dir_list[-1]
+        # if len(model_dir_list) > 1:
+        #     logger.info(
+        #         "More than one valid model file found, maybe you should try to specify # more infomation."
+        #     )
+        #     logger.info(f"Loading the last matched model path: {model_dir}")
+        # else:
+        #     logger.info(f"Loading model at: {model_dir}")
+
         # load model(s)
         self._model = list()
+        num_exist_models = 0
         for fold_num in range(self._num_folds):
-            fold_model = keras.models.load_model(
-                f"{model_dir}/fold_{fold_num}/{self._model_name}.h5",
-                custom_objects={"plain_acc": plain_acc},
-            )  # it's important to specify
-            self._model.append(fold_model)
+            model_dir = self.get_model_save_dir(fold_num=fold_num)
+            if epoch is None:
+                model_path = pathlib.Path(f"{model_dir}/{self._model_name}.h5")
+            else:
+                model_path = pathlib.Path(
+                    f"{model_dir}/{self._model_name}_epoch{epoch}.h5"
+                )
+            if model_path.exists():
+                fold_model = keras.models.load_model(
+                    model_path, custom_objects={"plain_acc": plain_acc},
+                )  # it's important to specify custom_objects
+                self._model.append(fold_model)
+                num_exist_models += 1
         self._model_is_loaded = True
         # Load parameters
+        model_dir = self.get_model_save_dir()
         self.load_model_parameters(model_dir)
         self.model_paras_is_loaded = True
-        logger.info("Model loaded.")
+        if epoch is None:
+            logger.info(f"{num_exist_models}/{self._num_folds} models loaded")
+        else:
+            logger.info(
+                f"{num_exist_models}/{self._num_folds} models loaded for epoch {epoch}"
+            )
 
-    def load_model_with_path(self, model_path, paras_path=None, fold_num=0):
-        """Loads model with given path
-
-        Note:
-            Should load model parameters manually.
-        """
-        self._model[fold_num] = keras.models.load_model(
-            model_path, custom_objects={"plain_acc": plain_acc},
-        )  # it's important to specify
-        if paras_path is not None:
-            try:
-                self.load_model_parameters(paras_path)
-                self.model_paras_is_loaded = True
-            except:
-                logger.warning("Model parameters not successfully loaded.")
-        logger.info("Model loaded.")
+    # def load_model_with_path(self, model_path, paras_path=None, fold_num=0):
+    #    """Loads model with given path
+    #
+    #    Note:
+    #        Should load model parameters manually.
+    #    """
+    #    self._model[fold_num] = keras.models.load_model(
+    #        model_path, custom_objects={"plain_acc": plain_acc},
+    #    )  # it's important to specify
+    #    if paras_path is not None:
+    #        try:
+    #            self.load_model_parameters(paras_path)
+    #            self.model_paras_is_loaded = True
+    #        except:
+    #            logger.warning("Model parameters not successfully loaded.")
+    #    logger.info("Model loaded.")
 
     def load_model_parameters(self, model_dir):
         """Retrieves model parameters from yaml file."""
@@ -295,9 +315,7 @@ class Model_Sequential_Base(Model_Base):
         self._save_tb_logs = tc.save_tb_logs
         self._tb_logs_path = tc.tb_logs_path
 
-    def get_train_callbacks(
-        self, file_name: Optional[str] = None, fold_num: Optional[int] = None
-    ) -> list:
+    def get_train_callbacks(self, fold_num: Optional[int] = None) -> list:
         train_callbacks = []
         tc = self._job_config.train
         if self._save_tb_logs:  # TODO: add back this function
@@ -324,9 +342,7 @@ class Model_Sequential_Base(Model_Base):
         if tc.save_model:
             model_save_dir = self.get_model_save_dir(fold_num=fold_num)
             pathlib.Path(model_save_dir).mkdir(parents=True, exist_ok=True)
-            if file_name is None:
-                file_name = self._model_name
-            path_pattern = f"{model_save_dir}/{file_name}_epoch{{epoch}}.h5"
+            path_pattern = f"{model_save_dir}/{self._model_name}_epoch{{epoch}}.h5"
             checkpoint = ModelCheckpoint(path_pattern, monitor="val_loss")
             train_callbacks.append(checkpoint)
         return train_callbacks
@@ -367,7 +383,7 @@ class Model_Sequential_Base(Model_Base):
             pass
         return performance_meta_dict
 
-    def train(self, file_name=None):
+    def train(self):
         """Performs training."""
 
         # prepare config alias
@@ -387,13 +403,13 @@ class Model_Sequential_Base(Model_Base):
         logger.info(f"Training start. Using model: {self._model_name}")
         logger.info(f"Model info: {self._model_note}")
         ## get input
-        train_test_dict = self.feedbox.get_train_test_arrays(
+        train_test_dict = self._feedbox.get_train_test_arrays(
             sig_key=ic.sig_key,
             bkg_key=ic.bkg_key,
             multi_class_bkgs=tc.output_bkg_node_names,
             output_keys=array_utils.COMB_KEYS,
         )
-        self.feedbox = None
+        self._feedbox = None
         x_train = train_test_dict["x_train"]
         x_test = train_test_dict["x_test"]
         y_train = train_test_dict["y_train"]
@@ -431,9 +447,7 @@ class Model_Sequential_Base(Model_Base):
                 shuffle=False,
                 class_weight={1: tc.sig_class_weight, 0: tc.bkg_class_weight},
                 sample_weight=wt_fold,
-                callbacks=self.get_train_callbacks(
-                    file_name=file_name, fold_num=fold_num
-                ),
+                callbacks=self.get_train_callbacks(fold_num=fold_num),
                 verbose=tc.verbose,
             )
             logger.info("Training finished.")
@@ -474,7 +488,7 @@ class Model_Sequential_Base(Model_Base):
         if self._array_prepared == False:
             raise ValueError("Training data is not ready.")
         # separate validation samples
-        train_test_dict = self.feedbox.get_train_test_arrays(
+        train_test_dict = self._feedbox.get_train_test_arrays(
             sig_key=sig_key,
             bkg_key=bkg_key,
             multi_class_bkgs=self.model_hypers["output_bkg_node_names"],

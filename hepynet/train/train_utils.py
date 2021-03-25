@@ -1,66 +1,12 @@
 # -*- coding: utf-8 -*-
 import glob
 import logging
-import pathlib
+import math
 
 import numpy as np
 from sklearn.model_selection import StratifiedKFold
 
-from hepynet.common import config_utils
-from hepynet.data_io import numpy_io
-
 logger = logging.getLogger("hepynet")
-
-
-def dump_fit_npy(
-    feedbox, keras_model, fit_ntup_branches, output_bkg_node_names, npy_dir="./"
-):
-    prefix_map = {"sig": "xs", "bkg": "xb"}
-    if feedbox.get_job_config().input.apply_data:
-        prefix_map["data"] = "xd"
-
-    for map_key in list(prefix_map.keys()):
-        sample_keys = getattr(feedbox.get_job_config().input, f"{map_key}_list")
-        for sample_key in sample_keys:
-            dump_branches = fit_ntup_branches + ["weight"]
-            # prepare contents
-            dump_array, dump_array_weight = feedbox.get_raw(
-                prefix_map[map_key], array_key=sample_key, add_validation_features=True,
-            )
-            predict_input, _ = feedbox.get_reweight(
-                prefix_map[map_key], array_key=sample_key, reset_mass=False
-            )
-            predictions = keras_model.predict(predict_input)
-            # dump
-            platform_meta = config_utils.load_current_platform_meta()
-            data_path = platform_meta["data_path"]
-            save_dir = f"{data_path}/{npy_dir}"
-            pathlib.Path(save_dir).mkdir(parents=True, exist_ok=True)
-            for branch in dump_branches:
-                if branch == "weight":
-                    branch_content = dump_array_weight
-                else:
-                    fd_val_features = feedbox.get_job_config().input.validation_features
-                    if fd_val_features is None:
-                        validation_features = []
-                    else:
-                        validation_features = fd_val_features
-                    feature_list = (
-                        feedbox.get_job_config().input.selected_features
-                        + validation_features
-                    )
-                    branch_index = feature_list.index(branch)
-                    branch_content = dump_array[:, branch_index]
-                save_path = f"{save_dir}/{sample_key}_{branch}.npy"
-                numpy_io.save_npy_array(branch_content, save_path)
-            if len(output_bkg_node_names) == 0:
-                save_path = f"{save_dir}/{sample_key}_dnn_out.npy"
-                numpy_io.save_npy_array(predictions, save_path)
-            else:
-                for i, out_node in enumerate(["sig"] + output_bkg_node_names):
-                    out_node = out_node.replace("+", "_")
-                    save_path = f"{save_dir}/{sample_key}_dnn_out_{out_node}.npy"
-                    numpy_io.save_npy_array(predictions[:, i], save_path)
 
 
 def get_mass_range(mass_array, weights, nsig=1):
@@ -131,6 +77,44 @@ def get_train_val_indices(x, y, wt, val_split, k_folds=None):
         train_indices_list.append(train_index)
         validation_indices_list.append(val_index)
     return train_indices_list, validation_indices_list
+
+
+def merge_unequal_length_arrays(array_list):
+    """Merges arrays with unequal length to average/min/max 
+
+    Note:
+        mainly used to deal with k-fold results with early-stopping (which 
+        results in unequal length of results as different folds may stop at 
+        different epochs) enabled
+
+    """
+    folds_lengths = list()
+    for single_array in array_list:
+        folds_lengths.append(len(single_array))
+    max_len = max(folds_lengths)
+
+    mean = list()
+    low = list()
+    high = list()
+    for i in range(max_len):
+        sum_value = 0
+        min_value = math.inf
+        max_value = -math.inf
+        num_values = 0
+        for fold_num, single_array in enumerate(array_list):
+            if i < folds_lengths[fold_num]:
+                ele = single_array[i]
+                sum_value += ele
+                num_values += 1
+                if ele < min_value:
+                    min_value = ele
+                if ele > max_value:
+                    max_value = ele
+        mean_value = sum_value / num_values
+        mean.append(mean_value)
+        low.append(min_value)
+        high.append(max_value)
+    return mean, low, high
 
 
 def norm_array(array, average=None, variance=None):

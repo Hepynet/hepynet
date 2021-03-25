@@ -32,6 +32,7 @@ DEFAULT_CFG = {
         "cut_features": [],
         "cut_values": [],
         "cut_types": [],
+        "feature_norm_alias": {}
     },
     "train": {
         "model_name": "MODEL_NAME_DEF",
@@ -66,6 +67,7 @@ DEFAULT_CFG = {
     },
     "apply": {
         "check_model_epoch": False,
+        "epoch_check_interval": 5,
         "book_history": False,
         "cfg_history": {},
         "book_roc": False,
@@ -96,10 +98,20 @@ DEFAULT_CFG = {
             "save_format": "png",
         },
         "book_kine_study": False,
-        "book_cut_kine_study": False,
         "cfg_kine_study": {
-            "separate_sig_bkg": False,  # only valid for no DNN cut kinematics
-            "save_ratio_table": False,  # only valid for DNN cut kinematics
+            "bins": 40,
+            "range": None,
+            "histtype": "step",
+            "alpha": 0.3,
+            "density": False,
+            "sig_color": "tomato",
+            "bkg_color": "royalblue",
+            "save_format": "png",
+        },
+        "book_cut_kine_study": False,
+        "cfg_cut_kine_study": {
+            "separate_sig_bkg": False,
+            "save_ratio_table": False,
             "bins": 40,
             "range": None,
             "histtype": "stepfilled",

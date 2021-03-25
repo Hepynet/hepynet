@@ -1,4 +1,5 @@
 import logging
+from math import sqrt
 from typing import Optional
 
 import numpy as np
@@ -56,6 +57,33 @@ class DNN_Arrays_Combined(object):
         self.y_test = None
         self.wt_train = None
         self.wt_test = None
+
+
+def cov(x, y, w):
+    """Calculates weighted covariance"""
+    return np.sum(
+        w
+        * (x - np.average(x, axis=0, weights=w))
+        * (y - np.average(y, axis=0, weights=w))
+    ) / np.sum(w)
+
+
+def corr(x, y, w):
+    """Calculates weighted correlation"""
+    return cov(x, y, w) / np.sqrt(cov(x, x, w) * cov(y, y, w))
+
+
+def corr_matrix(x, w=None):
+    """Calculates correlation coefficient matrix"""
+    if w is None:
+        w = np.ones(x.shape[0])
+    num_features = x.shape[1]
+    corr_m = np.zeros((num_features, num_features))
+    for row in range(num_features):
+        for col in range(row + 1):
+            corr_m[row][col] = corr(x[:, row], x[:, col], w)
+            corr_m[col][row] = corr(x[:, row], x[:, col], w)
+    return corr_m
 
 
 def check_keys_has_sepa(output_keys):
@@ -131,6 +159,47 @@ def generate_shuffle_index(array_len):
     shuffle_index = np.array(range(array_len))
     np.random.shuffle(shuffle_index)
     return shuffle_index
+
+
+def merge_dict_to_inputs(array_dict, feature_list, array_key="all", sumofweight=1000):
+    """Merges contents in array_dict to plain arrays for DNN training"""
+    if array_key in list(array_dict.keys()):
+        array_out = np.concatenate(
+            [array_dict[array_key][feature] for feature in feature_list], axis=1,
+        )
+        weight_out = array_dict[array_key]["weight"]
+    elif array_key == "all" or array_key == "all_norm":
+        array_components = []
+        weight_components = []
+        for temp_key in array_dict.keys():
+            temp_array = np.concatenate(
+                [array_dict[temp_key][feature] for feature in feature_list], axis=1,
+            )
+            array_components.append(temp_array)
+            weight_component = array_dict[temp_key]["weight"]
+            if array_key == "all":
+                weight_components.append(weight_component)
+            else:
+                sumofweights = np.sum(weight_component)
+                weight_components.append(weight_component / sumofweights)
+        array_out = np.concatenate(array_components)
+        weight_out = np.concatenate(weight_components)
+        normalize_weight(weight_out, norm=sumofweight)
+    return array_out, weight_out.reshape((-1,))
+
+
+def merge_select_val_features(
+    selected_features, validation_features, append_weight=False
+):
+    feature_list = list()
+    feature_list += selected_features
+    if isinstance(validation_features, list):
+        feature_list += validation_features
+    merged_list = list(set().union(feature_list))
+    if append_weight:
+        return merged_list + ["weight"]
+    else:
+        return merged_list
 
 
 def modify_array(
@@ -393,7 +462,7 @@ def split_and_combine(
     out_arrays = {}
     for key in output_keys:
         if key in SEPA_KEYS:
-            ## TODO: components in SEPA_KEYS are not necessary as they can be 
+            ## TODO: components in SEPA_KEYS are not necessary as they can be
             ## generated with y as tag
             out_arrays[key] = getattr(arr_sepa, key)
         elif key in COMB_KEYS:

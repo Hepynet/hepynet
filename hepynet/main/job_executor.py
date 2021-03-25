@@ -4,26 +4,24 @@ import math
 import pathlib
 import random as python_random
 
+import atlas_mpl_style as ampl
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 
 from hepynet.common import common_utils, config_utils
-from hepynet.evaluate import (
-    importance,
-    kinematics,
-    mva_scores,
-    roc,
-    significance,
-    train_history,
-)
+from hepynet.evaluate import (evaluate_utils, importance, kinematics,
+                              mva_scores, roc, significance, train_history)
 from hepynet.main import job_utils
-from hepynet.train import model, train_utils
+from hepynet.train import hep_model, train_utils
 
 # from hepynet.common.hepy_const import SCANNED_PARAS
 
 
 logger = logging.getLogger("hepynet")
+
+# set up style
+ampl.use_atlas_style()
 
 
 class job_executor(object):
@@ -108,191 +106,176 @@ class job_executor(object):
         rc.save_dir = f"{rc.save_sub_dir}/apply/{jc.job_name}"
         pathlib.Path(rc.save_dir).mkdir(parents=True, exist_ok=True)
 
-        # save metrics curve
+        # Studies not depending on models
+        ## metrics curves
         if ac.book_history:
             train_history.plot_history(
                 self.model_wrapper, self.job_config, save_dir=rc.save_dir
             )
-
-        # save kinematic plots
+        ## input kinematic plots
         if ac.book_kine_study:
             logger.info("Making input distribution plots")
-            kinematics.plot_input_distributions(
+            kinematics.plot_input(
                 self.model_wrapper,
                 self.job_config,
                 save_dir=f"{rc.save_sub_dir}/kinematics/raw",
             )
-            kinematics.plot_input_distributions(
+            kinematics.plot_input(
                 self.model_wrapper,
                 self.job_config,
                 save_dir=f"{rc.save_sub_dir}/kinematics/processed",
                 show_reshaped=True,
             )
-        # Make correlation plot
+        ## correlation matrix
         if ac.book_cor_matrix:
-            logger.info("Making correlation plot")
+            logger.info("Making correlation matrix")
             kinematics.plot_correlation_matrix(
                 self.model_wrapper, save_dir=rc.save_sub_dir
             )
-
-        # Check models in different epochs, check only final if not specified
-        model_path_list = ["_final"]
-        if ac.check_model_epoch:
-            if jc.job_type == "apply":
-                model_dir = rc.load_dir
-                job_name = jc.load_job_name
-            else:
-                model_dir = rc.save_dir
-                job_name = jc.job_name
-            model_path_list += train_utils.get_model_epoch_path_list(
-                model_dir, tc.model_name, job_name=job_name,
+        ## generate fit ntuples
+        if ac.book_fit_npy:
+            save_region = ac.cfg_fit_npy.fit_npy_region
+            if save_region is None:
+                save_region = ic.region
+            npy_dir = f"{ac.cfg_fit_npy.npy_save_dir}/{ic.campaign}/{save_region}"
+            logger.info("Dumping numpy arrays for fitting.")
+            evaluate_utils.dump_fit_npy(
+                self.model_wrapper, self.job_config, npy_dir=npy_dir,
             )
-        max_epoch = 10
-        total_models = len(model_path_list)
-        epoch_interval = 1
-        if total_models > max_epoch:
-            epoch_interval = math.ceil(total_models / max_epoch)
-            if epoch_interval > 5:
-                epoch_interval = 5
-        for model_num, model_path in enumerate(model_path_list):
-            if model_num % epoch_interval == 0 or model_num == 1:
-                logger.info(">" * 80)
-                logger.info(f"Checking model:{model_path}")
-                identifier = "final"
-                if model_path != "_final":
-                    identifier = "epoch{:02d}".format(model_num)
-                    self.model_wrapper.load_model_with_path(model_path)
-                # Overtrain check
-                if ac.book_roc:
-                    logger.info("Making roc curve plot")
-                    roc.plot_multi_class_roc(
-                        self.model_wrapper, self.job_config,
-                    )
-                if ac.book_train_test_compare:
-                    logger.info("Making train/test compare plots")
-                    mva_scores.plot_train_test_compare(
-                        self.model_wrapper, self.job_config
-                    )
-                # Make feature importance check
-                if ac.book_importance_study:
-                    logger.info("Checking input feature importance")
-                    importance.plot_feature_importance(
-                        self.model_wrapper,
-                        self.job_config,
-                        identifier=identifier,
-                        max_feature=12,
-                    )
-                # Extra plots (use model on non-mass-reset arrays)
-                if ac.book_mva_scores_data_mc:
-                    logger.info("Making data/mc scores distributions plots")
-                    mva_scores.plot_mva_scores(
-                        self.model_wrapper,
-                        self.job_config,
-                        file_name=f"mva_scores_{identifier}",
-                    )
-                # show kinemetics at different dnn cut
-                if ac.book_cut_kine_study:
-                    logger.info("Making kinematic plots with different DNN cut")
-                    for dnn_cut in ac.cfg_kine_study.dnn_cut_list:
-                        kinematics.plot_input_distributions(
-                            self.model_wrapper,
-                            self.job_config,
-                            dnn_cut=dnn_cut,
-                            save_dir=f"{rc.save_sub_dir}/kinematics/model_{identifier}_cut_p{dnn_cut * 100}",
-                            compare_cut_sb_separated=True,
-                        )
-                # Make significance scan plot
-                if ac.book_significance_scan:
-                    fig, ax = plt.subplots(figsize=(8, 6))
-                    ax.set_title("significance scan")
-                    significance.plot_significance_scan(
-                        ax,
-                        self.model_wrapper,
-                        ic.sig_key,
-                        ic.bkg_key,
-                        save_dir=rc.save_dir,
-                        significance_algo=ac.cfg_significance_scan.significance_algo,
-                        suffix="_" + identifier,
-                    )
-                    fig_save_path = (
-                        rc.save_dir + "/significance_scan_" + identifier + ".png"
-                    )
-                    self.fig_significance_scan_path = fig_save_path
-                    fig.savefig(fig_save_path)
-                # TODO: 2d significance scan
-                """
-                if ac.book_2d_significance_scan:
-                    # save original model wrapper
-                    temp_model_wrapper = self.model_wrapper
-                    # set up model wrapper for significance scan
-                    model_class = model.get_model_class(tc.model_class)
-                    scan_model_wrapper = model_class(
-                        tc.model_name, ic.selected_features, rc.hypers
-                    )
-                    if model_path != "_final":
-                        scan_model_wrapper.load_model_with_path(model_path)
-                    else:
-                        scan_model_wrapper.load_model(
-                            rc.load_dir, tc.model_name, job_name=jc.load_job_name,
-                        )
-                    scan_model_wrapper.set_inputs(temp_model_wrapper.feedbox)
-                    self.model_wrapper = scan_model_wrapper
-                    save_dir = f"{rc.save_sub_dir}/apply/{jc.job_name}"
-                    if not os.path.exists(save_dir):
-                        os.makedirs(save_dir)
-                    cut_ranges_dn = ac.cfg_2d_significance_scan[
-                        "significance_cut_ranges_dn"
-                    ]
-                    cut_ranges_up = ac.cfg_2d_significance_scan[
-                        "significance_cut_ranges_up"
-                    ]
-                    # 2D density
-                    evaluate.plot_2d_density(
-                        self,
-                        save_plot=True,
-                        save_dir=save_dir,
-                        save_file_name="2D_density_" + identifier,
-                    )
-                    # 2D significance scan
-                    evaluate.plot_2d_significance_scan(
-                        self,
-                        save_plot=True,
-                        save_dir=save_dir,
-                        save_file_name="2D_scan_significance_" + identifier,
-                        cut_ranges_dn=cut_ranges_dn,
-                        cut_ranges_up=cut_ranges_up,
-                        dnn_cut_min=ac.cfg_2d_significance_scan[
-                            "significance_dnn_cut_min"
-                        ],
-                        dnn_cut_max=ac.cfg_2d_significance_scan[
-                            "significance_dnn_cut_max"
-                        ],
-                        dnn_cut_step=ac.cfg_2d_significance_scan[
-                            "significance_dnn_cut_step"
-                        ],
-                    )
-                    # restore original model wrapper
-                    self.model_wrapper = temp_model_wrapper
-                """
 
-                if ac.book_fit_npy:
-                    save_region = ac.cfg_fit_npy.fit_npy_region
-                    if save_region is None:
-                        save_region = ic.region
-                    npy_dir = (
-                        f"{ac.cfg_fit_npy.npy_save_dir}/{ic.campaign}/{save_region}"
+        # Studies depending on models
+        epoch_checklist = [None]
+        if ac.check_model_epoch:
+            for epoch_id in range(tc.epochs):
+                epoch = epoch_id + 1
+                if epoch % ac.epoch_check_interval == 1:
+                    epoch_checklist.append(epoch)
+        for epoch in epoch_checklist:
+            logger.info(">" * 80)
+            if epoch is None:
+                logger.info(f"Checking model(s) at final epoch")
+                epoch_str = "final"
+            else:
+                logger.info(f"Checking model(s) at epoch {epoch}")
+                epoch_str = str(epoch)
+            self.model_wrapper.load_model(epoch=epoch)
+
+            # create epoch sub-directory
+            epoch_subdir = evaluate_utils.create_epoch_subdir(
+                rc.save_dir, epoch, len(str(tc.epochs))
+            )
+            if epoch_subdir is None:
+                logger.error(
+                    f"Can't create epoch subdir, skip evaluation at epoch {epoch_str}!"
+                )
+                return
+
+            # roc
+            if ac.book_roc:
+                logger.info("Making roc curve plot")
+                roc.plot_multi_class_roc(
+                    self.model_wrapper, self.job_config, epoch_subdir
+                )
+            # overtrain check
+            if ac.book_train_test_compare:
+                logger.info("Making train/test compare plots")
+                mva_scores.plot_train_test_compare(
+                    self.model_wrapper, self.job_config, epoch_subdir
+                )
+            # feature permuted importance
+            if ac.book_importance_study:
+                logger.info("Checking input feature importance")
+                importance.plot_feature_importance(
+                    self.model_wrapper, self.job_config, epoch_subdir
+                )
+            # data/mc scores comparison
+            if ac.book_mva_scores_data_mc:
+                logger.info("Making data/mc scores distributions plots")
+                mva_scores.plot_mva_scores(
+                    self.model_wrapper, self.job_config, epoch_subdir,
+                )
+            # Make significance scan plot
+            if ac.book_significance_scan:
+                significance.plot_significance_scan(
+                    self.model_wrapper,
+                    ic.sig_key,
+                    ic.bkg_key,
+                    epoch_subdir,
+                    significance_algo=ac.cfg_significance_scan.significance_algo,
+                )
+            # kinematics with DNN cuts
+            if ac.book_cut_kine_study:
+                logger.info("Making kinematic plots with different DNN cut")
+                for dnn_cut in ac.cfg_cut_kine_study.dnn_cut_list:
+                    dnn_kine_path = epoch_subdir / f"kine_cut_dnn_p{dnn_cut * 100}"
+                    dnn_kine_path.mkdir(parents=True, exist_ok=True)
+                    kinematics.plot_input_dnn(
+                        self.model_wrapper,
+                        self.job_config,
+                        dnn_cut=dnn_cut,
+                        save_dir=dnn_kine_path,
+                        compare_cut_sb_separated=True,
                     )
-                    feedbox = self.model_wrapper.feedbox
-                    keras_model = self.model_wrapper.get_model()
-                    logger.info("Dumping numpy arrays for fitting.")
-                    train_utils.dump_fit_npy(
-                        feedbox,
-                        keras_model,
-                        ac.cfg_fit_npy.fit_npy_branches,
-                        tc.output_bkg_node_names,
-                        npy_dir=npy_dir,
-                    )
-                logger.info("<" * 80)
+
+            logger.info("<" * 80)
+
+        return
+
+        # TODO: 2d significance scan
+        """
+        if ac.book_2d_significance_scan:
+            # save original model wrapper
+            temp_model_wrapper = self.model_wrapper
+            # set up model wrapper for significance scan
+            model_class = model.get_model_class(tc.model_class)
+            scan_model_wrapper = model_class(
+                tc.model_name, ic.selected_features, rc.hypers
+            )
+            if model_path != "_final":
+                scan_model_wrapper.load_model_with_path(model_path)
+            else:
+                scan_model_wrapper.load_model(
+                    rc.load_dir, tc.model_name, job_name=jc.load_job_name,
+                )
+            scan_model_wrapper.set_inputs(temp_model_wrapper.feedbox)
+            self.model_wrapper = scan_model_wrapper
+            save_dir = f"{rc.save_sub_dir}/apply/{jc.job_name}"
+            if not os.path.exists(save_dir):
+                os.makedirs(save_dir)
+            cut_ranges_dn = ac.cfg_2d_significance_scan[
+                "significance_cut_ranges_dn"
+            ]
+            cut_ranges_up = ac.cfg_2d_significance_scan[
+                "significance_cut_ranges_up"
+            ]
+            # 2D density
+            evaluate.plot_2d_density(
+                self,
+                save_plot=True,
+                save_dir=save_dir,
+                save_file_name="2D_density_" + identifier,
+            )
+            # 2D significance scan
+            evaluate.plot_2d_significance_scan(
+                self,
+                save_plot=True,
+                save_dir=save_dir,
+                save_file_name="2D_scan_significance_" + identifier,
+                cut_ranges_dn=cut_ranges_dn,
+                cut_ranges_up=cut_ranges_up,
+                dnn_cut_min=ac.cfg_2d_significance_scan[
+                    "significance_dnn_cut_min"
+                ],
+                dnn_cut_max=ac.cfg_2d_significance_scan[
+                    "significance_dnn_cut_max"
+                ],
+                dnn_cut_step=ac.cfg_2d_significance_scan[
+                    "significance_dnn_cut_step"
+                ],
+            )
+            # restore original model wrapper
+            self.model_wrapper = temp_model_wrapper
+        """
 
     '''
         def execute_tuning_jobs(self):
@@ -633,19 +616,16 @@ class job_executor(object):
     def set_model(self) -> None:
         logger.info("Setting up model")
         tc = self.job_config.train
-        model_class = model.get_model_class(tc.model_class)
+        model_class = hep_model.get_model_class(tc.model_class)
         self.model_wrapper = model_class(self.job_config)
 
     def set_model_input(self) -> None:
         logger.info("Processing inputs")
         jc = self.job_config.job
         rc = self.job_config.run
-        tc = self.job_config.train
         # load model for "apply" job
         if jc.job_type == "apply":
-            self.model_wrapper.load_model(
-                rc.load_dir, job_name=jc.load_job_name,
-            )
+            self.model_wrapper.load_model()
         self.model_wrapper.set_inputs(self.job_config)
 
     def set_save_dir(self) -> None:

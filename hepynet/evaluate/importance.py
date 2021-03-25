@@ -1,15 +1,16 @@
 import logging
+import pathlib
 
 import matplotlib.pyplot as plt
 import numpy as np
 
-from hepynet.evaluate import roc
-
+from hepynet.evaluate import evaluate_utils, roc
+from hepynet.train import hep_model
 logger = logging.getLogger("hepynet")
 
 
 def plot_feature_importance(
-    model_wrapper, job_config, identifier="", log=True, max_feature=16
+    model_wrapper:hep_model.Model_Base, job_config, save_dir, log=True, max_feature=16
 ):
     """Calculates importance of features and sort the feature.
 
@@ -20,10 +21,9 @@ def plot_feature_importance(
     logger.info("Plotting feature importance.")
     ic = job_config.input.clone()
     tc = job_config.train.clone()
-    rc = job_config.run.clone()
-    # Prepare
+    # prepare
     model = model_wrapper.get_model()
-    feedbox = model_wrapper.feedbox
+    feedbox = model_wrapper.get_feedbox()
     num_feature = len(feedbox.get_job_config().input.selected_features)
     selected_feature_names = np.array(feedbox.get_job_config().input.selected_features)
     train_test_dict = feedbox.get_train_test_arrays(
@@ -42,7 +42,7 @@ def plot_feature_importance(
     else:
         all_nodes = ["sig"]
     # Make plots
-    fig_save_pattern = f"{rc.save_dir}/importance_{identifier}_{{}}.png"
+    fig_save_pattern = f"{save_dir}/importance_{{}}.png"
     if num_feature > 16:
         canvas_height = 16
     else:

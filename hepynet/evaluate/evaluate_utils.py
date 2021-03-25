@@ -1,5 +1,94 @@
+import logging
+import pathlib
+from typing import Tuple
+
 import matplotlib.pyplot as plt
 import numpy as np
+
+from hepynet.common import config_utils
+from hepynet.data_io import feed_box, numpy_io
+from hepynet.train import hep_model
+
+logger = logging.getLogger("hepynet")
+
+
+def create_epoch_subdir(save_dir, epoch, n_digit) -> pathlib.Path:
+    if save_dir is None:
+        logger.error(f"Invalid save_dir: {save_dir}")
+        return None
+    if epoch is not None:
+        sub_dir = pathlib.Path(f"{save_dir}/epoch_{str(epoch).zfill(n_digit)}")
+    else:
+        sub_dir = pathlib.Path(f"{save_dir}/epoch_final")
+    sub_dir.mkdir(parents=True, exist_ok=True)
+    return sub_dir
+
+
+def dump_fit_npy(
+    model_wrapper: hep_model.Model_Base, job_config, npy_dir="./",
+):
+    ic = job_config.input.clone()
+    tc = job_config.train.clone()
+    ac = job_config.apply.clone()
+    feedbox = model_wrapper.get_feedbox()
+
+    prefix_map = {"sig": "xs", "bkg": "xb"}
+    if feedbox.get_job_config().input.apply_data:
+        prefix_map["data"] = "xd"
+
+    platform_meta = config_utils.load_current_platform_meta()
+    data_path = platform_meta["data_path"]
+    save_dir = f"{data_path}/{npy_dir}"
+    pathlib.Path(save_dir).mkdir(parents=True, exist_ok=True)
+    logger.info(f"Arrays to be saved to {save_dir}")
+
+    for map_key in list(prefix_map.keys()):
+        sample_keys = getattr(ic, f"{map_key}_list")
+        for sample_key in sample_keys:
+            dump_branches = ac.cfg_fit_npy.fit_npy_branches + ["weight"]
+            # prepare contents
+            dump_array, dump_array_weight = feedbox.get_raw_merged(
+                prefix_map[map_key], array_key=sample_key, add_validation_features=True,
+            )
+            predict_input, _ = feedbox.get_reweight_merged(
+                prefix_map[map_key], array_key=sample_key, reset_mass=False
+            )
+            predictions, _, _ = k_folds_predict(
+                model_wrapper.get_model(), predict_input
+            )
+            # dump
+            for branch in dump_branches:
+                if branch == "weight":
+                    branch_content = dump_array_weight
+                else:
+                    feature_list = list()
+                    feature_list += ic.selected_features
+                    if ic.validation_features is not None:
+                        feature_list += ic.validation_features
+                    feature_list = list(set().union(feature_list, ["weight"]))
+                    branch_index = feature_list.index(branch)
+                    branch_content = dump_array[:, branch_index]
+                save_path = f"{save_dir}/{sample_key}_{branch}.npy"
+                numpy_io.save_npy_array(branch_content, save_path)
+            if len(tc.output_bkg_node_names) == 0:
+                save_path = f"{save_dir}/{sample_key}_dnn_out.npy"
+                numpy_io.save_npy_array(predictions, save_path)
+            else:
+                for i, out_node in enumerate(["sig"] + tc.output_bkg_node_names):
+                    out_node = out_node.replace("+", "_")
+                    save_path = f"{save_dir}/{sample_key}_dnn_out_{out_node}.npy"
+                    numpy_io.save_npy_array(predictions[:, i], save_path)
+
+
+def k_folds_predict(k_fold_models, x) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    y_pred_k_folds = list()
+    for fold_model in k_fold_models:
+        y_fold_pred = fold_model.predict(x)
+        y_pred_k_folds.append(y_fold_pred)
+    y_pred_mean = np.mean(y_pred_k_folds, axis=0)
+    y_pred_max = np.maximum.reduce(y_pred_k_folds)
+    y_pred_min = np.minimum.reduce(y_pred_k_folds)
+    return y_pred_mean, y_pred_min, y_pred_max
 
 
 def paint_bars(

@@ -98,17 +98,12 @@ class Feedbox(object):
 
         """
         array_dict_out = dict()
-        # decide feature list
-        feature_list = list()
         if add_validation_features:
-            if self._ic.validation_features is None:
-                validation_features = []
-            else:
-                validation_features = self._ic.validation_features
-            feature_list += self._ic.selected_features + validation_features
+            feature_list = array_utils.merge_select_val_features(
+                self._ic.selected_features, self._ic.validation_features, append_weight=True
+            )
         else:
-            feature_list += self._ic.selected_features
-        feature_list = list(set().union(feature_list, ["weight"]))  # avoid duplication
+            feature_list = self._ic.selected_features.copy() + ["weight"]
         # get input array dict
         array_dict = self.get_input_array_dict(input_type, part_features=feature_list)
         # get list of necessary samples
@@ -128,11 +123,34 @@ class Feedbox(object):
             array_dict_out[sample] = dict_member
         return array_dict_out
 
+    def get_raw_merged(
+        self, input_type, features=None, array_key="all", add_validation_features=False
+    ):
+        if features is None:
+            features = self._job_config.input.selected_features.copy()
+            if add_validation_features:
+                features = array_utils.merge_select_val_features(
+                    features, self._job_config.input.validation_features
+                )
+        array_dict = self.get_raw(
+            input_type,
+            array_key=array_key,
+            add_validation_features=add_validation_features,
+        )
+        inputs, weights = array_utils.merge_dict_to_inputs(
+            array_dict, features, array_key=array_key
+        )
+        return inputs, weights
+
     def get_reshape(
-        self, input_type: str, array_key: str = "all"
+        self, input_type: str, array_key: str = "all", add_validation_features=False
     ) -> Dict[str, Dict[str, np.ndarray]]:
         """Normalizes input distributions"""
-        array_dict_out = self.get_raw(input_type, array_key=array_key)
+        array_dict_out = self.get_raw(
+            input_type,
+            array_key=array_key,
+            add_validation_features=add_validation_features,
+        )
         # check missing norm parameters
         missing_norms = []
         norm_alias = self._job_config.input.feature_norm_alias.get_config_dict()
@@ -157,8 +175,9 @@ class Feedbox(object):
         # inputs pre-processing
         for sample_dict in array_dict_out.values():
             for feature, feature_array in sample_dict.items():
-                if feature == "weight" and self._ic.rm_negative_weight_events:
-                    array_utils.clip_negative_weights(feature_array)
+                if feature == "weight":
+                    if self._ic.rm_negative_weight_events:
+                        array_utils.clip_negative_weights(feature_array)
                 else:
                     feature_key = feature
                     if feature in norm_alias:
@@ -170,17 +189,36 @@ class Feedbox(object):
                     )
         return array_dict_out
 
+    def get_reshape_merged(
+        self, input_type, features=None, array_key="all"
+    ):
+        if features is None:
+            features = self._job_config.input.selected_features.copy()
+        array_dict = self.get_reshape(
+            input_type,
+            array_key=array_key,
+        )
+        inputs, weights = array_utils.merge_dict_to_inputs(
+            array_dict, features, array_key=array_key
+        )
+        return inputs, weights
+
     def get_reweight(
         self,
         input_type: str,
         array_key: str = "all",
         reset_mass: bool = None,
         reset_array_key: str = "all",
+        add_validation_features=False,
     ) -> Dict[str, Dict[str, np.ndarray]]:
         """Scales weight and resets feature distributions"""
         if reset_mass == None:
             reset_mass = self._ic.reset_feature
-        array_dict_out = self.get_reshape(input_type, array_key=array_key)
+        array_dict_out = self.get_reshape(
+            input_type,
+            array_key=array_key,
+            add_validation_features=add_validation_features,
+        )
         # reweight
         sumofweight = 1000
         if input_type == "xs":
@@ -205,7 +243,7 @@ class Feedbox(object):
             reset_array_dict = self.get_reshape("xs", array_key=reset_array_key)
             reset_feature_name = self._ic.reset_feature_name
             reset_sumofweight = self._ic.sig_sumofweight
-            ref_array, ref_weights = self.merge_dict_to_inputs(
+            ref_array, ref_weights = array_utils.merge_dict_to_inputs(
                 reset_array_dict,
                 [reset_feature_name],
                 array_key=array_key,
@@ -214,6 +252,27 @@ class Feedbox(object):
             reset_array = array_dict_out[sample_name][self._ic.reset_feature_name]
             array_utils.redistribute_array(reset_array, ref_array, ref_weights)
         return array_dict_out
+
+    def get_reweight_merged(
+        self,
+        input_type,
+        features=None,
+        array_key="all",
+        reset_mass: bool = None,
+        reset_array_key: str = "all",
+    ):
+        if features is None:
+            features = self._job_config.input.selected_features.copy()
+        array_dict = self.get_reweight(
+            input_type,
+            array_key=array_key,
+            reset_mass=reset_mass,
+            reset_array_key=reset_array_key,
+        )
+        inputs, weights = array_utils.merge_dict_to_inputs(
+            array_dict, features, array_key=array_key
+        )
+        return inputs, weights
 
     def get_train_test_arrays(
         self,
@@ -240,25 +299,13 @@ class Feedbox(object):
             if reset_mass == None:
                 reset_mass = self._ic.reset_feature
             # load sig
-            xs_dict = self.get_reweight(
+            xs_reweight, xs_weight_reweight = self.get_reweight_merged(
                 "xs", array_key=sig_key, reset_mass=reset_mass, reset_array_key=sig_key
-            )
-            xs_reweight, xs_weight_reweight = self.merge_dict_to_inputs(
-                xs_dict,
-                self._ic.selected_features,
-                array_key=sig_key,
-                sumofweight=self._ic.sig_sumofweight,
             )
             logger.debug(f"xs_weight_reweight shape: {xs_weight_reweight.shape}")
             # load bkg
-            xb_dict = self.get_reweight(
+            xb_reweight, xb_weight_reweight = self.get_reweight_merged(
                 "xb", array_key=bkg_key, reset_mass=reset_mass, reset_array_key=sig_key
-            )
-            xb_reweight, xb_weight_reweight = self.merge_dict_to_inputs(
-                xb_dict,
-                self._ic.selected_features,
-                array_key=bkg_key,
-                sumofweight=self._ic.bkg_sumofweight,
             )
             return array_utils.split_and_combine(
                 xs_reweight,
@@ -283,7 +330,7 @@ class Feedbox(object):
         xs_dict = self.get_reweight(
             "xs", array_key=sig_key, reset_mass=reset_mass, reset_array_key=sig_key
         )
-        xs_reweight, xs_weight_reweight = self.merge_dict_to_inputs(
+        xs_reweight, xs_weight_reweight = array_utils.merge_dict_to_inputs(
             xs_dict,
             self._ic.selected_features,
             array_key=sig_key,
@@ -309,7 +356,7 @@ class Feedbox(object):
                     reset_mass=reset_mass,
                     reset_array_key=sig_key,
                 )
-                xb_reweight_ele, xb_wt_reweight_ele = self.merge_dict_to_inputs(
+                xb_reweight_ele, xb_wt_reweight_ele = array_utils.merge_dict_to_inputs(
                     xb_dict, self._ic.selected_features, array_key=bkg_ele
                 )
                 if xb_reweight_node is None:
@@ -354,33 +401,6 @@ class Feedbox(object):
             output_keys=output_keys,
             test_rate=self._tc.test_rate,
         )
-
-    def merge_dict_to_inputs(
-        self, array_dict, feature_list, array_key="all", sumofweight=1000
-    ):
-        if array_key in list(array_dict.keys()):
-            array_out = np.concatenate(
-                [array_dict[array_key][feature] for feature in feature_list], axis=1,
-            )
-            weight_out = array_dict[array_key]["weight"]
-        elif array_key == "all" or array_key == "all_norm":
-            array_components = []
-            weight_components = []
-            for temp_key in array_dict.keys():
-                temp_array = np.concatenate(
-                    [array_dict[temp_key][feature] for feature in feature_list], axis=1,
-                )
-                array_components.append(temp_array)
-                weight_component = array_dict[temp_key]["weight"]
-                if array_key == "all":
-                    weight_components.append(weight_component)
-                else:
-                    sumofweights = np.sum(weight_component)
-                    weight_components.append(weight_component / sumofweights)
-            array_out = np.concatenate(array_components)
-            weight_out = np.concatenate(weight_components)
-            array_utils.normalize_weight(weight_out, norm=sumofweight)
-        return array_out, weight_out.reshape((-1,))
 
     def update_norm_dict(self, features: Optional[List[str]] = None):
         array_dict = self.get_raw(
