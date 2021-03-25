@@ -4,8 +4,6 @@ import pathlib
 
 import git
 
-import hepynet
-
 logger = logging.getLogger("hepynet")
 
 MAIN_DIR_NAMES = ["pdnn-lfv", "work"]

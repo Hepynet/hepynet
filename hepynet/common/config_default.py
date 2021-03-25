@@ -32,7 +32,6 @@ DEFAULT_CFG = {
         "cut_features": [],
         "cut_values": [],
         "cut_types": [],
-        "feature_norm_alias": {}
     },
     "train": {
         "model_name": "MODEL_NAME_DEF",

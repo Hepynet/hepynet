@@ -446,4 +446,3 @@ def plot_inputs_cut_dnn(
     fig.suptitle(feature, fontsize=16)
     fig.savefig(f"{save_dir}/{feature}_bkg.{plot_config.save_format}")
     plt.close()
-

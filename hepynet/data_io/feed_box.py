@@ -100,7 +100,9 @@ class Feedbox(object):
         array_dict_out = dict()
         if add_validation_features:
             feature_list = array_utils.merge_select_val_features(
-                self._ic.selected_features, self._ic.validation_features, append_weight=True
+                self._ic.selected_features,
+                self._ic.validation_features,
+                append_weight=True,
             )
         else:
             feature_list = self._ic.selected_features.copy() + ["weight"]
@@ -189,15 +191,10 @@ class Feedbox(object):
                     )
         return array_dict_out
 
-    def get_reshape_merged(
-        self, input_type, features=None, array_key="all"
-    ):
+    def get_reshape_merged(self, input_type, features=None, array_key="all"):
         if features is None:
             features = self._job_config.input.selected_features.copy()
-        array_dict = self.get_reshape(
-            input_type,
-            array_key=array_key,
-        )
+        array_dict = self.get_reshape(input_type, array_key=array_key,)
         inputs, weights = array_utils.merge_dict_to_inputs(
             array_dict, features, array_key=array_key
         )
@@ -422,4 +419,3 @@ class Feedbox(object):
             variance = np.average((feature_array - mean) ** 2, weights=weight_array)
             self._norm_dict[feature] = {"mean": mean, "variance": variance}
             logger.debug(f"Feature {feature} mean: {mean}, variance: {variance}")
-

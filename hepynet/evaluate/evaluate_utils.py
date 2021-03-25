@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from hepynet.common import config_utils
-from hepynet.data_io import feed_box, numpy_io
+from hepynet.data_io import numpy_io
 from hepynet.train import hep_model
 
 logger = logging.getLogger("hepynet")

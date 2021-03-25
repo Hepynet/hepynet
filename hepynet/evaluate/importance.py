@@ -1,16 +1,16 @@
 import logging
-import pathlib
 
 import matplotlib.pyplot as plt
 import numpy as np
 
-from hepynet.evaluate import evaluate_utils, roc
+from hepynet.evaluate import roc
 from hepynet.train import hep_model
+
 logger = logging.getLogger("hepynet")
 
 
 def plot_feature_importance(
-    model_wrapper:hep_model.Model_Base, job_config, save_dir, log=True, max_feature=16
+    model_wrapper: hep_model.Model_Base, job_config, save_dir, log=True, max_feature=16
 ):
     """Calculates importance of features and sort the feature.
 

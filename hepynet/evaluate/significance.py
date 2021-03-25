@@ -1,6 +1,5 @@
 import csv
 
-from tensorflow.python.ops.gen_math_ops import mod
 from hepynet.evaluate import evaluate_utils
 import logging
 import math
@@ -197,8 +196,8 @@ def plot_significance_scan(
         verticalalignment="bottom",
         horizontalalignment="left",
         transform=ax.transAxes,
-        #color="green",
-        #fontsize=12,
+        # color="green",
+        # fontsize=12,
     )
     # set up plot
     ax.set_title("significance scan")

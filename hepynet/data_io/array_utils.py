@@ -1,5 +1,4 @@
 import logging
-from math import sqrt
 from typing import Optional
 
 import numpy as np
@@ -471,4 +470,3 @@ def split_and_combine(
             logger.error(f"Unknown output_key: {key}")
 
     return out_arrays
-

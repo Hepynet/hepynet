@@ -141,4 +141,3 @@ def norm_array_min_max(array, min, max, axis=None):
         return None
     ratio = (max - min) / 2.0
     output_array = output_array / ratio
-

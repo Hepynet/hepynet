@@ -1,6 +1,4 @@
-from hepynet.data_io import array_utils
 import logging
-import pathlib
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -235,4 +233,3 @@ def plot_train_test_compare(model_wrapper: hep_model.Model_Base, job_config, sav
         else:
             file_name = f"mva_scores_{all_nodes[node_num]}_reset_mass"
         fig.savefig(save_dir / f"{file_name}.{plot_config.save_format}")
-

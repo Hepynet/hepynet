@@ -1,7 +1,6 @@
 import argparse
 import logging
 import os
-import sys
 import time
 
 logger = logging.getLogger("hepynet")
