@@ -19,15 +19,12 @@ from hepynet.evaluate import (
     train_history,
 )
 from hepynet.main import job_utils
-from hepynet.train import hep_model
+from hepynet.train import train_utils
 
 # from hepynet.common.hepy_const import SCANNED_PARAS
 
 
 logger = logging.getLogger("hepynet")
-
-# set up style
-ampl.use_atlas_style()
 
 
 class job_executor(object):
@@ -37,7 +34,8 @@ class job_executor(object):
         """Initialize executor."""
         self.job_config = None
         self.get_config(yaml_config_path)
-        # timing
+        # set up style
+        ampl.use_atlas_style(usetex=False)
 
     def execute_jobs(self):
         """Execute all planned jobs."""
@@ -108,7 +106,6 @@ class job_executor(object):
         tc = self.job_config.train
         ac = self.job_config.apply
         # setup save parameters if reports need to be saved
-        fig_save_path = None
         rc.save_dir = f"{rc.save_sub_dir}/apply/{jc.job_name}"
         pathlib.Path(rc.save_dir).mkdir(parents=True, exist_ok=True)
 
@@ -325,13 +322,12 @@ class job_executor(object):
     def set_model(self) -> None:
         logger.info("Setting up model")
         tc = self.job_config.train
-        model_class = hep_model.get_model_class(tc.model_class)
+        model_class = train_utils.get_model_class(tc.model_class)
         self.model_wrapper = model_class(self.job_config)
 
     def set_model_input(self) -> None:
         logger.info("Processing inputs")
         jc = self.job_config.job
-        rc = self.job_config.run
         # load model for "apply" job
         if jc.job_type == "apply":
             self.model_wrapper.load_model()

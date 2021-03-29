@@ -27,6 +27,8 @@ DEFAULT_CFG = {
         "sig_list": [],
         "bkg_key": "all",
         "bkg_list": [],
+        "data_key": "all",
+        "data_list": [],
         "selected_features": [],
         "validation_features": [],
         "cut_features": [],

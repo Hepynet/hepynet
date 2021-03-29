@@ -26,16 +26,17 @@ def plot_feature_importance(
     feedbox = model_wrapper.get_feedbox()
     num_feature = len(feedbox.get_job_config().input.selected_features)
     selected_feature_names = np.array(feedbox.get_job_config().input.selected_features)
-    train_test_dict = feedbox.get_train_test_arrays(
+    input_df = feedbox.get_train_test_df(
         sig_key=ic.sig_key,
         bkg_key=ic.bkg_key,
         multi_class_bkgs=tc.output_bkg_node_names,
         reset_mass=False,
-        output_keys=["x_test", "y_test", "wt_test"],
     )
-    x_test = train_test_dict["x_test"]
-    y_test = train_test_dict["y_test"]
-    weight_test = train_test_dict["wt_test"]
+    cols = ic.selected_features
+    test_index = input_df["is_train"] == False
+    x_test = input_df.loc[test_index, cols].values
+    y_test = input_df.loc[test_index, ["y"]].values
+    wt_test = input_df.loc[test_index, "weight"].values
     all_nodes = []
     if y_test.ndim == 2:
         all_nodes = ["sig"] + tc.output_bkg_node_names
@@ -47,12 +48,12 @@ def plot_feature_importance(
         canvas_height = 16
     else:
         canvas_height = num_feature
-    base_auc = roc.calculate_auc(x_test, y_test, weight_test, model, rm_last_two=True)
+    base_auc = roc.calculate_auc(x_test, y_test, wt_test, model, rm_last_two=True)
     # Calculate importance
     feature_auc = []
     for num, feature_name in enumerate(selected_feature_names):
         current_auc = roc.calculate_auc(
-            x_test, y_test, weight_test, model, shuffle_col=num, rm_last_two=True
+            x_test, y_test, wt_test, model, shuffle_col=num, rm_last_two=True
         )
         feature_auc.append(current_auc)
     for node_id, node in enumerate(all_nodes):

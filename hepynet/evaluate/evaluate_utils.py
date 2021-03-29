@@ -47,27 +47,18 @@ def dump_fit_npy(
         for sample_key in sample_keys:
             dump_branches = ac.cfg_fit_npy.fit_npy_branches + ["weight"]
             # prepare contents
-            dump_array, dump_array_weight = feedbox.get_raw_merged(
+            dump_df = feedbox.get_raw_merged(
                 prefix_map[map_key], array_key=sample_key, add_validation_features=True,
             )
-            predict_input, _ = feedbox.get_reweight_merged(
+            input_df = feedbox.get_reweight_merged(
                 prefix_map[map_key], array_key=sample_key, reset_mass=False
             )
             predictions, _, _ = k_folds_predict(
-                model_wrapper.get_model(), predict_input
+                model_wrapper.get_model(), input_df[ic.selected_features].values
             )
             # dump
             for branch in dump_branches:
-                if branch == "weight":
-                    branch_content = dump_array_weight
-                else:
-                    feature_list = list()
-                    feature_list += ic.selected_features
-                    if ic.validation_features is not None:
-                        feature_list += ic.validation_features
-                    feature_list = list(set().union(feature_list, ["weight"]))
-                    branch_index = feature_list.index(branch)
-                    branch_content = dump_array[:, branch_index]
+                branch_content = dump_df[branch].values
                 save_path = f"{save_dir}/{sample_key}_{branch}.npy"
                 numpy_io.save_npy_array(branch_content, save_path)
             if len(tc.output_bkg_node_names) == 0:
@@ -105,7 +96,7 @@ def paint_bars(
     x_scale: float = None,
     density: bool = False,
     use_error: bool = False,
-    color: str = "black",
+    color: str = None,
     fmt: str = ".k",
 ) -> None:
     """Plot with vertical bar, can be used for data display.

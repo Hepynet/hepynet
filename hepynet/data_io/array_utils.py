@@ -1,7 +1,8 @@
 import logging
-from typing import Optional
+from typing import Dict, List, Optional
 
 import numpy as np
+import pandas as pd
 
 from hepynet.common import common_utils
 
@@ -160,45 +161,56 @@ def generate_shuffle_index(array_len):
     return shuffle_index
 
 
-def merge_dict_to_inputs(array_dict, feature_list, array_key="all", sumofweight=1000):
-    """Merges contents in array_dict to plain arrays for DNN training"""
-    if array_key in list(array_dict.keys()):
-        array_out = np.concatenate(
-            [array_dict[array_key][feature] for feature in feature_list], axis=1,
-        )
-        weight_out = array_dict[array_key]["weight"]
+# def merge_dict_to_inputs(array_dict, feature_list, array_key="all", sumofweight=1000):
+#     """Merges contents in array_dict to plain arrays for DNN training"""
+#     if array_key in list(array_dict.keys()):
+#         array_out = np.concatenate(
+#             [array_dict[array_key][feature] for feature in feature_list], axis=1,
+#         )
+#         weight_out = array_dict[array_key]["weight"]
+#     elif array_key == "all" or array_key == "all_norm":
+#         array_components = []
+#         weight_components = []
+#         for temp_key in array_dict.keys():
+#             temp_array = np.concatenate(
+#                 [array_dict[temp_key][feature] for feature in feature_list], axis=1,
+#             )
+#             array_components.append(temp_array)
+#             weight_component = array_dict[temp_key]["weight"]
+#             if array_key == "all":
+#                 weight_components.append(weight_component)
+#             else:
+#                 sumofweights = np.sum(weight_component)
+#                 weight_components.append(weight_component / sumofweights)
+#         array_out = np.concatenate(array_components)
+#         weight_out = np.concatenate(weight_components)
+#         normalize_weight(weight_out, norm=sumofweight)
+#     return array_out, weight_out.reshape((-1,))
+
+
+def merge_samples_df(
+    df_dict: Dict[str, pd.DataFrame],
+    features: List[str],
+    array_key: str = "all",
+    sumofweight: float = 1000,
+) -> pd.DataFrame:
+    # always load "weight"
+    if "weight" not in features:
+        features += ["weight"]
+    df_out = pd.DataFrame(columns=features)
+    if array_key in df_dict:
+        df_out = df_out.append(df_dict[array_key][features], ignore_index=True)
     elif array_key == "all" or array_key == "all_norm":
-        array_components = []
-        weight_components = []
-        for temp_key in array_dict.keys():
-            temp_array = np.concatenate(
-                [array_dict[temp_key][feature] for feature in feature_list], axis=1,
-            )
-            array_components.append(temp_array)
-            weight_component = array_dict[temp_key]["weight"]
-            if array_key == "all":
-                weight_components.append(weight_component)
-            else:
-                sumofweights = np.sum(weight_component)
-                weight_components.append(weight_component / sumofweights)
-        array_out = np.concatenate(array_components)
-        weight_out = np.concatenate(weight_components)
-        normalize_weight(weight_out, norm=sumofweight)
-    return array_out, weight_out.reshape((-1,))
-
-
-def merge_select_val_features(
-    selected_features, validation_features, append_weight=False
-):
-    feature_list = list()
-    feature_list += selected_features
-    if isinstance(validation_features, list):
-        feature_list += validation_features
-    merged_list = list(set().union(feature_list))
-    if append_weight:
-        return merged_list + ["weight"]
+        for sample_df in df_dict.values():
+            if array_key == "all_norm":
+                # each sample's total weights normed to 1.0
+                sample_df["weight"] = sample_df["weight"] / sample_df["weight"].sum()
+            df_out = df_out.append(sample_df[features], ignore_index=True)
+        # norm to sumofweights specified
+        df_out["weight"] = sumofweight * df_out["weight"] / df_out["weight"].sum()
     else:
-        return merged_list
+        logger.error(f"Invalid array_key {array_key}")
+    return df_out
 
 
 def modify_array(
@@ -294,21 +306,20 @@ def normalize_weight(weight_array, norm=1000):
 
 
 def redistribute_array(
-    reset_array: np.ndarray, ref_array: np.ndarray, ref_weights: np.ndarray
+    reset_array: pd.Series, ref_array: pd.Series, ref_weight: pd.Series
 ):
-    total_events = len(reset_array)
-    positive_weights = (ref_weights.copy()).clip(
-        min=0
-    )  ## TODO: how to deal with negative weights better?
-    if (positive_weights != ref_weights).all():
-        logger.warning("Non-positive weights detected, set to zero")
-    sump = sum(positive_weights)
-    reset_list = np.random.choice(
-        ref_array.flatten(),
-        size=total_events,
-        p=(1 / sump) * positive_weights.reshape((-1,)),
+    # TODO: currently don't use negative weights, how to deal with negative
+    # weights better?
+    ref_weight_positive = ref_weight.copy()
+    ref_weight_positive[ref_weight_positive < 0] = 0
+    sump = ref_weight_positive.sum()
+
+    reset_values = np.random.choice(
+        ref_array.values,
+        size=len(reset_array),
+        p=(1 / sump) * ref_weight_positive.values,
     )
-    reset_array[:] = reset_list.reshape((-1, 1))
+    reset_array.update(pd.Series(reset_values))
 
 
 def reset_col(reset_array, ref_array, ref_weights, col=0):
@@ -330,7 +341,7 @@ def reset_col(reset_array, ref_array, ref_weights, col=0):
 
 
 def reweight_array(
-    input_weights: np.ndarray,
+    input_weights: pd.Series,
     remove_negative: bool = False,
     norm_weight: Optional[float] = None,
 ):
@@ -339,10 +350,11 @@ def reweight_array(
         logger.warning("empty input detected in modify_array, no changes will be made.")
     # set negative weights to zero
     if remove_negative:
-        clip_negative_weights(input_weights)
+        input_weights.loc[input_weights < 0] = 0
     # normalize weight
     if norm_weight is not None:
-        normalize_weight(input_weights, norm=norm_weight)
+        frac = norm_weight / input_weights.sum()
+        input_weights = frac * input_weights
 
 
 def shuffle_and_split(x, y, wt, split_ratio=0.0):

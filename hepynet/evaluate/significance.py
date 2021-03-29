@@ -77,17 +77,18 @@ def get_significances(
     
     """
     feedbox = model_wrapper.get_feedbox()
+    ic = model_wrapper.get_job_config().input.clone()
     # prepare signal
-    sig_arr, sig_weights = feedbox.get_reshape_merged("xs", array_key=sig_key)
+    sig_df = feedbox.get_reshape_merged("xs", array_key=sig_key)
     sig_predictions, _, _ = evaluate_utils.k_folds_predict(
-        model_wrapper.get_model(), sig_arr
+        model_wrapper.get_model(), sig_df[ic.selected_features].values
     )
     if sig_predictions.ndim == 2:
         sig_predictions = sig_predictions[:, multi_class_cut_branch]
     # prepare background
-    bkg_arr, bkg_weights = feedbox.get_reshape_merged("xb", array_key=bkg_key)
+    bkg_df = feedbox.get_reshape_merged("xb", array_key=bkg_key)
     bkg_predictions, _, _ = evaluate_utils.k_folds_predict(
-        model_wrapper.get_model(), bkg_arr
+        model_wrapper.get_model(), bkg_df[ic.selected_features].values
     )
     if bkg_predictions.ndim == 2:
         bkg_predictions = bkg_predictions[:, multi_class_cut_branch]
@@ -100,6 +101,8 @@ def get_significances(
     plot_thresholds = []
     sig_above_threshold = []
     bkg_above_threshold = []
+    sig_weights = sig_df["weight"]
+    bkg_weights = bkg_df["weight"]
     total_sig_weight = np.sum(sig_weights)
     total_bkg_weight = np.sum(bkg_weights)
     for dnn_cut in thresholds:

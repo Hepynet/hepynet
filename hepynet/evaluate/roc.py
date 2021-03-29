@@ -63,19 +63,21 @@ def plot_multi_class_roc(model_wrapper: hep_model.Model_Base, job_config, save_d
     feedbox = model_wrapper.get_feedbox()
     output_bkg_node_names = tc.output_bkg_node_names
     all_nodes = ["sig"] + output_bkg_node_names
-    train_test_dict = feedbox.get_train_test_arrays(
+    input_df = feedbox.get_train_test_df(
         sig_key=ic.sig_key,
         bkg_key=ic.bkg_key,
         multi_class_bkgs=output_bkg_node_names,
-        reset_mass=False,
-        output_keys=["x_train", "x_test", "y_train", "y_test", "wt_train", "wt_test",],
+        reset_mass=False,  # don't reset mass when apply model!
     )
-    x_train_original_mass = train_test_dict["x_train"]
-    x_test_original_mass = train_test_dict["x_test"]
-    y_train_original_mass = train_test_dict["y_train"]
-    y_test_original_mass = train_test_dict["y_test"]
-    wt_train_original_mass = train_test_dict["wt_train"]
-    wt_test_original_mass = train_test_dict["wt_test"]
+    cols = ic.selected_features
+    train_index = input_df["is_train"] == True
+    test_index = input_df["is_train"] == False
+    x_train = input_df.loc[train_index, cols].values
+    x_test = input_df.loc[test_index, cols].values
+    y_train = input_df.loc[train_index, ["y"]].values
+    y_test = input_df.loc[test_index, ["y"]].values
+    wt_train = input_df.loc[train_index, "weight"].values
+    wt_test = input_df.loc[test_index, "weight"].values
     num_nodes = len(all_nodes)
     color_map = plt.get_cmap("Pastel1")
     auc_labels = []
@@ -84,32 +86,32 @@ def plot_multi_class_roc(model_wrapper: hep_model.Model_Base, job_config, save_d
     for node_num in range(num_nodes):
         color = color_map(float(node_num) / num_nodes)
         # plot roc for train dataset without reseting mass
-        auc_train_original, _, _ = plot_roc(
+        auc_train, _, _ = plot_roc(
             ax,
-            x_train_original_mass,
-            y_train_original_mass,
-            wt_train_original_mass,
+            x_train,
+            y_train,
+            wt_train,
             model,
             node_num=node_num,
             color=color,
             linestyle="dashed",
         )
         # plot roc for test dataset without reseting mass
-        auc_test_original, _, _ = plot_roc(
+        auc_test, _, _ = plot_roc(
             ax,
-            x_test_original_mass,
-            y_test_original_mass,
-            wt_test_original_mass,
+            x_test,
+            y_test,
+            wt_test,
             model,
             node_num=node_num,
             color=color,
             linestyle="solid",
         )
         auc_labels += [
-            f"tr-{all_nodes[node_num]} (AUC: {round(auc_train_original, 5)})",
-            f"te-{all_nodes[node_num]} (AUC: {round(auc_test_original, 5)})",
+            f"tr-{all_nodes[node_num]} (AUC: {round(auc_train, 5)})",
+            f"te-{all_nodes[node_num]} (AUC: {round(auc_test, 5)})",
         ]
-        auc_contents += [round(auc_train_original, 5), round(auc_test_original, 5)]
+        auc_contents += [round(auc_train, 5), round(auc_test, 5)]
 
     # Show auc value:
     # plot_auc_text(ax, auc_labels, auc_contents)
@@ -118,8 +120,8 @@ def plot_multi_class_roc(model_wrapper: hep_model.Model_Base, job_config, save_d
     ax.grid()
     # Collect meta data
     auc_dict = {}
-    auc_dict["auc_train_original"] = auc_train_original
-    auc_dict["auc_test_original"] = auc_test_original
+    auc_dict["auc_train_original"] = auc_train
+    auc_dict["auc_test_original"] = auc_test
     # Make plots
     ## save linear scale plot
     ax.set_ylim(0, 1)

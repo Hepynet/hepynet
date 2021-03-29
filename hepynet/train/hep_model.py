@@ -6,10 +6,19 @@ import logging
 import pathlib
 from typing import Iterable, Optional
 
-logger = logging.getLogger("hepynet")
 import keras
 import tensorflow as tf
 import yaml
+from keras import backend as K
+from keras.callbacks import ModelCheckpoint, TensorBoard, callbacks
+from keras.layers import Dense, Dropout
+from keras.models import Sequential
+from keras.optimizers import SGD, Adagrad, Adam, RMSprop
+
+from hepynet.data_io import array_utils, feed_box
+from hepynet.train import train_utils
+
+logger = logging.getLogger("hepynet")
 
 # fix tensorflow 2.2 issue
 gpus = tf.config.experimental.list_physical_devices("GPU")
@@ -25,27 +34,12 @@ if gpus:
     except RuntimeError as e:
         # Memory growth must be set before GPUs have been initialized
         logger.error(e)
-from keras import backend as K
-from keras.callbacks import ModelCheckpoint, TensorBoard, callbacks
-from keras.layers import Dense, Dropout
-from keras.models import Sequential
-from keras.optimizers import SGD, Adagrad, Adam, RMSprop
 
-from hepynet.data_io import array_utils, feed_box
-from hepynet.train import train_utils
 
 # self-defined metrics functions
 def plain_acc(y_true, y_pred):
     return K.mean(K.less(K.abs(y_pred * 1.0 - y_true * 1.0), 0.5))
     # return 1-K.mean(K.abs(y_pred-y_true))
-
-
-def get_model_class(model_class: str):
-    if model_class == "Model_Sequential_Flat":
-        return Model_Sequential_Flat
-    else:
-        logger.critical(f"Unsupported model class: {model_class}")
-        exit(1)
 
 
 class Model_Base(object):
@@ -83,15 +77,19 @@ class Model_Base(object):
 
     def get_corrcoef(self) -> dict:
         features = self._job_config.input.selected_features
-        bkg_array, bkg_weight = self._feedbox.get_reweight_merged(
+        bkg_df = self._feedbox.get_reweight_merged(
             "xb", array_key="all", reset_mass=False
         )
-        bkg_matrix = array_utils.corr_matrix(bkg_array, bkg_weight)
+        bkg_matrix = array_utils.corr_matrix(
+            bkg_df[features].values, bkg_df["weight"].values
+        )
         logger.debug(f"bkg_corr_matrix: {bkg_matrix}")
-        sig_array, sig_weight = self._feedbox.get_reweight_merged(
+        sig_df = self._feedbox.get_reweight_merged(
             "xs", array_key="all", reset_mass=False
         )
-        sig_matrix = array_utils.corr_matrix(sig_array, sig_weight)
+        sig_matrix = array_utils.corr_matrix(
+            sig_df[features].values, sig_df["weight"].values
+        )
         logger.debug(f"sig_corr_matrix: {sig_matrix}")
         corrcoef_matrix_dict = {}
         corrcoef_matrix_dict["bkg"] = bkg_matrix
@@ -101,6 +99,9 @@ class Model_Base(object):
 
     def get_feedbox(self) -> feed_box.Feedbox:
         return self._feedbox
+
+    def get_job_config(self):
+        return self._job_config
 
     def get_model(self, fold_num=None):
         """Returns model."""
@@ -403,20 +404,21 @@ class Model_Sequential_Base(Model_Base):
         logger.info(f"Training start. Using model: {self._model_name}")
         logger.info(f"Model info: {self._model_note}")
         ## get input
-        train_test_dict = self._feedbox.get_train_test_arrays(
+        input_df = self._feedbox.get_train_test_df(
             sig_key=ic.sig_key,
             bkg_key=ic.bkg_key,
             multi_class_bkgs=tc.output_bkg_node_names,
-            output_keys=array_utils.COMB_KEYS,
         )
-        self._feedbox = None
-        x_train = train_test_dict["x_train"]
-        x_test = train_test_dict["x_test"]
-        y_train = train_test_dict["y_train"]
-        y_test = train_test_dict["y_test"]
-        wt_train = train_test_dict["wt_train"]
-        wt_test = train_test_dict["wt_test"]
-        train_test_dict = None
+        cols = ic.selected_features
+        train_index = input_df["is_train"] == True
+        test_index = input_df["is_train"] == False
+        x_train = input_df.loc[train_index, cols].values
+        x_test = input_df.loc[test_index, cols].values
+        y_train = input_df.loc[train_index, ["y"]].values
+        y_test = input_df.loc[test_index, ["y"]].values
+        wt_train = input_df.loc[train_index, "weight"].values
+        wt_test = input_df.loc[test_index, "weight"].values
+
         ## train
         train_index_list, validation_index_list = train_utils.get_train_val_indices(
             x_train, y_train, wt_train, tc.val_split, k_folds=tc.k_folds
@@ -444,7 +446,7 @@ class Model_Sequential_Base(Model_Base):
                 epochs=tc.epochs,
                 # validation_split=tc.val_split,
                 validation_data=val_fold,
-                shuffle=False,
+                shuffle=True,
                 class_weight={1: tc.sig_class_weight, 0: tc.bkg_class_weight},
                 sample_weight=wt_fold,
                 callbacks=self.get_train_callbacks(fold_num=fold_num),
@@ -488,7 +490,7 @@ class Model_Sequential_Base(Model_Base):
         if self._array_prepared == False:
             raise ValueError("Training data is not ready.")
         # separate validation samples
-        train_test_dict = self._feedbox.get_train_test_arrays(
+        train_test_dict = self._feedbox.get_train_test_df(
             sig_key=sig_key,
             bkg_key=bkg_key,
             multi_class_bkgs=self.model_hypers["output_bkg_node_names"],

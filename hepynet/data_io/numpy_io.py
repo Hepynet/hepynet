@@ -10,6 +10,7 @@ import pathlib
 from typing import List, Optional
 
 import numpy as np
+from pandas.core.arrays.sparse import dtype
 
 from hepynet.common import common_utils, config_utils
 from hepynet.data_io import array_utils
@@ -84,7 +85,7 @@ def load_npy_arrays(job_config, array_type, part_features: Optional[List[str]] =
             feature_array = None
             for camp in campaign_list:
                 temp_array = np.load(
-                    f"{data_directory}/{rc.npy_path}/{camp}/{ic.region}/{sample_component}_{feature}.npy "
+                    f"{data_directory}/{rc.npy_path}/{camp}/{ic.region}/{sample_component}_{feature}.npy ",
                 )
                 temp_array = np.reshape(temp_array, (-1, 1))
                 if feature_array is None:
@@ -95,6 +96,7 @@ def load_npy_arrays(job_config, array_type, part_features: Optional[List[str]] =
             feature_array = feature_array.reshape((-1, 1))
 
             if feature in out_features:
+                feature_array = np.float32(feature_array)
                 sample_array_dict[feature] = feature_array
             if feature in ic.cut_features:
                 cut_array_dict[feature] = feature_array
@@ -123,7 +125,7 @@ def load_npy_arrays(job_config, array_type, part_features: Optional[List[str]] =
         for feature in sample_array_dict:
             sample_array_dict[feature] = sample_array_dict[feature][
                 pass_index.flatten(), :
-            ]
+            ].flatten()
         total_weights = np.sum(sample_array_dict["weight"])
         logger.debug(f"Total input {sample_component} weights: {total_weights}")
         out_dict[sample_component] = sample_array_dict
