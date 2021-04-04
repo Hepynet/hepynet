@@ -1,4 +1,5 @@
 import logging
+import pathlib
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -147,34 +148,31 @@ def plot_train_test_compare(model_wrapper: hep_model.Model_Base, job_config, sav
     """Plots train/test scores distribution to check overtrain"""
     # initialize
     logger.info("Plotting train/test scores (original mass).")
-    ic = job_config.input
-    tc = job_config.train
+    tc = job_config.train.clone()
+    rc = job_config.run.clone()
     plot_config = job_config.apply.cfg_train_test_compare
     model = model_wrapper.get_model()
     feedbox = model_wrapper.get_feedbox()
-    sig_key = get_default_if_none(plot_config.sig_key, ic.sig_key)
-    bkg_key = get_default_if_none(plot_config.bkg_key, ic.bkg_key)
     all_nodes = ["sig"] + tc.output_bkg_node_names
 
-    input_df = feedbox.get_train_test_df(
-        sig_key=sig_key,
-        bkg_key=bkg_key,
-        multi_class_bkgs=tc.output_bkg_node_names,
-        reset_mass=feedbox.get_job_config().input.reset_mass,
-    )
-    cols = ic.selected_features
-    train_index = input_df["is_train"] == True
-    test_index = input_df["is_train"] == False
-    sig_index = (input_df["is_sig"] == True) & (input_df["is_mc"] == True)
-    bkg_index = (input_df["is_sig"] == False) & (input_df["is_mc"] == True)
-    xs_train = input_df.loc[sig_index & train_index, cols].values
-    xs_test = input_df.loc[sig_index & test_index, cols].values
-    xs_train_weight = input_df.loc[sig_index & train_index, ["weight"]].values
-    xs_test_weight = input_df.loc[sig_index & test_index, ["weight"]].values
-    xb_train = input_df.loc[bkg_index & train_index, cols].values
-    xb_test = input_df.loc[bkg_index & test_index, cols].values
-    xb_train_weight = input_df.loc[bkg_index & train_index, ["weight"]].values
-    xb_test_weight = input_df.loc[bkg_index & test_index, ["weight"]].values
+    input_dir = pathlib.Path(rc.save_sub_dir) / "input"
+    x_train = np.load(input_dir / "x_train.npy")
+    x_test = np.load(input_dir / "x_test.npy")
+    y_train = np.load(input_dir / "y_train.npy")
+    y_test = np.load(input_dir / "y_test.npy")
+    wt_train = np.load(input_dir / "wt_train.npy")
+    wt_test = np.load(input_dir / "wt_test.npy")
+
+    xs_train = x_train[y_train == 1]
+    xs_test = x_test[y_test == 1]
+    xs_train_weight = wt_train[y_train == 1]
+    xs_test_weight = wt_test[y_test ==  1]
+    xb_train = x_train[y_train == 0]
+    xb_test = x_test[y_test == 0]
+    xb_train_weight = wt_train[y_train == 0]
+    xb_test_weight = wt_test[y_test == 0]
+
+
 
     # plot for each nodes
     num_nodes = len(all_nodes)

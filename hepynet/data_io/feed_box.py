@@ -1,12 +1,16 @@
 from __future__ import nested_scopes
 
+import copy
 import logging
+import pathlib
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+import yaml
 from sklearn.model_selection import StratifiedShuffleSplit
 
+from hepynet.common import config_utils
 from hepynet.data_io import array_utils, numpy_io
 from hepynet.train import train_utils
 
@@ -17,7 +21,7 @@ class Feedbox(object):
     """DNN inputs management class."""
 
     def __init__(
-        self, job_config, model_meta=None,
+        self, job_config: config_utils.Hepy_Config, norm_dict=None,
     ):
         # get config
         self._job_config = job_config.clone()
@@ -25,6 +29,7 @@ class Feedbox(object):
         self._ic = self._job_config.input
         self._tc = self._job_config.train
         self._ac = self._job_config.apply
+        self._rc = self._job_config.run
         # meta info
         if self._ic.reset_feature:
             if self._ic.reset_feature_name not in self._ic.selected_features:
@@ -34,46 +39,130 @@ class Feedbox(object):
                 exit(1)
         self._array_prepared = False
 
-        # get normalization parameters
-        no_norm_paras = False
-        if model_meta is None:
-            no_norm_paras = True
-        else:
-            if model_meta["norm_dict"] is None:
-                no_norm_paras = True
-            else:
-                no_norm_paras = False
-        self._norm_dict = {}
-        if no_norm_paras:
+        # get cut index dict
+        self._cut_index_dict = numpy_io.get_cut_pass_index_dict(self._job_config)
+        # get norm dict
+        if norm_dict is None:
             if self._jc.job_name == "apply":
                 logger.warning(
                     f"No norm_dict found, but this is not expected as the job type is 'apply'! The normalization parameters may not be consistent with the training!"
                 )
-            logger.info(
-                f"No norm_dict found, recalculating norm parameters according to background input distributions"
-            )
-            self.update_norm_dict()
+            self._norm_dict = {}
         else:
-            self._norm_dict = model_meta["norm_dict"]
+            self._norm_dict = copy.deepcopy(norm_dict)
+
         self._array_prepared = True
 
+    def dump_training_df(self):
+        ic = self._job_config.input.clone()
+        rc = self._job_config.run.clone()
+        save_dir = pathlib.Path(rc.save_sub_dir) / "input"
+        save_dir.mkdir(parents=True, exist_ok=True)
+        # dump signal
+        _, sig_df_dict = self.get_reweight(
+            "xs", array_key=ic.sig_key, add_validation_features=True
+        )
+        if logger.level <= logging.DEBUG:
+            total_weight = 0
+            for sample, sample_df in sig_df_dict.items():
+                sample_sum_weight = sample_df["weight"].sum()
+                total_weight += sample_sum_weight
+                logger.debug(
+                    f"#### sample {sample} total weight {sample_df['weight'].sum()}"
+                )
+            logger.debug(f"Signal total weights: {total_weight}")
+        self.tag_signals(sig_df_dict)
+        # for sample, sample_df in sig_df_dict.items():
+        #    save_path = save_dir / f"{sample}.feather"
+        #    logger.info(f"Dumping inputs for {sample}")
+        #    sample_df.to_feather(save_path)
+        #    sample_df = None
+        # sig_df_dict.clear()
+        # dump background
+        _, bkg_df_dict = self.get_reweight(
+            "xb",
+            array_key=ic.bkg_key,
+            add_validation_features=True,
+            reset_mass=ic.reset_feature,
+        )
+        if logger.level <= logging.DEBUG:
+            total_weight = 0
+            for sample, sample_df in bkg_df_dict.items():
+                sample_sum_weight = sample_df["weight"].sum()
+                total_weight += sample_sum_weight
+                logger.debug(f"Sample {sample} total weight {sample_sum_weight}")
+            logger.debug(f"Background total weights: {total_weight}")
+        self.tag_backgrounds(bkg_df_dict)
+        # for sample, sample_df in bkg_df_dict.items():
+        #    save_path = save_dir / f"{sample}.feather"
+        #    logger.info(f"Dumping inputs for {sample}")
+        #    sample_df.to_feather(save_path)
+        #    sample_df = None
+        # bkg_df_dict.clear()
+        logger.info("Concatenating processed inputs")
+        out_df = pd.concat(
+            list(sig_df_dict.values()) + list(bkg_df_dict.values()), ignore_index=True
+        )
+        sig_df_dict.clear()
+        bkg_df_dict.clear()
+        # tag train/test
+        sss = StratifiedShuffleSplit(n_splits=1)
+        y_arr = out_df["y"].values
+        # Note that providing y is sufficient to generate the splits and
+        # hence np.zeros(n_samples) may be used as a placeholder for X
+        # instead of actual training data.
+        for train_index, _ in sss.split(y_arr, y_arr):
+            break
+        out_df["is_train"] = False
+        out_df.loc[train_index, "is_train"] = True
+        logger.info(f"Dumping inputs for training to: {save_dir}")
+        # out_df.to_feather(save_dir / "train.feather")
+        train_index = out_df["is_train"] == True
+        test_index = out_df["is_train"] == False
+        cols = ic.selected_features
+        np.save(save_dir / "x_train.npy", out_df.loc[train_index, cols].to_numpy())
+        np.save(save_dir / "x_test.npy", out_df.loc[test_index, cols].to_numpy())
+        np.save(save_dir / "y_train.npy", out_df.loc[train_index, "y"].to_numpy())
+        np.save(save_dir / "y_test.npy", out_df.loc[test_index, "y"].to_numpy())
+        np.save(save_dir / "wt_train.npy", out_df.loc[train_index, "weight"].to_numpy())
+        np.save(save_dir / "wt_test.npy", out_df.loc[test_index, "weight"].to_numpy())
+        norm_dict_path = save_dir / "norm_dict.yaml"
+        with open(norm_dict_path, "w") as norm_file:
+            yaml.dump(self._norm_dict, norm_file, indent=2)
+
     def get_input_array_dict(
-        self, input_type: str, part_features: Optional[List[str]] = None
+        self,
+        input_type: str,
+        part_features: Optional[List[str]] = None,
+        include_weight=True,
     ):
+        logger.debug("@ data_io.feed_box.get_input_array_dict")
         # get input dict
         array_dict = dict()
         if input_type == "xs":
             array_dict = numpy_io.load_npy_arrays(
-                self._job_config, "sig", part_features=part_features
+                self._job_config,
+                "sig",
+                part_features=part_features,
+                cut_pass_index_dict=self._cut_index_dict,
+                include_weight=include_weight,
             )
         elif input_type == "xb":
             array_dict = numpy_io.load_npy_arrays(
-                self._job_config, "bkg", part_features=part_features
+                self._job_config,
+                "bkg",
+                part_features=part_features,
+                cut_pass_index_dict=self._cut_index_dict,
+                include_weight=include_weight,
             )
         elif input_type == "xd":
             if self._ac.apply_data:
                 array_dict = numpy_io.load_npy_arrays(
-                    self._job_config, "data", part_features=part_features
+                    self._job_config,
+                    "data",
+                    part_features=part_features,
+                    cut_pass_index_dict=self._cut_index_dict,
+                    include_weight=include_weight,
                 )
             else:
                 logger.warn(
@@ -89,8 +178,71 @@ class Feedbox(object):
     def get_norm_dict(self):
         return self._norm_dict
 
+    """
+    def get_processed_df(self):
+        ic = self._job_config.input.clone()
+        rc = self._job_config.run.clone()
+        save_dir = pathlib.Path(rc.save_sub_dir) / "input"
+        ## load signal
+        # df_out = None
+        # sig_df_dict = dict()
+        # for sample in ic.sig_list:
+        #    sample_path = save_dir / f"{sample}.feather"
+        #    sig_df_dict[sample] = pd.read_feather(sample_path)
+        # self.reweight_df_dict("xs", sig_df_dict)
+        # for sample in sig_df_dict.keys():
+        #    sample_df = sig_df_dict[sample]
+        #    if df_out is None:
+        #        df_out = sample_df
+        #    else:
+        #        df_out.append(sample_df, ignore_index=True)
+        #
+        ## load background
+        # bkg_df_dict = dict()
+        # for sample in ic.bkg_list:
+        #    sample_path = save_dir / f"{sample}.feather"
+        #    sample_df = pd.read_feather(sample_path)[ic.selected_features + ["weight"]#]
+        #    bkg_df_dict[sample] = sample_df
+
+        # if ic.reset_feature:
+        #    ref_df = array_utils.merge_samples_df(
+        #        sig_df_dict, [ic.reset_feature_name], array_key=ic.sig_key
+        #    )
+        #    ref_array = ref_df[ic.reset_feature_name]
+        #    ref_weight = ref_df["weight"]
+        #    self.reweight_df_dict(
+        #        "xb",
+        #        bkg_df_dict,
+        #        reset_mass=True,
+        #        ref_array=ref_array,
+        #        ref_weight=ref_weight,
+        #    )
+        # else:
+        #    self.reweight_df_dict("xb", bkg_df_dict)
+        ## merge
+        # df_out = pd.concat(
+        #    list(sig_df_dict.values()) + list(bkg_df_dict.values()), ignore_index=True
+        # )
+        ## tag train/test
+        # logger.debug("tagging train/test")
+        # sss = StratifiedShuffleSplit(n_splits=1)
+        # y_arr = df_out["y"].values
+        # for train_index, _ in sss.split(y_arr, y_arr):
+        #    break
+        # df_out["is_train"] = False
+        # df_out.loc[train_index, "is_train"] = True
+        save_path = save_dir / "train.feather"
+
+        return pd.read_feather(save_path)
+    """
+
     def get_raw(
-        self, input_type, array_key="all", add_validation_features=False
+        self,
+        input_type,
+        array_key="all",
+        add_validation_features=False,
+        part_features=[],
+        include_weight=True,
     ) -> Tuple[List[str], Dict[str, pd.DataFrame]]:
         """Loads necessary inputs without preprocessing
 
@@ -101,13 +253,20 @@ class Feedbox(object):
 
         """
         # get list of needed features
-        features = ["weight"]
-        features += self._ic.selected_features
-        if add_validation_features:
-            features += self._ic.validation_features
-        features = list(set(features))
+        features = list()
+        if not part_features:
+            features += self._ic.selected_features
+            if add_validation_features:
+                features += self._ic.validation_features
+        else:
+            features += part_features
+        if include_weight:
+            features += ["weight"]
+        features = list(set(features))  # remove duplicates
         # get input array dict
-        array_dict = self.get_input_array_dict(input_type, part_features=features)
+        array_dict = self.get_input_array_dict(
+            input_type, part_features=features, include_weight=include_weight
+        )
         # get list of necessary samples
         sample_key_list = []
         if array_key in list(array_dict.keys()):
@@ -119,7 +278,7 @@ class Feedbox(object):
         # get output array_dict
         df_dict = dict()
         for sample in sample_key_list:
-            sample_df = pd.DataFrame(array_dict[sample])
+            sample_df = pd.DataFrame(array_dict[sample], dtype=np.float32)
             df_dict[sample] = sample_df
 
         return features, df_dict
@@ -131,40 +290,54 @@ class Feedbox(object):
         array_key="all",
         add_validation_features=False,
         remove_duplicated_col=True,
+        include_weight=True,
     ) -> pd.DataFrame:
         df_features, df_dict = self.get_raw(
             input_type,
             array_key=array_key,
             add_validation_features=add_validation_features,
+            part_features=features,
+            include_weight=include_weight,
         )
         if not features:
             features = df_features
         inputs_df = array_utils.merge_samples_df(df_dict, features, array_key=array_key)
         if remove_duplicated_col:
-            return inputs_df.loc[:, ~inputs_df.columns.duplicated()]
-        else:
-            return inputs_df
+            inputs_df = inputs_df.loc[:, ~inputs_df.columns.duplicated()]
+
+        return inputs_df
 
     def get_reshape(
-        self, input_type: str, array_key: str = "all", add_validation_features=False
+        self,
+        input_type: str,
+        array_key: str = "all",
+        add_validation_features=False,
+        part_features=[],
+        include_weight=True,
     ) -> Dict[str, pd.DataFrame]:
         """Normalizes input distributions"""
         df_features, df_dict = self.get_raw(
             input_type,
             array_key=array_key,
             add_validation_features=add_validation_features,
+            part_features=part_features,
+            include_weight=include_weight,
         )
         # check missing norm parameters
         missing_norms = []
-        norm_alias = self._job_config.input.feature_norm_alias.get_config_dict()
-        for feature in self._ic.selected_features:
+        norm_alias = self._ic.feature_norm_alias.get_config_dict()
+        for feature in df_features:
             if feature not in self._norm_dict:
                 found_norm_alias = False
                 # check feature normalization alias
                 if feature in norm_alias:
-                    if norm_alias[feature] in self._norm_dict:
+                    feature_alias = norm_alias[feature]
+                    if feature_alias in self._norm_dict:
                         logger.debug(f"Found norm_alias for: {feature}")
                         found_norm_alias = True
+                        self._norm_dict[feature] = copy.deepcopy(
+                            self._norm_dict[feature_alias]
+                        )
                     else:
                         logger.warn(
                             f"Specified but can't find norm_alias for: {feature}"
@@ -178,35 +351,40 @@ class Feedbox(object):
         # inputs pre-processing
         for sample_df in df_dict.values():
             for feature in df_features:
-                if feature in norm_alias:
-                    feature_key = norm_alias[feature]
-                else:
-                    feature_key = feature
-                if feature_key == "weight":
-                    sample_df.loc[sample_df["weight"] < 0, ["weight"]] = 0
-                elif feature_key in self._norm_dict:
-                    f_mean = self._norm_dict[feature_key]["mean"]
-                    f_var = self._norm_dict[feature_key]["variance"]
+                if feature == "weight":
+                    continue
+                elif feature in self._norm_dict:
+                    f_mean = self._norm_dict[feature]["mean"]
+                    f_var = self._norm_dict[feature]["variance"]
                     sample_df[feature] = (sample_df[feature] - f_mean) / np.sqrt(f_var)
                 else:
                     logger.debug(
-                        f"{feature_key} is not a training feature, ignoring reshape process."
+                        f"{feature} is not in self._norm_dict, ignoring reshape process."
                     )
         return df_features, df_dict
 
     def get_reshape_merged(
-        self, input_type, features=None, array_key="all", add_validation_features=False
+        self,
+        input_type,
+        features=None,
+        array_key="all",
+        add_validation_features=False,
+        remove_duplicated_col=True,
+        include_weight=True,
     ):
-        df_features, array_dict = self.get_reshape(
+        df_features, df_dict = self.get_reshape(
             input_type,
             array_key=array_key,
             add_validation_features=add_validation_features,
+            part_features=features,
+            include_weight=include_weight,
         )
         if not features:
             features = df_features
-        inputs_df = array_utils.merge_samples_df(
-            array_dict, features, array_key=array_key
-        )
+        inputs_df = array_utils.merge_samples_df(df_dict, features, array_key=array_key)
+        if remove_duplicated_col:
+            inputs_df = inputs_df.loc[:, ~inputs_df.columns.duplicated()]
+
         return inputs_df
 
     def get_reweight(
@@ -214,9 +392,8 @@ class Feedbox(object):
         input_type: str,
         array_key: str = "all",
         add_validation_features=False,
-        reset_mass: bool = None,
-        reset_array_key: str = "all",
-    ) -> Dict[str, pd.DataFrame]:
+        reset_mass: bool = False,
+    ) -> Tuple[list, Dict[str, pd.DataFrame]]:
         """Scales weight and resets feature distributions"""
         if reset_mass == None:
             reset_mass = self._ic.reset_feature
@@ -225,42 +402,79 @@ class Feedbox(object):
             array_key=array_key,
             add_validation_features=add_validation_features,
         )
-        # reweight
-        sumofweight = 1000
-        if input_type == "xs":
-            sumofweight = self._ic.sig_sumofweight
-        elif input_type == "xb":
-            sumofweight = self._ic.bkg_sumofweight
-        elif input_type == "xd":
-            sumofweight = self._ic.data_sumofweight
-        ## get total weight
-        total_weight = 0
-        for sample_df in df_dict.values():
-            total_weight += sample_df["weight"].sum()
-        ## reweight sample by sample
-        for sample_df in df_dict.values():
-            norm_weight = sumofweight * sample_df["weight"].sum() / total_weight
-            array_utils.reweight_array(
-                sample_df["weight"],
-                remove_negative=self._ic.rm_negative_weight_events,
-                norm_weight=norm_weight,
-            )
+
         # reset feature for pDNN if needed
         if reset_mass and (input_type == "xb" or input_type == "xd"):
             reset_feature_name = self._ic.reset_feature_name
-            reset_sumofweight = self._ic.sig_sumofweight
             ref_array_df = self.get_reweight_merged(
                 "xs",
                 features=[reset_feature_name, "weight"],
-                array_key=reset_array_key,
-                sumofweight=reset_sumofweight,
+                array_key=self._ic.sig_key,
             )
             ref_array = ref_array_df[reset_feature_name]
             ref_weight = ref_array_df["weight"]
-            for sample_key, sample_df in df_dict.items():
-                reset_array = df_dict[sample_key][self._ic.reset_feature_name]
-                array_utils.redistribute_array(reset_array, ref_array, ref_weight)
+        else:
+            ref_array = None
+            ref_weight = None
+        df_dict = self.reweight_df_dict(
+            input_type,
+            df_dict,
+            reset_mass=reset_mass,
+            ref_array=ref_array,
+            ref_weight=ref_weight,
+        )
         return df_features, df_dict
+
+    def reweight_df_dict(
+        self, input_type, df_dict, reset_mass=False, ref_array=None, ref_weight=None
+    ) -> Dict[str, pd.DataFrame]:
+        logger.debug("@data_io.feed_box.Feedbox.reweight_df_dict")
+        ic = self._job_config.input.clone()
+        # reweight
+        sumofweight = 1000
+        if input_type == "xs":
+            array_key = ic.sig_key
+            sumofweight = ic.sig_sumofweight
+        elif input_type == "xb":
+            array_key = ic.bkg_key
+            sumofweight = ic.bkg_sumofweight
+        elif input_type == "xd":
+            array_key = ic.data_key
+            sumofweight = ic.data_sumofweight
+        ## get total weight
+        total_weight = 0
+        for sample_df in df_dict.values():
+            # get positive only weights
+            sample_df["weight_p"] = sample_df["weight"]
+            sample_df.loc[sample_df["weight_p"] < 0, ["weight_p"]] = 0
+            total_weight += sample_df["weight"].sum()
+
+        ## reweight sample by sample
+        for sample, sample_df in df_dict.items():
+            sample_sumw = sample_df["weight"].sum()
+            if len(sample_df) == 0:
+                logger.warn(f"Sample {sample} input is empty, skip reweighting!")
+                continue
+            # normalize weight
+            norm_factor = 1
+            if array_key == "all":
+                norm_factor = sumofweight / total_weight
+            elif array_key == "all_norm":
+                n_samples = len(df_dict.keys())
+                norm_factor = (sumofweight / n_samples) / sample_sumw
+            elif array_key == sample:
+                norm_factor = sumofweight / sample_sumw
+            else:
+                continue
+            array_utils.norm_weight(
+                sample_df["weight"], norm_factor=norm_factor,
+            )
+        # reset feature for pDNN if needed
+        if reset_mass and (input_type == "xb" or input_type == "xd"):
+            for sample_key, sample_df in df_dict.items():
+                reset_array = df_dict[sample_key][ic.reset_feature_name]
+                array_utils.redistribute_array(reset_array, ref_array, ref_weight)
+        return df_dict
 
     def get_reweight_merged(
         self,
@@ -269,15 +483,12 @@ class Feedbox(object):
         array_key="all",
         add_validation_features=False,
         reset_mass: bool = None,
-        reset_array_key: str = "all",
-        sumofweight=1000,
         tag_sample=False,
     ):
         df_features, df_dict = self.get_reweight(
             input_type,
             array_key=array_key,
             reset_mass=reset_mass,
-            reset_array_key=reset_array_key,
             add_validation_features=add_validation_features,
         )
         if not features:
@@ -287,9 +498,7 @@ class Feedbox(object):
                 sample_id = self.get_sample_id(sample)
                 sample_df["sample_id"] = np.full(len(sample_df), sample_id)
             features += ["sample_id"]
-        inputs_df = array_utils.merge_samples_df(
-            df_dict, features, array_key=array_key, sumofweight=sumofweight
-        )
+        inputs_df = array_utils.merge_samples_df(df_dict, features, array_key=array_key)
         return inputs_df
 
     def get_sample_id(self, sample_key):
@@ -318,6 +527,7 @@ class Feedbox(object):
         bkg_key: str = "all",
         multi_class_bkgs: List[str] = [],
         reset_mass: Optional[bool] = None,
+        jump_reweight: bool = False,
     ) -> pd.DataFrame:
         """Gets train test input arrays
 
@@ -335,16 +545,10 @@ class Feedbox(object):
             if reset_mass == None:
                 reset_mass = self._ic.reset_feature
             # load sig
-            sig_df = self.get_reweight_merged(
-                "xs", array_key=sig_key, reset_array_key=sig_key, tag_sample=True
-            )
+            sig_df = self.get_reweight_merged("xs", array_key=sig_key, tag_sample=True)
             # load bkg
             bkg_df = self.get_reweight_merged(
-                "xb",
-                array_key=bkg_key,
-                reset_mass=reset_mass,
-                reset_array_key=sig_key,
-                tag_sample=True,
+                "xb", array_key=bkg_key, reset_mass=reset_mass, tag_sample=True,
             )
             # add tags
             sig_len = len(sig_df)
@@ -358,7 +562,11 @@ class Feedbox(object):
             # split & tag train test
             sample_df = pd.concat([sig_df, bkg_df], ignore_index=True)
             sss = StratifiedShuffleSplit(n_splits=1)
-            for train_index, _ in sss.split(sample_df.values, sample_df["y"].values):
+            y_arr = sample_df["y"].values
+            # Note that providing y is sufficient to generate the splits and
+            # hence np.zeros(n_samples) may be used as a placeholder for X
+            # instead of actual training data.
+            for train_index, _ in sss.split(y_arr, y_arr):
                 break
             sample_df["is_train"] = np.full(len(sample_df), False)
             sample_df.loc[train_index, "is_train"] = True
@@ -440,23 +648,48 @@ class Feedbox(object):
         )
         """
 
+    # def load_norm_dict(self, path):
+    #    norm_path = pathlib.Path(path)
+    #    if norm_path.exists():
+    #        self._norm_dict = yaml.load(norm_path)
+
+    def tag_signals(self, df_dict: Dict[str, pd.DataFrame]):
+        logger.debug("@ data_io.feed_box.Feedbox.tag_signals")
+        for sample, sample_df in df_dict.items():
+            sample_df["sample_name"] = sample
+            sample_df["is_sig"] = True
+            sample_df["is_mc"] = True
+            sample_df["y"] = np.int32(1)
+
+    def tag_backgrounds(self, df_dict: Dict[str, pd.DataFrame]):
+        logger.debug("@ data_io.feed_box.Feedbox.tag_backgrounds")
+        for sample, sample_df in df_dict.items():
+            sample_df["sample_name"] = sample
+            sample_df["is_sig"] = False
+            sample_df["is_mc"] = True
+            sample_df["y"] = np.int32(0)
+
     def update_norm_dict(self, features: Optional[List[str]] = None):
-        _, df_dict = self.get_raw(
-            "xb", array_key="all"
-        )  ## TODO: enable customized keys for norm dict
-        weight_array = np.concatenate(
-            [sample_dict["weight"] for sample_dict in df_dict.values()]
-        )  ## TODO: enable negative weight cleaning here or not?
+        logger.debug("@ data_io.feed_box.update_norm_dict")
         feature_list = list()
         if features is not None:
             feature_list = features
         else:
             feature_list = self._ic.selected_features
+        weight_array = self.get_raw_merged(
+            "xb", features=["weight"], array_key=self._job_config.input.bkg_key
+        )["weight"].values
         for feature in feature_list:
-            feature_array = np.concatenate(
-                [sample_dict[feature] for sample_dict in df_dict.values()]
-            )
+            feature_array = self.get_raw_merged(
+                "xb",
+                features=[feature],
+                array_key=self._job_config.input.bkg_key,
+                include_weight=False,
+            )[feature].values
             mean = np.average(feature_array, weights=weight_array)
             variance = np.average((feature_array - mean) ** 2, weights=weight_array)
             self._norm_dict[feature] = {"mean": mean, "variance": variance}
-            logger.debug(f"Feature {feature} mean: {mean}, variance: {variance}")
+            logger.info(
+                f"Recalculated norm factors for feature {feature} mean: {mean}, variance: {variance}"
+            )
+

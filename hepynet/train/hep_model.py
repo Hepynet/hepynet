@@ -7,6 +7,7 @@ import pathlib
 from typing import Iterable, Optional
 
 import keras
+import numpy as np
 import tensorflow as tf
 import yaml
 from keras import backend as K
@@ -34,7 +35,8 @@ if gpus:
     except RuntimeError as e:
         # Memory growth must be set before GPUs have been initialized
         logger.error(e)
-
+# Set up mixed float16 training for TF >= 2.4 TODO: need to upgrade TF
+# mixed_precision.set_global_policy('mixed_float16')
 
 # self-defined metrics functions
 def plain_acc(y_true, y_pred):
@@ -132,7 +134,11 @@ class Model_Base(object):
 
     def set_inputs(self, job_config) -> None:
         """Prepares array for training."""
-        feedbox = feed_box.Feedbox(job_config, model_meta=self.get_model_meta(),)
+        rc = self._job_config.run.clone()
+        input_dir = pathlib.Path(rc.save_sub_dir) / "input"
+        with open(input_dir / "norm_dict.yaml", "r") as norm_file:
+            norm_dict = yaml.load(norm_file, Loader=yaml.UnsafeLoader)
+        feedbox = feed_box.Feedbox(job_config, norm_dict=norm_dict)
         self._model_meta["norm_dict"] = copy.deepcopy(feedbox.get_norm_dict())
         self._feedbox = feedbox
         self._array_prepared = feedbox._array_prepared
@@ -388,8 +394,9 @@ class Model_Sequential_Base(Model_Base):
         """Performs training."""
 
         # prepare config alias
-        ic = self._job_config.input
-        tc = self._job_config.train
+        ic = self._job_config.input.clone()
+        tc = self._job_config.train.clone()
+        rc = self._job_config.run.clone()
 
         # Check
         if not self._model_is_compiled:
@@ -401,29 +408,72 @@ class Model_Sequential_Base(Model_Base):
 
         # Train
         logger.info("-" * 40)
-        logger.info(f"Training start. Using model: {self._model_name}")
-        logger.info(f"Model info: {self._model_note}")
+        logger.info("Loading inputs")
         ## get input
-        input_df = self._feedbox.get_train_test_df(
-            sig_key=ic.sig_key,
-            bkg_key=ic.bkg_key,
-            multi_class_bkgs=tc.output_bkg_node_names,
-        )
-        cols = ic.selected_features
-        train_index = input_df["is_train"] == True
-        test_index = input_df["is_train"] == False
-        x_train = input_df.loc[train_index, cols].values
-        x_test = input_df.loc[test_index, cols].values
-        y_train = input_df.loc[train_index, ["y"]].values
-        y_test = input_df.loc[test_index, ["y"]].values
-        wt_train = input_df.loc[train_index, "weight"].values
-        wt_test = input_df.loc[test_index, "weight"].values
+        # input_df = self._feedbox.get_train_test_df(
+        #    sig_key=ic.sig_key,
+        #    bkg_key=ic.bkg_key,
+        #    multi_class_bkgs=tc.output_bkg_node_names,
+        # )
+        # input_df = self._feedbox.get_processed_df()
+        # input_df.info(verbose=True)
+        # input_df.describe()
+        # cols = ic.selected_features
+        #
+        # if ic.reset_mass:
+        #    ref_df = input_df.loc[
+        #        input_df["is_sig"] == True, [ic.reset_feature_name, "weight"]
+        #    ]
+        #    ref_array = ref_df[ic.reset_feature_name]
+        #    ref_weight = ref_df["weight"]
+        #    reset_index = input_df["is_sig"] == False
+        #    ref_weight_positive = ref_weight.copy()
+        #    ref_weight_positive[ref_weight_positive < 0] = 0
+        #    sump = ref_weight_positive.sum()
+        #    reset_values = np.random.choice(
+        #        ref_array.values,
+        #        size=len(reset_index),
+        #        p=(1 / sump) * ref_weight_positive.values,
+        #    )
+        #    for id, reset_value in zip(reset_index, reset_values):
+        #        input_df[id, ic.reset_feature_name] = reset_value
+        #
+        # train_index = input_df["is_train"] == True
+        # test_index = input_df["is_train"] == False
+        # x_train = input_df.loc[train_index, cols].values
+        # x_test = input_df.loc[test_index, cols].values
+        # y_train = input_df.loc[train_index, ["y"]].values
+        # y_test = input_df.loc[test_index, ["y"]].values
+        # wt_train = input_df.loc[train_index, "weight"].values
+        # wt_test = input_df.loc[test_index, "weight"].values
+        # del input_df
+
+        # print("#################")
+        # print("train y mean", np.mean(y_train))
+        # print("test y mean", np.mean(y_test))
+        # print(x_train.shape)
+        # print(x_train[0])
+        # print(y_train)
+        # print(y_test)
+
+        save_dir = pathlib.Path(rc.save_sub_dir) / "input"
+        x_train = np.load(save_dir / "x_train.npy")
+        x_test = np.load(save_dir / "x_test.npy")
+        y_train = np.load(save_dir / "y_train.npy")
+        y_test = np.load(save_dir / "y_test.npy")
+        wt_train = np.load(save_dir / "wt_train.npy")
+        wt_test = np.load(save_dir / "wt_test.npy")
+        if ic.rm_negative_weight_events == True:
+            wt_train = wt_train.clip(min=0)
+            wt_test = wt_test.clip(min=0)
 
         ## train
         train_index_list, validation_index_list = train_utils.get_train_val_indices(
-            x_train, y_train, wt_train, tc.val_split, k_folds=tc.k_folds
+            y_train, y_train, wt_train, tc.val_split, k_folds=tc.k_folds
         )
         for fold_num in range(self._num_folds):
+            logger.info(f"Training start. Using model: {self._model_name}")
+            logger.info(f"Model info: {self._model_note}")
             if self._num_folds >= 2:
                 logger.info(
                     f"Performing k-fold training {fold_num + 1}/{self._num_folds}"
@@ -435,6 +485,9 @@ class Model_Sequential_Base(Model_Base):
             x_fold = x_train[train_index]
             y_fold = y_train[train_index]
             wt_fold = wt_train[train_index]
+            # print("#################")
+            # print("train_fold y mean", np.mean(y_fold))
+            # print("wt_fold sum", np.sum(wt_fold))
             val_x_fold = x_train[val_index]
             val_y_fold = y_train[val_index]
             val_wt_fold = wt_train[val_index]

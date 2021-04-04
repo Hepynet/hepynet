@@ -15,6 +15,9 @@ def execute():
         "-d", "--debug", required=False, help="run in debug mode", action="store_true",
     )
     parser.add_argument(
+        "-t", "--time", required=False, help="display time", action="store_true",
+    )
+    parser.add_argument(
         "-v",
         "--verbose",
         required=False,
@@ -28,20 +31,20 @@ def execute():
         parser.print_help()
         exit()
     else:
-        # set debug level
+        # set logging level
         if args.debug:  # DEBUG, INFO, WARNING, ERROR, CRITICAL
             logging.getLogger("hepynet").setLevel(logging.DEBUG)
-            if args.verbose:
-                logging_format = "%(asctime)s,%(msecs)03d %(levelname)7s %(message)s  >>  file: %(filename)s, line: %(lineno)d"
-            else:
-                logging_format = "%(asctime)s,%(msecs)03d %(levelname)7s %(message)s"
-
-            logging.basicConfig(
-                format=logging_format, datefmt="%Y-%m-%d:%H:%M:%S",
-            )
         else:
             logging.getLogger("hepynet").setLevel(logging.INFO)
-            logging.basicConfig(format="%(levelname)s %(message)s")
+        # set logging format
+        logging_format = "%(levelname)s %(message)s"
+        if args.verbose:
+            logging_format += " @ %(filename)s:%(lineno)d - %(funcName)s"
+        if args.time:
+            logging_format = "%(asctime)s,%(msecs)03d " + logging_format
+        logging.basicConfig(
+            format=logging_format, datefmt="%Y-%m-%d:%H:%M:%S",
+        )
 
         from hepynet.main import job_executor
 

@@ -1,4 +1,3 @@
-from hepynet.evaluate import evaluate_utils
 import logging
 import pathlib
 
@@ -8,10 +7,40 @@ import numpy as np
 import seaborn as sns
 
 from hepynet.common import config_utils
-from hepynet.data_io import array_utils
+from hepynet.data_io import array_utils, feed_box
+from hepynet.evaluate import evaluate_utils
 from hepynet.train import hep_model
 
 logger = logging.getLogger("hepynet")
+
+
+def get_one_feature(
+    feedbox: feed_box.Feedbox, input_type, array_key, feature, use_reshape=False
+):
+    if use_reshape:  # validation features not supported in get_reshape yet
+        if input_type == "xb":
+            return feedbox.get_reshape_merged(
+                "xb", array_key=array_key, features=[feature], include_weight=False
+            ).values
+        elif input_type == "xs":
+            return feedbox.get_reshape_merged(
+                "xs", array_key=array_key, features=[feature], include_weight=False
+            ).values
+        else:
+            logger.error(f"Unknown input_type {input_type}")
+            return np.array([])
+    else:
+        if input_type == "xb":
+            return feedbox.get_raw_merged(
+                "xb", array_key=array_key, features=[feature], include_weight=False
+            ).values
+        elif input_type == "xs":
+            return feedbox.get_raw_merged(
+                "xs", array_key=array_key, features=[feature], include_weight=False
+            ).values
+        else:
+            logger.error(f"Unknown input_type {input_type}")
+            return np.array([])
 
 
 def plot_correlation_matrix(model_wrapper, save_dir="."):
@@ -54,41 +83,44 @@ def paint_correlation_matrix(ax, corr_matrix_dict, matrix_key="bkg"):
 
 
 def plot_input(
-    model_wrapper: hep_model.Model_Base, job_config, save_dir=None, show_reshaped=False,
+    model_wrapper: hep_model.Model_Base, job_config, save_dir=None, use_reshape=False
 ):
     """Plots input distributions comparision plots for sig/bkg/data"""
-    logger.info("Plotting input distributions.")
+    if use_reshape:
+        logger.info("Plotting input (reshaped) distributions.")
+    else:
+        logger.info("Plotting input (raw) distributions.")
     # setup config
     ic = job_config.input.clone()
     ac = job_config.apply.clone()
     plot_cfg = ac.cfg_kine_study
+    if use_reshape:
+        plot_cfg.update({"range": (-5, 5)})
     # prepare
     feedbox = model_wrapper.get_feedbox()
-    if show_reshaped:  # validation features not supported in get_reshape yet
-        plot_feature_list = ic.selected_features
-        bkg_df = feedbox.get_reshape_merged("xb", array_key=ic.bkg_key)
-        sig_df = feedbox.get_reshape_merged("xs", array_key=ic.sig_key)
-    else:
-        plot_feature_list = list(set(ic.selected_features + ic.validation_features))
-        bkg_df = feedbox.get_raw_merged(
-            "xb", array_key=ic.bkg_key, add_validation_features=True,
-        )
-        sig_df = feedbox.get_raw_merged(
-            "xs", array_key=ic.sig_key, add_validation_features=True,
-        )
-    # normalize
-    bkg_weight = bkg_df["weight"].values
-    sig_weight = sig_df["weight"].values
+    plot_feature_list = list(set(ic.selected_features + ic.validation_features))
+    save_dir = pathlib.Path(save_dir)
+    save_dir.mkdir(parents=True, exist_ok=True)
+    # prepare event weights normalize
+    bkg_weight = get_one_feature(
+        feedbox, "xb", ic.bkg_key, "weight", use_reshape=use_reshape
+    )
+    sig_weight = get_one_feature(
+        feedbox, "xs", ic.sig_key, "weight", use_reshape=use_reshape
+    )
     if plot_cfg.density:
         bkg_weight = bkg_weight / np.sum(bkg_weight)
         sig_weight = sig_weight / np.sum(sig_weight)
-    # plot
-    save_dir = pathlib.Path(save_dir)
-    save_dir.mkdir(parents=True, exist_ok=True)
+    # plot one by one
     for feature in plot_feature_list:
-        logger.debug(f"Plotting kinematics for {feature}")
-        bkg_fill_array = bkg_df[feature].values
-        sig_fill_array = sig_df[feature].values
+        # plot
+        logger.info(f"Plotting kinematics for {feature}")
+        bkg_fill_array = get_one_feature(
+            feedbox, "xb", ic.bkg_key, feature, use_reshape=use_reshape
+        )
+        sig_fill_array = get_one_feature(
+            feedbox, "xs", ic.sig_key, feature, use_reshape=use_reshape
+        )
         plot_input_plt(
             feature,
             sig_fill_array,
@@ -261,7 +293,7 @@ def plot_input_plt(
     sig_fill_weights,
     bkg_fill_array,
     bkg_fill_weights,
-    plot_config=config_utils.Hepy_Config_Section({}),
+    plot_config=config_utils.Hepy_Config_Section,
     save_dir=".",
 ):
     # prepare config of chosen feature

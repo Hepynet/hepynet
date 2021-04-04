@@ -73,17 +73,23 @@ def corr(x, y, w):
     return cov(x, y, w) / np.sqrt(cov(x, x, w) * cov(y, y, w))
 
 
-def corr_matrix(x, w=None):
+def corr_matrix(x, w=None, ignore_negative_weight=True):
     """Calculates correlation coefficient matrix"""
     if w is None:
         w = np.ones(x.shape[0])
     num_features = x.shape[1]
-    corr_m = np.zeros((num_features, num_features))
-    for row in range(num_features):
-        for col in range(row + 1):
-            corr_m[row][col] = corr(x[:, row], x[:, col], w)
-            corr_m[col][row] = corr(x[:, row], x[:, col], w)
-    return corr_m
+    if ignore_negative_weight:
+        print("#### x shape", x.shape, "w shape", w.shape)
+        w_p = w.clip(min=0)
+        print("#### wp shape", w_p.shape)
+        return np.cov(np.transpose(x), aweights=w_p)
+    else:
+        corr_m = np.zeros((num_features, num_features))
+        for row in range(num_features):
+            for col in range(row + 1):
+                corr_m[row][col] = corr(x[:, row], x[:, col], w)
+                corr_m[col][row] = corr_m[row][col]
+        return corr_m
 
 
 def check_keys_has_sepa(output_keys):
@@ -121,7 +127,7 @@ def get_cut_index(np_array, cut_values, cut_types):
     return pass_index
 
 
-def get_cut_index_value(np_array, cut_value, cut_type):
+def get_cut_index_value(np_array: np.ndarray, cut_value, cut_type):
     """Returns cut indexes based on cut_value and cut_type.
 
     If cut_type is "=":
@@ -136,8 +142,9 @@ def get_cut_index_value(np_array, cut_value, cut_type):
         cut_feature: str
         cut_bool: bool
     """
-    logger.debug("Cutting input array")
-    logger.debug(f"Input shape: {np_array.shape}")
+    logger.debug("@ data_io.array_utils.get_cut_index_value")
+    assert np_array.ndim == 1
+    logger.debug(f"Cut input shape: {np_array.shape}, cut value {cut_value}")
     # Make cuts
     if cut_type == "=":
         pass_index = np.argwhere(np_array == cut_value)
@@ -192,27 +199,22 @@ def merge_samples_df(
     df_dict: Dict[str, pd.DataFrame],
     features: List[str],
     array_key: str = "all",
-    sumofweight: float = 1000,
 ) -> pd.DataFrame:
-    # always load "weight"
-    if "weight" not in features:
-        features += ["weight"]
+    ## always load "weight"
+    #if "weight" not in features:
+    #    features += ["weight"]
     df_out = pd.DataFrame(columns=features)
     if array_key in df_dict:
         df_out = df_out.append(df_dict[array_key][features], ignore_index=True)
     elif array_key == "all" or array_key == "all_norm":
         for sample_df in df_dict.values():
-            if array_key == "all_norm":
-                # each sample's total weights normed to 1.0
-                sample_df["weight"] = sample_df["weight"] / sample_df["weight"].sum()
             df_out = df_out.append(sample_df[features], ignore_index=True)
-        # norm to sumofweights specified
-        df_out["weight"] = sumofweight * df_out["weight"] / df_out["weight"].sum()
     else:
         logger.error(f"Invalid array_key {array_key}")
     return df_out
 
 
+'''
 def modify_array(
     input_array,
     input_weights,
@@ -303,6 +305,19 @@ def normalize_weight(weight_array, norm=1000):
     frac = norm / total_weight
     weight_array[:] = frac * weight_array
     return weight_array
+'''
+
+
+def norm_weight(
+    input_weights: pd.Series, norm_factor: Optional[float] = None,
+):
+    """Re-weights array"""
+    if len(input_weights) == 0:
+        logger.warning("empty input_weights, no changes will be made.")
+        return
+    # normalize weight
+    if norm_factor is not None:
+        input_weights.update(norm_factor * input_weights)
 
 
 def redistribute_array(
@@ -338,23 +353,6 @@ def reset_col(reset_array, ref_array, ref_weights, col=0):
     )
     reset_array[:, col] = reset_list
     return reset_array
-
-
-def reweight_array(
-    input_weights: pd.Series,
-    remove_negative: bool = False,
-    norm_weight: Optional[float] = None,
-):
-    """Re-weights array"""
-    if len(input_weights) == 0:
-        logger.warning("empty input detected in modify_array, no changes will be made.")
-    # set negative weights to zero
-    if remove_negative:
-        input_weights.loc[input_weights < 0] = 0
-    # normalize weight
-    if norm_weight is not None:
-        frac = norm_weight / input_weights.sum()
-        input_weights = frac * input_weights
 
 
 def shuffle_and_split(x, y, wt, split_ratio=0.0):
