@@ -8,7 +8,7 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 import yaml
-from sklearn.model_selection import StratifiedShuffleSplit
+from sklearn.model_selection import ShuffleSplit, StratifiedShuffleSplit
 
 from hepynet.common import config_utils
 from hepynet.data_io import array_utils, numpy_io
@@ -52,6 +52,77 @@ class Feedbox(object):
             self._norm_dict = copy.deepcopy(norm_dict)
 
         self._array_prepared = True
+
+    def dump_processed_inputs(self):
+        job_config = self._job_config.clone()
+        ic = job_config.input.clone()
+        self.update_norm_dict()
+        camp_list = numpy_io.get_campaign_list(job_config)
+        feature_list = ic.selected_features + ic.validation_features
+        feature_list = list(set().union(feature_list))  # remove duplicates
+        samples_dict = {"sig": ic.sig_list, "bkg": ic.bkg_list, "data": ic.data_list}
+        data_dir = numpy_io.get_data_dir()
+        for sample_type, sample_list in samples_dict.items():
+            array_key = numpy_io.get_array_key(job_config, sample_type)
+            sumw = numpy_io.get_sumofweight(job_config, sample_type)
+            total_weight = numpy_io.get_samples_total_weight(job_config, sample_list)
+            for sample in sample_list:
+                for camp in camp_list:
+                    npy_in_dir = pathlib.Path(
+                        f"{data_dir}/{ic.arr_path}/{ic.arr_version}/{ic.variation}/{ic.channel}/{camp}/{ic.region}"
+                    )
+                    # reshape inputs
+                    for feature in feature_list:
+                        npy_in_path = npy_in_dir / f"{sample}_{feature}.npy"
+                        npy_in = np.load(npy_in_path)
+                        f_mean = self._norm_dict[feature]["mean"]
+                        f_var = self._norm_dict[feature]["variance"]
+                        npy_out = (npy_in - f_mean) / np.sqrt(f_var)
+                        npy_out_path = npy_in_dir / f"{sample}_{feature}.reshape.npy"
+                        np.save(npy_out_path, npy_out)
+                    # get cut index
+                    cut_feature_dict = dict()
+                    for cut_feature in ic.cut_features:
+                        cut_var_in_path = npy_in_dir / f"{sample}_{cut_feature}.npy"
+                        cut_var_in = np.load(cut_var_in_path)
+                        cut_feature_dict[cut_feature] = cut_var_in
+                    cut_index = numpy_io.get_cut_index(job_config, cut_feature_dict)
+                    # reweight
+                    wt_in_path = npy_in_dir / f"{sample}_weight.npy"
+                    wt_in = np.load(wt_in_path)
+                    if cut_index is not None:  # apply cut by setting weight to 0
+                        wt_in[cut_index] = 0
+                    sample_sumw = np.sum(wt_in)
+                    if array_key == "all":
+                        norm_factor = sumw / total_weight
+                    elif array_key == "all_norm":
+                        n_samples = len(sample_list)
+                        norm_factor = (sumw / n_samples) / sample_sumw
+                    elif array_key == sample:
+                        norm_factor = sumw / sample_sumw
+                    else:
+                        logger.error(f"Unknown array_key: {array_key}")
+                        norm_factor = 1
+                    wt_out = wt_in * norm_factor
+                    wt_out_path = npy_in_dir / f"{sample}_weight.reweight.npy"
+                    np.save(wt_out_path, wt_out)
+                    # tag sig/bkg
+                    if sample_type == "sig":
+                        sig_tag = np.ones(len(wt_in), dtype=np.int8)
+                        sig_tag_path = npy_in_dir / f"{sample}.y.npy"
+                        np.save(sig_tag_path, sig_tag)
+                    if sample_type == "bkg":
+                        bkg_tag = np.zeros(len(wt_in), dtype=np.int8)
+                        bkg_tag_path = npy_in_dir / f"{sample}.y.npy"
+                        np.save(bkg_tag_path, bkg_tag)
+                    # tag train/test
+                    rs = ShuffleSplit(n_splits=1, test_size=ic.test_rate)
+                    train_tag = np.zeros(len(wt_in), dtype=np.int8)
+                    for train_index, _ in rs.split(wt_in):
+                        break
+                    train_tag[train_index] = 1
+                    train_tag_path = npy_in_dir / f"{sample}.tr_tag.npy"
+                    np.save(train_tag_path, train_tag)
 
     def dump_training_df(self):
         ic = self._job_config.input.clone()
@@ -521,6 +592,122 @@ class Feedbox(object):
             logger.error(f"Unknown sample_key: {sample_key}")
             return None
 
+    def get_train_test_inputs(self):
+        job_config = self._job_config.clone()
+        ic = job_config.input.clone()
+        camp_list = numpy_io.get_campaign_list(job_config)
+        samples_dict = {"sig": ic.sig_list, "bkg": ic.bkg_list}
+        data_dir = numpy_io.get_data_dir()
+
+        total_train = 0
+        total_test = 0
+        for sample_list in samples_dict.values():
+            for sample in sample_list:
+                for camp in camp_list:
+                    npy_in_dir = pathlib.Path(
+                        f"{data_dir}/{ic.arr_path}/{ic.arr_version}/{ic.variation}/{ic.channel}/{camp}/{ic.region}"
+                    )
+                    camp_wt = np.load(
+                        npy_in_dir / f"{sample}_weight.reweight.npy"
+                    ).flatten()
+                    camp_tr_tag = np.load(npy_in_dir / f"{sample}.tr_tag.npy")
+                    camp_train_count = np.sum(camp_tr_tag)
+                    camp_test_count = len(camp_tr_tag) - camp_train_count
+                    total_train += camp_train_count
+                    total_test += camp_test_count
+
+        # allocate memory
+        num_col = len(ic.selected_features)
+        x_train = np.zeros((total_train, num_col))
+        x_test = np.zeros((total_test, num_col))
+        y_train = np.zeros((total_train, 1))
+        y_test = np.zeros((total_test, 1))
+        wt_train = np.zeros(total_train)
+        wt_test = np.zeros(total_test)
+
+        train_count = 0
+        test_count = 0
+        for sample_list in samples_dict.values():
+            for sample in sample_list:
+                for camp in camp_list:
+                    npy_in_dir = pathlib.Path(
+                        f"{data_dir}/{ic.arr_path}/{ic.arr_version}/{ic.variation}/{ic.channel}/{camp}/{ic.region}"
+                    )
+                    camp_x = None
+                    for feature in ic.selected_features:
+                        feature_arr = np.load(
+                            npy_in_dir / f"{sample}_{feature}.reshape.npy",
+                            mmap_mode="r",
+                        ).reshape((-1, 1))
+                        if camp_x is None:
+                            camp_x = feature_arr
+                        else:
+                            camp_x = np.append(camp_x, feature_arr, axis=1)
+                    camp_y = np.load(npy_in_dir / f"{sample}.y.npy", mmap_mode="r")
+                    if camp_y.ndim == 1:
+                        camp_y = camp_y.reshape((-1, 1))
+                    camp_wt = np.load(
+                        npy_in_dir / f"{sample}_weight.reweight.npy"
+                    ).flatten()
+                    camp_tr_tag = np.load(npy_in_dir / f"{sample}.tr_tag.npy")
+
+                    camp_train_count = np.sum(camp_tr_tag)
+                    camp_test_count = len(camp_tr_tag) - camp_train_count
+
+                    print("#### camp_x.shape", camp_x.shape)
+                    print("#### camp_y.shape", camp_y.shape)
+                    print("#### camp_wt.shape", camp_wt.shape)
+                    print("#### camp_tr_tag.shape", camp_tr_tag.shape)
+
+                    train_index = np.argwhere(camp_tr_tag == 1).flatten()
+                    test_index = np.argwhere(camp_tr_tag == 0).flatten()
+                    print("#### train_index.shape", train_index.shape)
+                    # x_train = np.concatenate((x_train, camp_x[train_index]), axis=0)
+                    # x_test = np.concatenate((x_test, camp_x[test_index]), axis=0)
+                    # y_train = np.concatenate((y_train, camp_y[train_index]), axis=0)
+                    # y_test = np.concatenate((y_test, camp_y[test_index]), axis=0)
+                    # wt_train = np.concatenate((wt_train, camp_wt[train_index]), #axis=0)
+                    # wt_test = np.concatenate((wt_test, camp_wt[test_index]), axis=0)
+
+                    x_train[train_count : train_count + camp_train_count, :] = camp_x[
+                        train_index
+                    ]
+                    x_test[test_count : test_count + camp_test_count, :] = camp_x[
+                        test_index
+                    ]
+                    y_train[train_count : train_count + camp_train_count, :] = camp_y[
+                        train_index
+                    ]
+                    y_test[test_count : test_count + camp_test_count, :] = camp_y[
+                        test_index
+                    ]
+                    wt_train[train_count : train_count + camp_train_count] = camp_wt[
+                        train_index
+                    ]
+                    wt_test[test_count : test_count + camp_test_count] = camp_wt[
+                        test_index
+                    ]
+
+                    train_count += camp_train_count
+                    test_count += camp_test_count
+        print("#### train count", train_count)
+        print("#### test count", test_count)
+        print("#### x_train shape", x_train.shape)
+        print("#### y_train shape", y_train.shape)
+        print("#### wt_train shape", wt_train.shape)
+        print("#### x_test shape", x_test.shape)
+        print("#### y_test shape", y_test.shape)
+        print("#### wt_test shape", wt_test.shape)
+
+        input_dict = dict()
+        input_dict["x_train"] = x_train
+        input_dict["x_test"] = x_test
+        input_dict["y_train"] = y_train
+        input_dict["y_test"] = y_test
+        input_dict["wt_train"] = wt_train
+        input_dict["wt_test"] = wt_test
+        return input_dict
+
     def get_train_test_df(
         self,
         sig_key: str = "all",
@@ -572,6 +759,7 @@ class Feedbox(object):
             sample_df.loc[train_index, "is_train"] = True
             return sample_df
 
+    """
     def get_train_test_df_multi_nodes(
         self,
         sig_key: str = "all",
@@ -579,10 +767,8 @@ class Feedbox(object):
         reset_mass: Optional[bool] = None,
         output_keys: List[str] = [],
     ) -> Dict[str, np.ndarray]:
-        """Gets train test input arrays for multi-nodes training"""
         # TODO: need to rewrite
         pass
-        """
         if reset_mass == None:
             reset_mass = self._ic.reset_feature
         # load sig
@@ -646,7 +832,7 @@ class Feedbox(object):
             output_keys=output_keys,
             test_rate=self._tc.test_rate,
         )
-        """
+    """
 
     # def load_norm_dict(self, path):
     #    norm_path = pathlib.Path(path)
@@ -675,7 +861,8 @@ class Feedbox(object):
         if features is not None:
             feature_list = features
         else:
-            feature_list = self._ic.selected_features
+            feature_list = self._ic.selected_features + self._ic.validation_features
+        feature_list = list(set().union(feature_list))  # remove duplicates
         weight_array = self.get_raw_merged(
             "xb", features=["weight"], array_key=self._job_config.input.bkg_key
         )["weight"].values

@@ -18,16 +18,59 @@ from hepynet.data_io import array_utils
 logger = logging.getLogger("hepynet")
 
 
+def get_array_key(job_config, sample_type):
+    ic = job_config.input.clone()
+    if sample_type == "sig":
+        return ic.sig_key
+    elif sample_type == "bkg":
+        return ic.bkg_key
+    elif sample_type == "data":
+        return ic.data_key
+    else:
+        logger.error(f"Unknown sample type: {sample_type}")
+        return None
+
+
+def get_campaign_list(job_config):
+    ic = job_config.input.clone()
+    if "+" in ic.campaign:
+        return [camp.strip() for camp in ic.campaign.split("+")]
+    else:
+        return [ic.campaign]
+
+
+def get_cut_index(job_config, cut_feature_dict):
+    ic = job_config.input.clone()
+    cut_index = None
+    for cut_feature, cut_value, cut_type in zip(
+        ic.cut_features, ic.cut_values, ic.cut_types
+    ):
+        cut_array = cut_feature_dict[cut_feature]
+        if cut_type == "=":
+            temp_cut_index = np.argwhere(cut_array != cut_value)
+        elif cut_type == ">":
+            temp_cut_index = np.argwhere(cut_array <= cut_value)
+        elif cut_type == "<":
+            temp_cut_index = np.argwhere(cut_array >= cut_value)
+        else:
+            temp_cut_index = np.array([])
+        # update cut_index
+        if cut_index is None:
+            cut_index = temp_cut_index
+        else:
+            cut_index = np.union1d(cut_index, temp_cut_index)
+    return cut_index
+
+
 def get_cut_pass_index_dict(
     job_config, array_type_list=None, sample_list_dict=None
 ) -> Dict[str, Dict[str, np.ndarray]]:
-    logger.debug("@ data_io.numpy_io.get_cut_pass_index_dict")
     job_config_copy = job_config.clone()
     ic = job_config_copy.input
-    rc = job_config_copy.run
-    ic.cut_features += [ic.channel]
-    ic.cut_values += [1]
-    ic.cut_types += ["="]
+    # rc = job_config_copy.run
+    # ic.cut_features += [ic.channel]
+    # ic.cut_values += [1]
+    # ic.cut_types += ["="]
     pass_id_dict = dict()
     if array_type_list is None:
         array_type_list = ["sig", "bkg", "data"]
@@ -56,7 +99,7 @@ def get_cut_pass_index_dict(
                 feature_array = None
                 for camp in campaign_list:
                     temp_array = np.load(
-                        f"{data_dir}/{rc.npy_path}/{camp}/{ic.region}/{sample_component}_{feature}.npy ",
+                        f"{data_dir}/{ic.arr_path}/{ic.arr_version}/{ic.variation}/{ic.channel}/{camp}/{ic.region}/{sample_component}_{feature}.npy ",
                     )
                     if feature_array is None:
                         feature_array = temp_array
@@ -65,7 +108,7 @@ def get_cut_pass_index_dict(
 
                 feature_array = feature_array
 
-                cut_array_dict[feature] = feature_array
+                cut_array_dict[feature] = feature_array.flatten()
             # apply cuts
             ## Get indexes that pass cuts
             if not (
@@ -87,9 +130,9 @@ def get_cut_pass_index_dict(
                     pass_index = temp_pass_index
                 else:
                     pass_index = np.intersect1d(pass_index, temp_pass_index)
-            logger.debug(
-                f"Got cut-passed index for {array_type} {sample_component} shape {pass_index.shape}"
-            )
+            logger.debug(f"Got cut-passed index for {array_type} {sample_component}")
+            if pass_index is not None:
+                logger.debug(f"Shape {pass_index.shape}")
             pass_id_dict[array_type][sample_component] = pass_index
     return pass_id_dict
 
@@ -106,6 +149,34 @@ def get_data_dir():
         )
         data_dir = ""
     return data_dir
+
+
+def get_samples_total_weight(job_config, sample_list):
+    ic = job_config.input.clone()
+    data_dir = get_data_dir()
+    total_weight = 0
+    for sample in sample_list:
+        for camp in get_campaign_list(job_config):
+            npy_in_dir = pathlib.Path(
+                f"{data_dir}/{ic.arr_path}/{ic.arr_version}/{ic.variation}/{ic.channel}/{camp}/{ic.region}"
+            )
+            wt_path = npy_in_dir / f"{sample}_weight.npy"
+            wt = np.load(wt_path)
+            total_weight += np.sum(wt)
+    return total_weight
+
+
+def get_sumofweight(job_config, sample_type):
+    ic = job_config.input.clone()
+    if sample_type == "sig":
+        return ic.sig_sumofweight
+    elif sample_type == "bkg":
+        return ic.bkg_sumofweight
+    elif sample_type == "data":
+        return ic.data_sumofweight
+    else:
+        logger.error(f"Unknown sample type: {sample_type}")
+        return None
 
 
 def load_npy_arrays(
@@ -185,7 +256,7 @@ def load_npy_arrays(
         for feature in out_features:
             feature_array = None
             for camp in campaign_list:
-                load_path = f"{data_dir}/{rc.npy_path}/{camp}/{ic.region}/{sample_component}_{feature}.npy "
+                load_path = f"{data_dir}/{ic.arr_path}/{ic.arr_version}/{ic.variation}/{ic.channel}/{camp}/{ic.region}/{sample_component}_{feature}.npy "
                 temp_array = np.load(load_path)
                 if feature_array is None:
                     feature_array = temp_array
@@ -193,7 +264,10 @@ def load_npy_arrays(
                     feature_array = np.concatenate((feature_array, temp_array))
             # use float32 to reduce memory consumption, risky?
             feature_array = np.array(feature_array, dtype=np.float32)
-            sample_array_dict[feature] = feature_array[pass_index]
+            if pass_index is not None:
+                sample_array_dict[feature] = feature_array[pass_index].flatten()
+            else:
+                sample_array_dict[feature] = feature_array.flatten()
         if "weight" in out_features:
             weight_array = sample_array_dict["weight"]
             total_weights = np.sum(weight_array)

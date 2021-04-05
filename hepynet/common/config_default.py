@@ -20,6 +20,7 @@ DEFAULT_CFG = {
         "arr_path": "",
         "arr_version": "",
         "variation": "",
+        "channel": "",
         "campaign": "",
         "region": "",
         "channel": "",
@@ -34,6 +35,7 @@ DEFAULT_CFG = {
         "cut_features": [],
         "cut_values": [],
         "cut_types": [],
+        "test_rate": 0.2,
     },
     "train": {
         "model_name": "MODEL_NAME_DEF",
@@ -50,7 +52,6 @@ DEFAULT_CFG = {
         "dropout_rate": 0,
         "sig_class_weight": 1,
         "bkg_class_weight": 1,
-        "test_rate": 0.2,
         "val_split": 0.25,
         "k_folds": None,
         "use_early_stop": False,

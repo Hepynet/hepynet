@@ -57,20 +57,30 @@ def plot_multi_class_roc(model_wrapper: hep_model.Model_Base, job_config, save_d
     """Plots roc curve."""
     logger.info("Plotting train/test roc curve.")
     # setup config
+    ic = job_config.input.clone()
     tc = job_config.train.clone()
-    rc = job_config.run.clone()
     # prepare
     model = model_wrapper.get_model()
     output_bkg_node_names = tc.output_bkg_node_names
+    feedbox = model_wrapper.get_feedbox()
+    output_bkg_node_names = tc.output_bkg_node_names
     all_nodes = ["sig"] + output_bkg_node_names
-    input_dir = pathlib.Path(rc.save_sub_dir) / "input"
-    x_train = np.load(input_dir / "x_train.npy")
-    x_test = np.load(input_dir / "x_test.npy")
-    y_train = np.load(input_dir / "y_train.npy")
-    y_test = np.load(input_dir / "y_test.npy")
-    wt_train = np.load(input_dir / "wt_train.npy")
-    wt_test = np.load(input_dir / "wt_test.npy")
-
+    input_df = feedbox.get_train_test_df(
+        sig_key=ic.sig_key,
+        bkg_key=ic.bkg_key,
+        multi_class_bkgs=output_bkg_node_names,
+        reset_mass=False,  # don't reset mass when apply model!
+    )
+    cols = ic.selected_features
+    train_index = input_df["is_train"] == True
+    test_index = input_df["is_train"] == False
+    x_train = input_df.loc[train_index, cols].values
+    x_test = input_df.loc[test_index, cols].values
+    y_train = input_df.loc[train_index, ["y"]].values
+    y_test = input_df.loc[test_index, ["y"]].values
+    wt_train = input_df.loc[train_index, "weight"].values
+    wt_test = input_df.loc[test_index, "weight"].values
+    
     num_nodes = len(all_nodes)
     color_map = plt.get_cmap("Pastel1")
     auc_labels = []
@@ -121,7 +131,7 @@ def plot_multi_class_roc(model_wrapper: hep_model.Model_Base, job_config, save_d
     ax.set_yscale("linear")
     fig.savefig(save_dir / "roc_linear.png")
     ## log scale
-    ax.set_xlim(1e-3, 1)
+    ax.set_xlim(1e-5, 1)
     ax.set_xscale("log")
     # ax.set_ylim(0.1, 1 - 1e-4)
     ax.set_yscale("linear")

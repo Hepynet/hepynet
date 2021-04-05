@@ -4,9 +4,9 @@ import pathlib
 import matplotlib.pyplot as plt
 import numpy as np
 
-from hepynet.common.common_utils import get_default_if_none
 from hepynet.evaluate import evaluate_utils
 from hepynet.train import hep_model
+from hepynet.common import common_utils
 
 logger = logging.getLogger("hepynet")
 
@@ -30,9 +30,12 @@ def plot_mva_scores(
     sig_weights_dict = {}
     for sig_key in plot_config.sig_list:
         input_df = feedbox.get_reshape_merged("xs", array_key=sig_key)
-        sig_scores_dict[sig_key], _, _ = evaluate_utils.k_folds_predict(
+        sig_score, _, _ = evaluate_utils.k_folds_predict(
             model, input_df[ic.selected_features].values
         )
+        if sig_score.ndim == 1:
+            sig_score = sig_score.reshape((-1, 1))
+        sig_scores_dict[sig_key] = sig_score
         sig_weights_dict[sig_key] = input_df["weight"]
 
     # prepare background
@@ -40,9 +43,12 @@ def plot_mva_scores(
     bkg_weights_dict = {}
     for bkg_key in plot_config.bkg_list:
         input_df = feedbox.get_reshape_merged("xb", array_key=bkg_key)
-        bkg_scores_dict[bkg_key], _, _ = evaluate_utils.k_folds_predict(
+        bkg_score, _, _ = evaluate_utils.k_folds_predict(
             model, input_df[ic.selected_features].values
         )
+        if bkg_score.ndim == 1:
+            bkg_score = bkg_score.reshape((-1, 1))
+        bkg_scores_dict[bkg_key] = bkg_score
         bkg_weights_dict[bkg_key] = input_df["weight"]
 
     # prepare data
@@ -148,31 +154,34 @@ def plot_train_test_compare(model_wrapper: hep_model.Model_Base, job_config, sav
     """Plots train/test scores distribution to check overtrain"""
     # initialize
     logger.info("Plotting train/test scores (original mass).")
-    tc = job_config.train.clone()
-    rc = job_config.run.clone()
+    ic = job_config.input
+    tc = job_config.train
     plot_config = job_config.apply.cfg_train_test_compare
     model = model_wrapper.get_model()
     feedbox = model_wrapper.get_feedbox()
+    sig_key = common_utils.get_default_if_none(plot_config.sig_key, ic.sig_key)
+    bkg_key = common_utils.get_default_if_none(plot_config.bkg_key, ic.bkg_key)
     all_nodes = ["sig"] + tc.output_bkg_node_names
 
-    input_dir = pathlib.Path(rc.save_sub_dir) / "input"
-    x_train = np.load(input_dir / "x_train.npy")
-    x_test = np.load(input_dir / "x_test.npy")
-    y_train = np.load(input_dir / "y_train.npy")
-    y_test = np.load(input_dir / "y_test.npy")
-    wt_train = np.load(input_dir / "wt_train.npy")
-    wt_test = np.load(input_dir / "wt_test.npy")
-
-    xs_train = x_train[y_train == 1]
-    xs_test = x_test[y_test == 1]
-    xs_train_weight = wt_train[y_train == 1]
-    xs_test_weight = wt_test[y_test ==  1]
-    xb_train = x_train[y_train == 0]
-    xb_test = x_test[y_test == 0]
-    xb_train_weight = wt_train[y_train == 0]
-    xb_test_weight = wt_test[y_test == 0]
-
-
+    input_df = feedbox.get_train_test_df(
+        sig_key=sig_key,
+        bkg_key=bkg_key,
+        multi_class_bkgs=tc.output_bkg_node_names,
+        reset_mass=feedbox.get_job_config().input.reset_mass,
+    )
+    cols = ic.selected_features
+    train_index = input_df["is_train"] == True
+    test_index = input_df["is_train"] == False
+    sig_index = (input_df["is_sig"] == True) & (input_df["is_mc"] == True)
+    bkg_index = (input_df["is_sig"] == False) & (input_df["is_mc"] == True)
+    xs_train = input_df.loc[sig_index & train_index, cols].values
+    xs_test = input_df.loc[sig_index & test_index, cols].values
+    xs_train_weight = input_df.loc[sig_index & train_index, ["weight"]].values
+    xs_test_weight = input_df.loc[sig_index & test_index, ["weight"]].values
+    xb_train = input_df.loc[bkg_index & train_index, cols].values
+    xb_test = input_df.loc[bkg_index & test_index, cols].values
+    xb_train_weight = input_df.loc[bkg_index & train_index, ["weight"]].values
+    xb_test_weight = input_df.loc[bkg_index & test_index, ["weight"]].values
 
     # plot for each nodes
     num_nodes = len(all_nodes)
@@ -193,28 +202,30 @@ def plot_train_test_compare(model_wrapper: hep_model.Model_Base, job_config, sav
             {"b-test": xb_test_weight.flatten()},
         )
         ## plot test scores
+        print("#### ", xb_train_scores[:, [node_num]].shape)
+        print("#### wt", xb_train_weight.shape)
         evaluate_utils.paint_bars(
             ax,
-            xb_train_scores[:, [node_num]],
+            xb_train_scores[:, [node_num]].flatten(),
             "b-train",
-            weights=xb_train_weight,
+            weights=xb_train_weight.flatten(),
             bins=plot_config.bins,
             range=plot_config.range,
             density=plot_config.density,
             use_error=True,
-            # color="darkblue",
+            color="green",
             fmt=".",
         )
         evaluate_utils.paint_bars(
             ax,
-            xs_train_scores[:, [node_num]],
+            xs_train_scores[:, [node_num]].flatten(),
             "s-train",
-            weights=xs_train_weight,
+            weights=xs_train_weight.flatten(),
             bins=plot_config.bins,
             range=plot_config.range,
             density=plot_config.density,
             use_error=True,
-            # color="maroon",
+            color="pink",
             fmt=".",
         )
         ax.legend(loc="upper center")

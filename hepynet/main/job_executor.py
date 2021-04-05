@@ -111,7 +111,10 @@ class job_executor(object):
         # with open(norm_dict_path, "w") as norm_file:
         #    yaml.dump(norm_dict, norm_file, indent=2)
         #    logger.info(f"Normalization dictionary saved to {norm_dict_path}")
-        self.model_wrapper.get_feedbox().dump_training_df()
+        
+        #self.model_wrapper.get_feedbox().dump_training_df()
+
+        self.model_wrapper.get_feedbox().dump_processed_inputs()
 
     def execute_train_job(self):
         self.model_wrapper.compile()
@@ -356,11 +359,12 @@ class job_executor(object):
         jc = self.job_config.job
         rc = self.job_config.run
         # Set save sub-directory for this task
-        if jc.job_type == "prepare":
+        if jc.job_type == "train":
             dir_pattern = f"{jc.save_dir}/{rc.datestr}_{jc.job_name}_v{{}}"
             output_match = common_utils.get_newest_file_version(dir_pattern)
             rc.save_sub_dir = output_match["path"]
-        elif jc.job_type == "apply" or jc.job_type == "train":
+            pathlib.Path(rc.save_sub_dir).mkdir(parents=True, exist_ok=True)
+        elif jc.job_type == "apply":
             # use same directory as input "train" directory for "apply" type jobs
             dir_pattern = f"{jc.save_dir}/{rc.datestr}_{jc.load_job_name}_v{{}}"
             output_match = common_utils.get_newest_file_version(
@@ -382,4 +386,4 @@ class job_executor(object):
                     logger.error(
                         "Can't find existing train folder matched pattern, please check the settings."
                     )
-        pathlib.Path(rc.save_sub_dir).mkdir(parents=True, exist_ok=True)
+            pathlib.Path(rc.save_sub_dir).mkdir(parents=True, exist_ok=True)

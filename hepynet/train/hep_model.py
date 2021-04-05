@@ -135,9 +135,13 @@ class Model_Base(object):
     def set_inputs(self, job_config) -> None:
         """Prepares array for training."""
         rc = self._job_config.run.clone()
-        input_dir = pathlib.Path(rc.save_sub_dir) / "input"
-        with open(input_dir / "norm_dict.yaml", "r") as norm_file:
-            norm_dict = yaml.load(norm_file, Loader=yaml.UnsafeLoader)
+        try:
+            input_dir = pathlib.Path(rc.save_sub_dir) / "models"
+            with open(input_dir / "norm_dict.yaml", "r") as norm_file:
+                norm_dict = yaml.load(norm_file, Loader=yaml.UnsafeLoader)
+            logger.info(f"Successfully loaded norm_dict in {input_dir}")
+        except:
+            norm_dict = None
         feedbox = feed_box.Feedbox(job_config, norm_dict=norm_dict)
         self._model_meta["norm_dict"] = copy.deepcopy(feedbox.get_norm_dict())
         self._feedbox = feedbox
@@ -263,6 +267,7 @@ class Model_Base(object):
 
     def save_model_paras(self, file_name=None, fold_num=None):
         """Save model parameters to yaml file."""
+        rc = self._job_config.run.clone()
         # prepare paras
         paras_dict = dict()
         model_meta_save = copy.deepcopy(self._model_meta)
@@ -285,6 +290,10 @@ class Model_Base(object):
         with open(save_path, "w") as write_file:
             yaml.dump(paras_dict, write_file, indent=2)
         logger.debug(f"model parameters has been saved to: {save_path}")
+
+        norm_dict_path = pathlib.Path(rc.save_sub_dir) / "models" / "norm_dict.yaml"
+        with open(norm_dict_path, "w") as norm_file:
+            yaml.dump(self._feedbox.get_norm_dict(), norm_file, indent=2)
 
 
 class Model_Sequential_Base(Model_Base):
@@ -410,43 +419,43 @@ class Model_Sequential_Base(Model_Base):
         logger.info("-" * 40)
         logger.info("Loading inputs")
         ## get input
-        # input_df = self._feedbox.get_train_test_df(
-        #    sig_key=ic.sig_key,
-        #    bkg_key=ic.bkg_key,
-        #    multi_class_bkgs=tc.output_bkg_node_names,
-        # )
+        input_df = self._feedbox.get_train_test_df(
+            sig_key=ic.sig_key,
+            bkg_key=ic.bkg_key,
+            multi_class_bkgs=tc.output_bkg_node_names,
+        )
         # input_df = self._feedbox.get_processed_df()
         # input_df.info(verbose=True)
         # input_df.describe()
-        # cols = ic.selected_features
-        #
-        # if ic.reset_mass:
-        #    ref_df = input_df.loc[
-        #        input_df["is_sig"] == True, [ic.reset_feature_name, "weight"]
-        #    ]
-        #    ref_array = ref_df[ic.reset_feature_name]
-        #    ref_weight = ref_df["weight"]
-        #    reset_index = input_df["is_sig"] == False
-        #    ref_weight_positive = ref_weight.copy()
-        #    ref_weight_positive[ref_weight_positive < 0] = 0
-        #    sump = ref_weight_positive.sum()
-        #    reset_values = np.random.choice(
-        #        ref_array.values,
-        #        size=len(reset_index),
-        #        p=(1 / sump) * ref_weight_positive.values,
-        #    )
-        #    for id, reset_value in zip(reset_index, reset_values):
-        #        input_df[id, ic.reset_feature_name] = reset_value
-        #
-        # train_index = input_df["is_train"] == True
-        # test_index = input_df["is_train"] == False
-        # x_train = input_df.loc[train_index, cols].values
-        # x_test = input_df.loc[test_index, cols].values
-        # y_train = input_df.loc[train_index, ["y"]].values
-        # y_test = input_df.loc[test_index, ["y"]].values
-        # wt_train = input_df.loc[train_index, "weight"].values
-        # wt_test = input_df.loc[test_index, "weight"].values
-        # del input_df
+        cols = ic.selected_features
+
+        if ic.reset_mass:
+            ref_df = input_df.loc[
+                input_df["is_sig"] == True, [ic.reset_feature_name, "weight"]
+            ]
+            ref_array = ref_df[ic.reset_feature_name]
+            ref_weight = ref_df["weight"]
+            reset_index = input_df["is_sig"] == False
+            ref_weight_positive = ref_weight.copy()
+            ref_weight_positive[ref_weight_positive < 0] = 0
+            sump = ref_weight_positive.sum()
+            reset_values = np.random.choice(
+                ref_array.values,
+                size=len(reset_index),
+                p=(1 / sump) * ref_weight_positive.values,
+            )
+            for id, reset_value in zip(reset_index, reset_values):
+                input_df[id, ic.reset_feature_name] = reset_value
+
+        train_index = input_df["is_train"] == True
+        test_index = input_df["is_train"] == False
+        x_train = input_df.loc[train_index, cols].values
+        x_test = input_df.loc[test_index, cols].values
+        y_train = input_df.loc[train_index, ["y"]].values
+        y_test = input_df.loc[test_index, ["y"]].values
+        wt_train = input_df.loc[train_index, "weight"].values
+        wt_test = input_df.loc[test_index, "weight"].values
+        del input_df
 
         # print("#################")
         # print("train y mean", np.mean(y_train))
@@ -456,13 +465,23 @@ class Model_Sequential_Base(Model_Base):
         # print(y_train)
         # print(y_test)
 
-        save_dir = pathlib.Path(rc.save_sub_dir) / "input"
-        x_train = np.load(save_dir / "x_train.npy")
-        x_test = np.load(save_dir / "x_test.npy")
-        y_train = np.load(save_dir / "y_train.npy")
-        y_test = np.load(save_dir / "y_test.npy")
-        wt_train = np.load(save_dir / "wt_train.npy")
-        wt_test = np.load(save_dir / "wt_test.npy")
+        # input_dict = self._feedbox.get_train_test_inputs()
+        #
+        # x_train = input_dict["x_train"]
+        # x_test = input_dict["x_test"]
+        # y_train = input_dict["y_train"]
+        # y_test = input_dict["y_test"]
+        # wt_train = input_dict["wt_train"]
+        # wt_test = input_dict["wt_test"]
+
+        # save_dir = pathlib.Path(rc.save_sub_dir) / "input"
+        # x_train = np.load(save_dir / "x_train.npy")
+        # x_test = np.load(save_dir / "x_test.npy")
+        # y_train = np.load(save_dir / "y_train.npy")
+        # y_test = np.load(save_dir / "y_test.npy")
+        # wt_train = np.load(save_dir / "wt_train.npy")
+        # wt_test = np.load(save_dir / "wt_test.npy")
+
         if ic.rm_negative_weight_events == True:
             wt_train = wt_train.clip(min=0)
             wt_test = wt_test.clip(min=0)

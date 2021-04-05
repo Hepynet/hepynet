@@ -95,7 +95,7 @@ def plot_input(
     ac = job_config.apply.clone()
     plot_cfg = ac.cfg_kine_study
     if use_reshape:
-        plot_cfg.update({"range": (-5, 5)})
+        plot_cfg.update({"range": (-3, 3)})
     # prepare
     feedbox = model_wrapper.get_feedbox()
     plot_feature_list = list(set(ic.selected_features + ic.validation_features))
@@ -151,13 +151,13 @@ def plot_input_dnn(
     plot_feature_list = ic.selected_features + ic.validation_features
     bkg_df = feedbox.get_raw_merged(
         "xb",
-        features=plot_feature_list,
+        features=plot_feature_list + ["weight"],
         array_key=ic.bkg_key,
         add_validation_features=True,
     )
     sig_df = feedbox.get_raw_merged(
         "xs",
-        features=plot_feature_list,
+        features=plot_feature_list + ["weight"],
         array_key=ic.sig_key,
         add_validation_features=True,
     )
