@@ -1,15 +1,18 @@
 import logging
+import pathlib
 
 import matplotlib.pyplot as plt
 import numpy as np
 
-from hepynet.common.common_utils import get_default_if_none
 from hepynet.evaluate import evaluate_utils
 from hepynet.train import hep_model
+from hepynet.common import common_utils
 
 logger = logging.getLogger("hepynet")
 
 
+# TODO: plots look strange, need to check the implementation with new data structure
+# use with cautious
 def plot_mva_scores(
     model_wrapper: hep_model.Model_Base, job_config, save_dir, file_name="mva_scores"
 ):
@@ -26,36 +29,38 @@ def plot_mva_scores(
     sig_scores_dict = {}
     sig_weights_dict = {}
     for sig_key in plot_config.sig_list:
-        predict_arr, predict_weight_arr = feedbox.get_reshape_merged(
-            "xs", array_key=sig_key
+        input_df = feedbox.get_reshape_merged("xs", array_key=sig_key)
+        sig_score, _, _ = evaluate_utils.k_folds_predict(
+            model, input_df[ic.selected_features].values
         )
-        sig_scores_dict[sig_key], _, _ = evaluate_utils.k_folds_predict(
-            model, predict_arr
-        )
-        sig_weights_dict[sig_key] = predict_weight_arr.flatten()
+        if sig_score.ndim == 1:
+            sig_score = sig_score.reshape((-1, 1))
+        sig_scores_dict[sig_key] = sig_score
+        sig_weights_dict[sig_key] = input_df["weight"]
 
     # prepare background
     bkg_scores_dict = {}
     bkg_weights_dict = {}
     for bkg_key in plot_config.bkg_list:
-        predict_arr, predict_weight_arr = feedbox.get_reshape_merged(
-            "xb", array_key=bkg_key
+        input_df = feedbox.get_reshape_merged("xb", array_key=bkg_key)
+        bkg_score, _, _ = evaluate_utils.k_folds_predict(
+            model, input_df[ic.selected_features].values
         )
-        bkg_scores_dict[bkg_key], _, _ = evaluate_utils.k_folds_predict(
-            model, predict_arr
-        )
-        bkg_weights_dict[bkg_key] = predict_weight_arr.flatten()
+        if bkg_score.ndim == 1:
+            bkg_score = bkg_score.reshape((-1, 1))
+        bkg_scores_dict[bkg_key] = bkg_score
+        bkg_weights_dict[bkg_key] = input_df["weight"]
 
     # prepare data
     data_scores = np.array([])
     data_weights = np.array([])
     if plot_config.apply_data:
         data_key = plot_config.data_key
-        predict_arr, predict_weight_arr = feedbox.get_reshape_merged(
-            "xd", array_key=data_key
+        input_df = feedbox.get_reshape_merged("xd", array_key=data_key)
+        data_scores, _, _ = evaluate_utils.k_folds_predict(
+            model, input_df[ic.selected_features].values
         )
-        data_scores, _, _ = evaluate_utils.k_folds_predict(model, predict_arr)
-        data_weights = data_weights.flatten()
+        data_weights = input_df["weight"]
 
     # make plots
     all_nodes = ["sig"] + tc.output_bkg_node_names
@@ -101,7 +106,6 @@ def plot_scores_plt(
     if config.bkg_list is None:
         config.bkg_list = list(bkg_scores_dict.keys())
     # plot background
-    a = list(bkg_scores_dict.values())
     ax.hist(
         np.transpose(list(bkg_scores_dict.values())),
         bins=config.bins,
@@ -155,34 +159,30 @@ def plot_train_test_compare(model_wrapper: hep_model.Model_Base, job_config, sav
     plot_config = job_config.apply.cfg_train_test_compare
     model = model_wrapper.get_model()
     feedbox = model_wrapper.get_feedbox()
-    sig_key = get_default_if_none(plot_config.sig_key, ic.sig_key)
-    bkg_key = get_default_if_none(plot_config.bkg_key, ic.bkg_key)
+    sig_key = common_utils.get_default_if_none(plot_config.sig_key, ic.sig_key)
+    bkg_key = common_utils.get_default_if_none(plot_config.bkg_key, ic.bkg_key)
     all_nodes = ["sig"] + tc.output_bkg_node_names
 
-    train_test_dict = feedbox.get_train_test_arrays(
+    input_df = feedbox.get_train_test_df(
         sig_key=sig_key,
         bkg_key=bkg_key,
         multi_class_bkgs=tc.output_bkg_node_names,
         reset_mass=feedbox.get_job_config().input.reset_mass,
-        output_keys=[
-            "xs_train",
-            "xs_test",
-            "wts_train",
-            "wts_test",
-            "xb_train",
-            "xb_test",
-            "wtb_train",
-            "wtb_test",
-        ],
     )
-    xs_train = train_test_dict["xs_train"]
-    xs_test = train_test_dict["xs_test"]
-    xs_train_weight = train_test_dict["wts_train"]
-    xs_test_weight = train_test_dict["wts_test"]
-    xb_train = train_test_dict["xb_train"]
-    xb_test = train_test_dict["xb_test"]
-    xb_train_weight = train_test_dict["wtb_train"]
-    xb_test_weight = train_test_dict["wtb_test"]
+    cols = ic.selected_features
+    train_index = input_df["is_train"] == True
+    test_index = input_df["is_train"] == False
+    sig_index = (input_df["is_sig"] == True) & (input_df["is_mc"] == True)
+    bkg_index = (input_df["is_sig"] == False) & (input_df["is_mc"] == True)
+    xs_train = input_df.loc[sig_index & train_index, cols].values
+    xs_test = input_df.loc[sig_index & test_index, cols].values
+    xs_train_weight = input_df.loc[sig_index & train_index, ["weight"]].values
+    xs_test_weight = input_df.loc[sig_index & test_index, ["weight"]].values
+    xb_train = input_df.loc[bkg_index & train_index, cols].values
+    xb_test = input_df.loc[bkg_index & test_index, cols].values
+    xb_train_weight = input_df.loc[bkg_index & train_index, ["weight"]].values
+    xb_test_weight = input_df.loc[bkg_index & test_index, ["weight"]].values
+
     # plot for each nodes
     num_nodes = len(all_nodes)
     xb_train_scores, _, _ = evaluate_utils.k_folds_predict(model, xb_train)
@@ -204,26 +204,26 @@ def plot_train_test_compare(model_wrapper: hep_model.Model_Base, job_config, sav
         ## plot test scores
         evaluate_utils.paint_bars(
             ax,
-            xb_train_scores[:, node_num],
+            xb_train_scores[:, [node_num]].flatten(),
             "b-train",
-            weights=xb_train_weight,
+            weights=xb_train_weight.flatten(),
             bins=plot_config.bins,
             range=plot_config.range,
             density=plot_config.density,
             use_error=True,
-            color="darkblue",
+            color="green",
             fmt=".",
         )
         evaluate_utils.paint_bars(
             ax,
-            xs_train_scores[:, node_num],
+            xs_train_scores[:, [node_num]].flatten(),
             "s-train",
-            weights=xs_train_weight,
+            weights=xs_train_weight.flatten(),
             bins=plot_config.bins,
             range=plot_config.range,
             density=plot_config.density,
             use_error=True,
-            color="maroon",
+            color="pink",
             fmt=".",
         )
         ax.legend(loc="upper center")

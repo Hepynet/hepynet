@@ -75,13 +75,13 @@ class Hepy_Config(object):
     def print(self) -> None:
         """Shows all configs
         """
-        logger.info("")
-        logger.info("Config details " + ">" * 80)
+        print("")
+        print("Config details " + ">" * 80)
         for key, value in self.__dict__.items():
-            logger.info(f"[{key}]")
+            print(f"[{key}]")
             value.print()
-        logger.info("Config ends " + "<" * 83)
-        logger.info("")
+        print("Config ends " + "<" * 83)
+        print("")
 
 
 class Hepy_Config_Section(object):
@@ -137,14 +137,14 @@ class Hepy_Config_Section(object):
         for key, value in self.__dict__.items():
             if key != "_config_dict":
                 if isinstance(value, Hepy_Config_Section):
-                    logger.info(f"{' '*4*tabs}    {key} :")
+                    print(f"{' '*4*tabs}    {key} :")
                     value.print(tabs=tabs + 1)
                 elif isinstance(value, list):
-                    logger.info(f"{' '*4*tabs}    {key} :")
+                    print(f"{' '*4*tabs}    {key} :")
                     for ele in value:
-                        logger.info(f"{' '*4*tabs}        - {ele}")
+                        print(f"{' '*4*tabs}        - {ele}")
                 else:
-                    logger.info(f"{' '*4*tabs}    {key} : {value}")
+                    print(f"{' '*4*tabs}    {key} : {value}")
 
 
 def load_current_platform_meta() -> dict:
@@ -177,7 +177,7 @@ def load_pc_meta() -> dict:
     try:
         with open(pc_meta_cfg_path) as pc_meta_file:
             pc_meta_dict = yaml.load(pc_meta_file, Loader=yaml.FullLoader)
-            logger.debug(f"pc_meta config loaded: \n {pc_meta_dict}")
+            logger.debug(f"pc_meta config loaded: {pc_meta_cfg_path}")
             return pc_meta_dict
     except:
         logger.critical(

@@ -1,4 +1,3 @@
-from hepynet.evaluate import evaluate_utils
 import logging
 import pathlib
 
@@ -8,10 +7,40 @@ import numpy as np
 import seaborn as sns
 
 from hepynet.common import config_utils
-from hepynet.data_io import array_utils
+from hepynet.data_io import array_utils, feed_box
+from hepynet.evaluate import evaluate_utils
 from hepynet.train import hep_model
 
 logger = logging.getLogger("hepynet")
+
+
+def get_one_feature(
+    feedbox: feed_box.Feedbox, input_type, array_key, feature, use_reshape=False
+):
+    if use_reshape:  # validation features not supported in get_reshape yet
+        if input_type == "xb":
+            return feedbox.get_reshape_merged(
+                "xb", array_key=array_key, features=[feature], include_weight=False
+            ).values
+        elif input_type == "xs":
+            return feedbox.get_reshape_merged(
+                "xs", array_key=array_key, features=[feature], include_weight=False
+            ).values
+        else:
+            logger.error(f"Unknown input_type {input_type}")
+            return np.array([])
+    else:
+        if input_type == "xb":
+            return feedbox.get_raw_merged(
+                "xb", array_key=array_key, features=[feature], include_weight=False
+            ).values
+        elif input_type == "xs":
+            return feedbox.get_raw_merged(
+                "xs", array_key=array_key, features=[feature], include_weight=False
+            ).values
+        else:
+            logger.error(f"Unknown input_type {input_type}")
+            return np.array([])
 
 
 def plot_correlation_matrix(model_wrapper, save_dir="."):
@@ -54,51 +83,50 @@ def paint_correlation_matrix(ax, corr_matrix_dict, matrix_key="bkg"):
 
 
 def plot_input(
-    model_wrapper: hep_model.Model_Base, job_config, save_dir=None, show_reshaped=False,
+    model_wrapper: hep_model.Model_Base, job_config, save_dir=None, use_reshape=False
 ):
     """Plots input distributions comparision plots for sig/bkg/data"""
-    logger.info("Plotting input distributions.")
+    if use_reshape:
+        logger.info("Plotting input (reshaped) distributions.")
+    else:
+        logger.info("Plotting input (raw) distributions.")
     # setup config
     ic = job_config.input.clone()
     ac = job_config.apply.clone()
     plot_cfg = ac.cfg_kine_study
+    if use_reshape:
+        plot_cfg.update({"range": (-3, 3)})
     # prepare
     feedbox = model_wrapper.get_feedbox()
-    if show_reshaped:  # validation features not supported in get_reshape yet
-        plot_feature_list = ic.selected_features
-        bkg_array, bkg_fill_weights = feedbox.get_reshape_merged(
-            "xb", array_key=ic.bkg_key
-        )
-        sig_array, sig_fill_weights = feedbox.get_reshape_merged(
-            "xs", array_key=ic.sig_key
-        )
-    else:
-        plot_feature_list = array_utils.merge_select_val_features(
-            ic.selected_features, ic.validation_features
-        )
-        bkg_array, bkg_fill_weights = feedbox.get_raw_merged(
-            "xb", array_key=ic.bkg_key, add_validation_features=True,
-        )
-        sig_array, sig_fill_weights = feedbox.get_raw_merged(
-            "xs", array_key=ic.sig_key, add_validation_features=True,
-        )
-    # normalize
-    if plot_cfg.density:
-        bkg_fill_weights = bkg_fill_weights / np.sum(bkg_fill_weights)
-        sig_fill_weights = sig_fill_weights / np.sum(sig_fill_weights)
-    # plot
+    plot_feature_list = list(set(ic.selected_features + ic.validation_features))
     save_dir = pathlib.Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
-    for feature_id, feature in enumerate(plot_feature_list):
-        logger.debug(f"Plotting kinematics for {feature}")
-        bkg_fill_array = np.reshape(bkg_array[:, feature_id], (-1, 1))
-        sig_fill_array = np.reshape(sig_array[:, feature_id], (-1, 1))
+    # prepare event weights normalize
+    bkg_weight = get_one_feature(
+        feedbox, "xb", ic.bkg_key, "weight", use_reshape=use_reshape
+    )
+    sig_weight = get_one_feature(
+        feedbox, "xs", ic.sig_key, "weight", use_reshape=use_reshape
+    )
+    if plot_cfg.density:
+        bkg_weight = bkg_weight / np.sum(bkg_weight)
+        sig_weight = sig_weight / np.sum(sig_weight)
+    # plot one by one
+    for feature in plot_feature_list:
+        # plot
+        logger.info(f"Plotting kinematics for {feature}")
+        bkg_fill_array = get_one_feature(
+            feedbox, "xb", ic.bkg_key, feature, use_reshape=use_reshape
+        )
+        sig_fill_array = get_one_feature(
+            feedbox, "xs", ic.sig_key, feature, use_reshape=use_reshape
+        )
         plot_input_plt(
             feature,
             sig_fill_array,
-            sig_fill_weights,
+            sig_weight,
             bkg_fill_array,
-            bkg_fill_weights,
+            bkg_weight,
             plot_config=plot_cfg,
             save_dir=save_dir,
         )
@@ -121,67 +149,77 @@ def plot_input_dnn(
     feedbox = model_wrapper.get_feedbox()
     # get fill weights with dnn cut
     plot_feature_list = ic.selected_features + ic.validation_features
-    bkg_array, bkg_fill_weights = feedbox.get_raw_merged(
+    bkg_df = feedbox.get_raw_merged(
         "xb",
-        features=plot_feature_list,
+        features=plot_feature_list + ["weight"],
         array_key=ic.bkg_key,
         add_validation_features=True,
     )
-    sig_array, sig_fill_weights = feedbox.get_raw_merged(
+    sig_df = feedbox.get_raw_merged(
         "xs",
-        features=plot_feature_list,
+        features=plot_feature_list + ["weight"],
         array_key=ic.sig_key,
         add_validation_features=True,
     )
+    bkg_weights = bkg_df["weight"].values
+    sig_weights = sig_df["weight"].values
     # normalize
     if plot_cfg.density:
-        bkg_fill_weights = bkg_fill_weights / np.sum(bkg_fill_weights)
-        sig_fill_weights = sig_fill_weights / np.sum(sig_fill_weights)
+        bkg_weights = bkg_weights / np.sum(bkg_weights)
+        sig_weights = sig_weights / np.sum(sig_weights)
     # plot kinematics with dnn cuts
     if dnn_cut < 0 or dnn_cut > 1:
         logger.error(f"DNN cut {dnn_cut} is out of range [0, 1]!")
         return
     # prepare signal
-    sig_selected_arr, _ = feedbox.get_reweight_merged(
-        "xs", array_key=ic.sig_key, reset_mass=False
+    sig_df = feedbox.get_reweight_merged(
+        "xs",
+        features=plot_feature_list,
+        array_key=ic.sig_key,
+        add_validation_features=True,
+        reset_mass=False,
     )
     sig_predictions, _, _ = evaluate_utils.k_folds_predict(
-        model_wrapper.get_model(), sig_selected_arr
+        model_wrapper.get_model(), sig_df[ic.selected_features].values
     )
     if sig_predictions.ndim == 2:
         sig_predictions = sig_predictions[:, multi_class_cut_branch]
     sig_cut_index = array_utils.get_cut_index(sig_predictions, [dnn_cut], ["<"])
-    sig_fill_weights_dnn = sig_fill_weights.copy()
-    sig_fill_weights_dnn[sig_cut_index] = 0
+    sig_weights_dnn = sig_weights.copy()
+    sig_weights_dnn[sig_cut_index] = 0
     # prepare background
-    bkg_selected_arr, _ = feedbox.get_reweight_merged(
-        "xb", array_key=ic.bkg_key, reset_mass=False
+    bkg_df = feedbox.get_reweight_merged(
+        "xb",
+        features=plot_feature_list,
+        array_key=ic.bkg_key,
+        add_validation_features=True,
+        reset_mass=False,
     )
     bkg_predictions, _, _ = evaluate_utils.k_folds_predict(
-        model_wrapper.get_model(), bkg_selected_arr
+        model_wrapper.get_model(), bkg_df[ic.selected_features].values
     )
     if bkg_predictions.ndim == 2:
         bkg_predictions = bkg_predictions[:, multi_class_cut_branch]
     bkg_cut_index = array_utils.get_cut_index(bkg_predictions, [dnn_cut], ["<"])
-    bkg_fill_weights_dnn = bkg_fill_weights.copy()
-    bkg_fill_weights_dnn[bkg_cut_index] = 0
+    bkg_weights_dnn = bkg_weights.copy()
+    bkg_weights_dnn[bkg_cut_index] = 0
     # normalize weights for density plots
     if plot_cfg.density:
-        bkg_fill_weights_dnn = bkg_fill_weights_dnn / np.sum(bkg_fill_weights)
-        sig_fill_weights_dnn = sig_fill_weights_dnn / np.sum(sig_fill_weights)
+        bkg_weights_dnn = bkg_weights_dnn / np.sum(bkg_weights)
+        sig_weights_dnn = sig_weights_dnn / np.sum(sig_weights)
     # plot
-    for feature_id, feature in enumerate(plot_feature_list):
+    for feature in plot_feature_list:
         logger.debug(f"Plotting kinematics for {feature}")
-        bkg_fill_array = np.reshape(bkg_array[:, feature_id], (-1, 1))
-        sig_fill_array = np.reshape(sig_array[:, feature_id], (-1, 1))
+        bkg_array = bkg_df[feature].values
+        sig_array = sig_df[feature].values
         plot_inputs_cut_dnn(
             feature,
-            sig_fill_array,
-            sig_fill_weights,
-            sig_fill_weights_dnn,
-            bkg_fill_array,
-            bkg_fill_weights,
-            bkg_fill_weights_dnn,
+            sig_array,
+            sig_weights,
+            sig_weights_dnn,
+            bkg_array,
+            bkg_weights,
+            bkg_weights_dnn,
             plot_config=plot_cfg,
             save_dir=save_dir,
         )
@@ -217,13 +255,13 @@ def plot_hist_ratio_plt(
         numerator_values,
         bins=plot_cfg.bins,
         range=plot_cfg.range,
-        weights=numerator_weights.reshape((-1, 1)),
+        weights=numerator_weights,
     )  # np.histogram requires "weights should have the same shape as a."
     denominator_ys, _ = np.histogram(
         denominator_values,
         bins=plot_cfg.bins,
         range=plot_cfg.range,
-        weights=denominator_weights.reshape((-1, 1)),
+        weights=denominator_weights,
     )  # same reason to reshape
     # Only plot ratio when bin is not 0.
     bin_centers = np.array([])
@@ -255,7 +293,7 @@ def plot_input_plt(
     sig_fill_weights,
     bkg_fill_array,
     bkg_fill_weights,
-    plot_config=config_utils.Hepy_Config_Section({}),
+    plot_config=config_utils.Hepy_Config_Section,
     save_dir=".",
 ):
     # prepare config of chosen feature

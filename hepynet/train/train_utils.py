@@ -5,7 +5,7 @@ import math
 
 import numpy as np
 from sklearn.model_selection import StratifiedKFold
-
+from hepynet.train import hep_model
 logger = logging.getLogger("hepynet")
 
 
@@ -21,6 +21,14 @@ def get_mass_range(mass_array, weights, nsig=1):
     lower_limit = average - np.sqrt(variance) * nsig
     upper_limit = average + np.sqrt(variance) * nsig
     return lower_limit, upper_limit
+
+
+def get_model_class(model_class: str):
+    if model_class == "Model_Sequential_Flat":
+        return hep_model.Model_Sequential_Flat
+    else:
+        logger.critical(f"Unsupported model class: {model_class}")
+        exit(1)
 
 
 def get_model_epoch_path_list(
