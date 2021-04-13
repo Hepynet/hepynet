@@ -79,9 +79,7 @@ def corr_matrix(x, w=None, ignore_negative_weight=True):
         w = np.ones(x.shape[0])
     num_features = x.shape[1]
     if ignore_negative_weight:
-        print("#### x shape", x.shape, "w shape", w.shape)
         w_p = w.clip(min=0)
-        print("#### wp shape", w_p.shape)
         return np.cov(np.transpose(x), aweights=w_p)
     else:
         corr_m = np.zeros((num_features, num_features))

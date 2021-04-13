@@ -457,14 +457,6 @@ class Model_Sequential_Base(Model_Base):
         wt_test = input_df.loc[test_index, "weight"].values
         del input_df
 
-        # print("#################")
-        # print("train y mean", np.mean(y_train))
-        # print("test y mean", np.mean(y_test))
-        # print(x_train.shape)
-        # print(x_train[0])
-        # print(y_train)
-        # print(y_test)
-
         # input_dict = self._feedbox.get_train_test_inputs()
         #
         # x_train = input_dict["x_train"]
@@ -504,9 +496,6 @@ class Model_Sequential_Base(Model_Base):
             x_fold = x_train[train_index]
             y_fold = y_train[train_index]
             wt_fold = wt_train[train_index]
-            # print("#################")
-            # print("train_fold y mean", np.mean(y_fold))
-            # print("wt_fold sum", np.sum(wt_fold))
             val_x_fold = x_train[val_index]
             val_y_fold = y_train[val_index]
             val_wt_fold = wt_train[val_index]

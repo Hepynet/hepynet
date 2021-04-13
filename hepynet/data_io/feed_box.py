@@ -138,9 +138,6 @@ class Feedbox(object):
             for sample, sample_df in sig_df_dict.items():
                 sample_sum_weight = sample_df["weight"].sum()
                 total_weight += sample_sum_weight
-                logger.debug(
-                    f"#### sample {sample} total weight {sample_df['weight'].sum()}"
-                )
             logger.debug(f"Signal total weights: {total_weight}")
         self.tag_signals(sig_df_dict)
         # for sample, sample_df in sig_df_dict.items():
@@ -654,14 +651,8 @@ class Feedbox(object):
                     camp_train_count = np.sum(camp_tr_tag)
                     camp_test_count = len(camp_tr_tag) - camp_train_count
 
-                    print("#### camp_x.shape", camp_x.shape)
-                    print("#### camp_y.shape", camp_y.shape)
-                    print("#### camp_wt.shape", camp_wt.shape)
-                    print("#### camp_tr_tag.shape", camp_tr_tag.shape)
-
                     train_index = np.argwhere(camp_tr_tag == 1).flatten()
                     test_index = np.argwhere(camp_tr_tag == 0).flatten()
-                    print("#### train_index.shape", train_index.shape)
                     # x_train = np.concatenate((x_train, camp_x[train_index]), axis=0)
                     # x_test = np.concatenate((x_test, camp_x[test_index]), axis=0)
                     # y_train = np.concatenate((y_train, camp_y[train_index]), axis=0)
@@ -690,14 +681,6 @@ class Feedbox(object):
 
                     train_count += camp_train_count
                     test_count += camp_test_count
-        print("#### train count", train_count)
-        print("#### test count", test_count)
-        print("#### x_train shape", x_train.shape)
-        print("#### y_train shape", y_train.shape)
-        print("#### wt_train shape", wt_train.shape)
-        print("#### x_test shape", x_test.shape)
-        print("#### y_test shape", y_test.shape)
-        print("#### wt_test shape", wt_test.shape)
 
         input_dict = dict()
         input_dict["x_train"] = x_train

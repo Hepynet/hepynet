@@ -202,8 +202,6 @@ def plot_train_test_compare(model_wrapper: hep_model.Model_Base, job_config, sav
             {"b-test": xb_test_weight.flatten()},
         )
         ## plot test scores
-        print("#### ", xb_train_scores[:, [node_num]].shape)
-        print("#### wt", xb_train_weight.shape)
         evaluate_utils.paint_bars(
             ax,
             xb_train_scores[:, [node_num]].flatten(),
