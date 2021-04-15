@@ -37,6 +37,7 @@ class job_executor(object):
         self.get_config(yaml_config_path)
         # set up style
         ampl.use_atlas_style(usetex=False)
+        ampl.set_color_cycle(pal="ATLAS", n=10)
 
     def execute_jobs(self):
         """Execute all planned jobs."""
@@ -80,9 +81,7 @@ class job_executor(object):
         self.set_model()
         self.set_model_input()
 
-        if jc.job_type == "prepare":
-            self.execute_prepare_job()
-        elif jc.job_type == "train":
+        if jc.job_type == "train":
             self.execute_train_job()
         elif jc.job_type == "apply":
             self.execute_apply_job()
@@ -96,25 +95,6 @@ class job_executor(object):
 
         # return training meta data
         return self.model_wrapper.get_train_performance_meta()
-
-    def execute_prepare_job(self):
-        # rc = self.job_config.run
-        # save_dir = pathlib.Path(f"{rc.save_sub_dir}/inputs")
-        # save_dir.mkdir(parents=True, exist_ok=True)
-        # feedbox = self.model_wrapper.get_feedbox()
-        # sample_df = feedbox.get_train_test_df()
-        # sample_df.to_feather(save_dir / "test_sample_df.feather")
-        # logger.info(f"Inputs saved to {save_dir}")
-        # self.model_wrapper
-        # norm_dict = feedbox.get_norm_dict()
-        # norm_dict_path = pathlib.Path(save_dir / "norm_dict.yaml")
-        # with open(norm_dict_path, "w") as norm_file:
-        #    yaml.dump(norm_dict, norm_file, indent=2)
-        #    logger.info(f"Normalization dictionary saved to {norm_dict_path}")
-        
-        #self.model_wrapper.get_feedbox().dump_training_df()
-
-        self.model_wrapper.get_feedbox().dump_processed_inputs()
 
     def execute_train_job(self):
         self.model_wrapper.compile()
@@ -130,6 +110,10 @@ class job_executor(object):
         rc.save_dir = f"{rc.save_sub_dir}/apply/{jc.job_name}"
         pathlib.Path(rc.save_dir).mkdir(parents=True, exist_ok=True)
 
+        # load inputs
+        df = self.model_wrapper.get_feedbox().get_processed_df()
+        df_raw = self.model_wrapper.get_feedbox().get_raw_df()
+
         # Studies not depending on models
         ## metrics curves
         if ac.book_history:
@@ -137,26 +121,25 @@ class job_executor(object):
                 self.model_wrapper, self.job_config, save_dir=rc.save_dir
             )
         ## input kinematic plots
-        if ac.book_kine_study:
-            logger.info("Making input distribution plots")
+        if ac.book_kine:
+            logger.info("Plotting input (raw) distributions.")
             kinematics.plot_input(
-                self.model_wrapper,
-                self.job_config,
-                save_dir=f"{rc.save_sub_dir}/kinematics/raw",
+                df_raw, self.job_config, save_dir=f"{rc.save_dir}/kinematics/raw",
             )
+            logger.info("Plotting input (processed) distributions.")
             kinematics.plot_input(
-                self.model_wrapper,
-                self.job_config,
-                save_dir=f"{rc.save_sub_dir}/kinematics/reshape",
-                use_reshape=True,
+                df, self.job_config, save_dir=f"{rc.save_dir}/kinematics/processed",
             )
         ## correlation matrix
         if ac.book_cor_matrix:
             logger.info("Making correlation matrix")
             kinematics.plot_correlation_matrix(
-                self.model_wrapper, save_dir=rc.save_sub_dir
+                df_raw, self.job_config, save_dir=f"{rc.save_dir}/kinematics"
             )
-        ## generate fit ntuples
+
+        # Studies depending on models
+
+        ## generate fit arrays
         if ac.book_fit_npy:
             save_region = ac.cfg_fit_npy.fit_npy_region
             if save_region is None:
@@ -164,10 +147,10 @@ class job_executor(object):
             npy_dir = f"{ac.cfg_fit_npy.npy_save_dir}/{ic.campaign}/{save_region}"
             logger.info("Dumping numpy arrays for fitting.")
             evaluate_utils.dump_fit_npy(
-                self.model_wrapper, self.job_config, npy_dir=npy_dir,
+                self.model_wrapper, df_raw, df, self.job_config, npy_dir=npy_dir,
             )
 
-        # Studies depending on models
+        ## loop over models at different epochs
         epoch_checklist = [None]
         if ac.check_model_epoch:
             for epoch_id in range(tc.epochs):
@@ -198,34 +181,24 @@ class job_executor(object):
             if ac.book_roc:
                 logger.info("Making roc curve plot")
                 roc.plot_multi_class_roc(
-                    self.model_wrapper, self.job_config, epoch_subdir
+                    self.model_wrapper, df, self.job_config, epoch_subdir
                 )
             # overtrain check
             if ac.book_train_test_compare:
                 logger.info("Making train/test compare plots")
                 mva_scores.plot_train_test_compare(
-                    self.model_wrapper, self.job_config, epoch_subdir
-                )
-            # feature permuted importance
-            if ac.book_importance_study:
-                logger.info("Checking input feature importance")
-                importance.plot_feature_importance(
-                    self.model_wrapper, self.job_config, epoch_subdir
+                    self.model_wrapper, df, self.job_config, epoch_subdir
                 )
             # data/mc scores comparison
             if ac.book_mva_scores_data_mc:
                 logger.info("Making data/mc scores distributions plots")
                 mva_scores.plot_mva_scores(
-                    self.model_wrapper, self.job_config, epoch_subdir,
+                    self.model_wrapper, df, self.job_config, epoch_subdir,
                 )
             # Make significance scan plot
             if ac.book_significance_scan:
                 significance.plot_significance_scan(
-                    self.model_wrapper,
-                    ic.sig_key,
-                    ic.bkg_key,
-                    epoch_subdir,
-                    significance_algo=ac.cfg_significance_scan.significance_algo,
+                    self.model_wrapper, df, self.job_config, epoch_subdir
                 )
             # kinematics with DNN cuts
             if ac.book_cut_kine_study:
@@ -235,11 +208,17 @@ class job_executor(object):
                     dnn_kine_path.mkdir(parents=True, exist_ok=True)
                     kinematics.plot_input_dnn(
                         self.model_wrapper,
+                        df,
                         self.job_config,
                         dnn_cut=dnn_cut,
                         save_dir=dnn_kine_path,
-                        compare_cut_sb_separated=True,
                     )
+            # feature permuted importance
+            if ac.book_importance_study:
+                logger.info("Checking input feature importance")
+                importance.plot_feature_importance(
+                    self.model_wrapper, df, self.job_config, epoch_subdir
+                )
 
             logger.info("<" * 80)
 
@@ -343,15 +322,15 @@ class job_executor(object):
     def set_model(self) -> None:
         logger.info("Setting up model")
         tc = self.job_config.train
+        jc = self.job_config.job
         model_class = train_utils.get_model_class(tc.model_class)
         self.model_wrapper = model_class(self.job_config)
-
-    def set_model_input(self) -> None:
-        logger.info("Processing inputs")
-        jc = self.job_config.job
         # load model for "apply" job
         if jc.job_type == "apply":
             self.model_wrapper.load_model()
+
+    def set_model_input(self) -> None:
+        logger.info("Processing inputs")
         self.model_wrapper.set_inputs(self.job_config)
 
     def set_save_dir(self) -> None:

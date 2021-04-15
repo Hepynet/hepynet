@@ -25,50 +25,41 @@ def create_epoch_subdir(save_dir, epoch, n_digit) -> pathlib.Path:
 
 
 def dump_fit_npy(
-    model_wrapper: hep_model.Model_Base, job_config, npy_dir="./",
+    model_wrapper: hep_model.Model_Base, df_raw, df_train, job_config, npy_dir="./",
 ):
     ic = job_config.input.clone()
     tc = job_config.train.clone()
     ac = job_config.apply.clone()
-    feedbox = model_wrapper.get_feedbox()
 
-    prefix_map = {"sig": "xs", "bkg": "xb"}
-    if feedbox.get_job_config().input.apply_data:
-        prefix_map["data"] = "xd"
+    sample_list = ic.sig_list + ic.bkg_list
+    if ic.apply_data:
+        sample_list += ic.data_list
 
     platform_meta = config_utils.load_current_platform_meta()
     data_path = platform_meta["data_path"]
     save_dir = f"{data_path}/{npy_dir}"
     pathlib.Path(save_dir).mkdir(parents=True, exist_ok=True)
-    logger.info(f"Arrays to be saved to {save_dir}")
+    logger.info(f"> Arrays to be saved to {save_dir}")
 
-    for map_key in list(prefix_map.keys()):
-        sample_keys = getattr(ic, f"{map_key}_list")
-        for sample_key in sample_keys:
-            dump_branches = ac.cfg_fit_npy.fit_npy_branches + ["weight"]
-            # prepare contents
-            dump_df = feedbox.get_raw_merged(
-                prefix_map[map_key], array_key=sample_key, add_validation_features=True,
-            )
-            input_df = feedbox.get_reweight_merged(
-                prefix_map[map_key], array_key=sample_key, reset_mass=False
-            )
-            predictions, _, _ = k_folds_predict(
-                model_wrapper.get_model(), input_df[ic.selected_features].values
-            )
-            # dump
-            for branch in dump_branches:
-                branch_content = dump_df[branch].values
-                save_path = f"{save_dir}/{sample_key}_{branch}.npy"
-                numpy_io.save_npy_array(branch_content, save_path)
-            if len(tc.output_bkg_node_names) == 0:
-                save_path = f"{save_dir}/{sample_key}_dnn_out.npy"
-                numpy_io.save_npy_array(predictions, save_path)
-            else:
-                for i, out_node in enumerate(["sig"] + tc.output_bkg_node_names):
-                    out_node = out_node.replace("+", "_")
-                    save_path = f"{save_dir}/{sample_key}_dnn_out_{out_node}.npy"
-                    numpy_io.save_npy_array(predictions[:, i], save_path)
+    for sample in sample_list:
+        dump_branches = ac.cfg_fit_npy.fit_npy_branches + ["weight"]
+        # prepare contents
+        dump_df = df_raw.loc[df_raw["sample_name"] == sample, dump_branches]
+        input_df = df_train.loc[df_train["sample_name"] == sample, ic.selected_features]
+        predictions, _, _ = k_folds_predict(model_wrapper.get_model(), input_df.values)
+        # dump
+        for branch in dump_branches:
+            branch_content = dump_df[branch].values
+            save_path = f"{save_dir}/{sample}_{branch}.npy"
+            numpy_io.save_npy_array(branch_content, save_path)
+        if len(tc.output_bkg_node_names) == 0:
+            save_path = f"{save_dir}/{sample}_dnn_out.npy"
+            numpy_io.save_npy_array(predictions, save_path)
+        else:
+            for i, out_node in enumerate(["sig"] + tc.output_bkg_node_names):
+                out_node = out_node.replace("+", "_")
+                save_path = f"{save_dir}/{sample}_dnn_out_{out_node}.npy"
+                numpy_io.save_npy_array(predictions[:, i], save_path)
 
 
 def k_folds_predict(k_fold_models, x) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:

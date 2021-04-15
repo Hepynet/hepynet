@@ -9,7 +9,10 @@ DEFAULT_CFG = {
         "rdm_seed": 1024,
     },
     "input": {
-        "norm_array": True,
+        "input_path": "",
+        "reshape_input": True,
+        "reweight_input": True,
+        "negative_weight_process": "to_zero",  # could also be "to_positive" or "keep"
         "feature_norm_alias": {},
         "sig_sumofweight": 1000,
         "bkg_sumofweight": 1000,
@@ -68,11 +71,52 @@ DEFAULT_CFG = {
         "verbose": 0,
     },
     "apply": {
+        "plot_atlas_label": False,
+        "atlas_label": {},
         "check_model_epoch": False,
         "epoch_check_interval": 5,
         "book_history": False,
         "cfg_history": {},
+        "book_kine": False,
+        "cfg_kine": {
+            "hist_kwargs_sig": {  # kwargs of plt.hist
+                "bins": 40,
+                "histtype": "step",
+                "density": False,
+                "facecolor": "#00a1e0",  # ATLAS blue
+                "edgecolor": "black",
+            },
+            "hist_kwargs_bkg": {
+                "bins": 40,
+                "histtype": "step",
+                "density": False,
+                "facecolor": "#a30013",  # ATLAS red
+                "edgecolor": "black",
+            },
+            "save_format": "png",
+        },
+        "book_cor_matrix": False,
+        "book_fit_npy": False,
+        "cfg_fit_npy": {
+            "fit_npy_region": "",
+            "fit_npy_branches": [],
+            "npy_save_dir": "",
+        },
         "book_roc": False,
+        "book_train_test_compare": False,
+        "cfg_train_test_compare": {
+            "sig_key": None,
+            "bkg_key": None,
+            "plot_title": "train/test MVA scores compare",
+            "bkg_color": "#a30013",  # ATLAS red
+            "sig_color": "#00a1e0",  # ATLAS blue
+            "bins": 25,
+            "range": [0, 1],
+            "density": False,
+            "log": False,
+            "logy_min": 0.001,
+            "save_format": "png",
+        },
         "book_mva_scores_data_mc": False,
         "cfg_mva_scores_data_mc": {
             "sig_list": [],
@@ -81,35 +125,18 @@ DEFAULT_CFG = {
             "data_key": "",
             "apply_data_range": None,
             "plot_title": "MVA scores",
+            "bkg_color": "#a30013",  # ATLAS red
+            "sig_color": "#00a1e0",  # ATLAS blue
             "bins": 25,
             "range": [0, 1],
             "density": False,
             "log": False,
+            "logy_min": 0.001,
             "save_format": "png",
             "use_root": False,
         },
-        "book_train_test_compare": False,
-        "cfg_train_test_compare": {
-            "sig_key": None,
-            "bkg_key": None,
-            "plot_title": "train/test MVA scores compare",
-            "bins": 25,
-            "range": [0, 1],
-            "density": False,
-            "log": False,
-            "save_format": "png",
-        },
-        "book_kine_study": False,
-        "cfg_kine_study": {
-            "bins": 40,
-            "range": None,
-            "histtype": "step",
-            "alpha": 0.3,
-            "density": False,
-            "sig_color": "tomato",
-            "bkg_color": "royalblue",
-            "save_format": "png",
-        },
+        "book_significance_scan": False,
+        "cfg_significance_scan": {"significance_algo": "s_sqrt_b_rel",},
         "book_cut_kine_study": False,
         "cfg_cut_kine_study": {
             "separate_sig_bkg": False,
@@ -124,16 +151,8 @@ DEFAULT_CFG = {
             "dnn_cut_list": None,
             "save_format": "png",
         },
-        "book_cor_matrix": False,
         "book_importance_study": False,
-        "book_significance_scan": False,
-        "cfg_significance_scan": {"significance_algo": "s_sqrt_b_rel",},
-        "book_fit_npy": False,
-        "cfg_fit_npy": {
-            "fit_npy_region": "",
-            "fit_npy_branches": [],
-            "npy_save_dir": "",
-        },
+        "cfg_importance_study": {"log": False}
     },
     "para_scan": {"perform_para_scan": False,},
     "run": {

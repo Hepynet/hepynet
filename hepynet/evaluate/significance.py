@@ -1,15 +1,17 @@
 import csv
-
-from hepynet.evaluate import evaluate_utils
 import logging
 import math
 import pathlib
 
+import atlas_mpl_style as ampl
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from matplotlib.ticker import NullFormatter
 
 from hepynet.common import common_utils
+from hepynet.data_io import array_utils
+from hepynet.evaluate import evaluate_utils
 from hepynet.train import hep_model
 
 logger = logging.getLogger("hepynet")
@@ -60,13 +62,13 @@ def calculate_significance(sig, bkg, sig_total=None, bkg_total=None, algo="asimo
 
 def get_significances(
     model_wrapper: hep_model.Model_Base,
-    sig_key,
-    bkg_key,
+    df: pd.DataFrame,
+    job_config,
     significance_algo="asimov",
     multi_class_cut_branch=0,
 ):
     """Gets significances scan arrays.
-    
+
     Return:
         Tuple of 4 arrays: (
             threshold array,
@@ -74,19 +76,18 @@ def get_significances(
             sig_total_weight_above_threshold,
             bkg_total_weight_above_threshold,
             )
-    
+
     """
-    feedbox = model_wrapper.get_feedbox()
-    ic = model_wrapper.get_job_config().input.clone()
+    ic = job_config.input.clone()
     # prepare signal
-    sig_df = feedbox.get_reshape_merged("xs", array_key=sig_key)
+    sig_df = array_utils.extract_sig_df(df)
     sig_predictions, _, _ = evaluate_utils.k_folds_predict(
         model_wrapper.get_model(), sig_df[ic.selected_features].values
     )
     if sig_predictions.ndim == 2:
         sig_predictions = sig_predictions[:, multi_class_cut_branch]
     # prepare background
-    bkg_df = feedbox.get_reshape_merged("xb", array_key=bkg_key)
+    bkg_df = array_utils.extract_bkg_df(df)
     bkg_predictions, _, _ = evaluate_utils.k_folds_predict(
         model_wrapper.get_model(), bkg_df[ic.selected_features].values
     )
@@ -129,13 +130,15 @@ def get_significances(
 
 
 def plot_significance_scan(
-    model_wrapper, sig_key, bkg_key, save_dir: pathlib.Path, significance_algo="asimov",
+    model_wrapper, df, job_config, save_dir: pathlib.Path
 ) -> None:
     """Shows significance change with threshold.
 
     Note:
         significance is calculated by s/sqrt(b)
     """
+    ac = job_config.apply.clone()
+    significance_algo = ac.cfg_significance_scan.significance_algo
     logger.info("Plotting significance scan.")
     (
         plot_thresholds,
@@ -143,7 +146,7 @@ def plot_significance_scan(
         sig_above_threshold,
         bkg_above_threshold,
     ) = get_significances(
-        model_wrapper, sig_key, bkg_key, significance_algo=significance_algo
+        model_wrapper, df, job_config, significance_algo=significance_algo
     )
 
     significances_no_nan = np.nan_to_num(significances)
@@ -206,13 +209,25 @@ def plot_significance_scan(
     ax.set_title("significance scan")
     ax.set_xscale("logit")
     ax.set_xlabel("DNN score threshold")
-    ax.set_ylabel("significance")
+    if "rel" in significance_algo:
+        ax.set_ylabel("significance ratio")
+    else:
+        ax.set_ylabel("significance")
     ax.set_ylim(bottom=0)
     ax.locator_params(nbins=10, axis="x")
     ax.yaxis.set_minor_formatter(NullFormatter())
     ax.legend(loc="center left")
     ax2.legend(loc="center right")
     # ax2.set_yscale("log")
+    _, y_max = ax.get_ylim()
+    ax.set_xlim(1e-3, 1 - 1e-3)
+    ax.set_ylim(0, y_max * 1.4)
+    _, y_max = ax2.get_ylim()
+    ax2.set_ylim(0, y_max * 1.4)
+    if ac.plot_atlas_label:
+        ampl.plot.draw_atlas_label(
+            0.05, 0.95, ax=ax, **(ac.atlas_label.get_config_dict())
+        )
     fig_save_path = save_dir / "significance_scan_.png"
     fig.savefig(fig_save_path)
 

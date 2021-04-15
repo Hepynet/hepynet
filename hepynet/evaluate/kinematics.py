@@ -1,67 +1,59 @@
 import logging
 import pathlib
 
+import atlas_mpl_style as ampl
 import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import seaborn as sns
 
 from hepynet.common import config_utils
 from hepynet.data_io import array_utils, feed_box
 from hepynet.evaluate import evaluate_utils
-from hepynet.train import hep_model
+from hepynet.train import hep_model, train_utils
 
 logger = logging.getLogger("hepynet")
 
 
-def get_one_feature(
-    feedbox: feed_box.Feedbox, input_type, array_key, feature, use_reshape=False
-):
-    if use_reshape:  # validation features not supported in get_reshape yet
-        if input_type == "xb":
-            return feedbox.get_reshape_merged(
-                "xb", array_key=array_key, features=[feature], include_weight=False
-            ).values
-        elif input_type == "xs":
-            return feedbox.get_reshape_merged(
-                "xs", array_key=array_key, features=[feature], include_weight=False
-            ).values
-        else:
-            logger.error(f"Unknown input_type {input_type}")
-            return np.array([])
-    else:
-        if input_type == "xb":
-            return feedbox.get_raw_merged(
-                "xb", array_key=array_key, features=[feature], include_weight=False
-            ).values
-        elif input_type == "xs":
-            return feedbox.get_raw_merged(
-                "xs", array_key=array_key, features=[feature], include_weight=False
-            ).values
-        else:
-            logger.error(f"Unknown input_type {input_type}")
-            return np.array([])
-
-
-def plot_correlation_matrix(model_wrapper, save_dir="."):
+def plot_correlation_matrix(df, job_config, save_dir="."):
+    ic = job_config.input.clone()
+    features = ic.selected_features
     save_dir = pathlib.Path(save_dir)
-    save_dir = save_dir.joinpath("kinematics")
     save_dir.mkdir(parents=True, exist_ok=True)
-    fig, ax = plt.subplots(ncols=2, figsize=(16.667, 8.333))
+    fig_scale = len(features) / 10 + 1
+    figsize = (8.333 * fig_scale, 4.167 * fig_scale)
+    fig, ax = plt.subplots(ncols=2, figsize=figsize)
+    # plot bkg
     ax[0].set_title("bkg correlation")
-    corr_matrix_dict = model_wrapper.get_corrcoef()
-    paint_correlation_matrix(ax[0], corr_matrix_dict, matrix_key="bkg")
+    bkg_df = array_utils.extract_bkg_df(df)
+    if bkg_df.shape[0] > 1000000:
+        logger.warn(
+            f"Too large input detected ({bkg_df.shape[0]} rows), randomly sampling 1000000 rows for background corr_matrix calculation"
+        )
+        bkg_df = bkg_df.sample(n=1000000)
+    bkg_matrix = array_utils.corr_matrix(
+        bkg_df[features].values, bkg_df["weight"].values
+    )
+    paint_correlation_matrix(ax[0], bkg_matrix, features)
+    # plot sig
     ax[1].set_title("sig correlation")
-    paint_correlation_matrix(ax[1], corr_matrix_dict, matrix_key="sig")
-    fig_save_path = save_dir.joinpath("correlation_matrix.png")
+    sig_df = array_utils.extract_sig_df(df)
+    if sig_df.shape[0] > 1000000:
+        logger.warn(
+            f"Too large input detected ({sig_df.shape[0]} rows), randomly sampling 1000000 rows for signal corr_matrix calculation"
+        )
+        sig_df = sig_df.sample(n=1000000)
+    sig_matrix = array_utils.corr_matrix(
+        sig_df[features].values, sig_df["weight"].values
+    )
+    paint_correlation_matrix(ax[1], sig_matrix, features)
+    fig_save_path = save_dir / "correlation_matrix.png"
     logger.debug(f"Save correlation matrix to: {fig_save_path}")
     fig.savefig(fig_save_path)
 
 
-def paint_correlation_matrix(ax, corr_matrix_dict, matrix_key="bkg"):
-    # Get matrix
-    corr_matrix = corr_matrix_dict[matrix_key]
-    labels = corr_matrix_dict["labels"]
+def paint_correlation_matrix(ax, corr_matrix, labels):
     # Generate a mask for the upper triangle
     mask = np.triu(np.ones_like(corr_matrix, dtype=np.bool))
     # Generate a custom diverging colormap
@@ -82,63 +74,71 @@ def paint_correlation_matrix(ax, corr_matrix_dict, matrix_key="bkg"):
     )
 
 
-def plot_input(
-    model_wrapper: hep_model.Model_Base, job_config, save_dir=None, use_reshape=False
-):
+def plot_input(df: pd.DataFrame, job_config, save_dir=None):
     """Plots input distributions comparision plots for sig/bkg/data"""
-    if use_reshape:
-        logger.info("Plotting input (reshaped) distributions.")
-    else:
-        logger.info("Plotting input (raw) distributions.")
     # setup config
     ic = job_config.input.clone()
     ac = job_config.apply.clone()
-    plot_cfg = ac.cfg_kine_study
-    if use_reshape:
-        plot_cfg.update({"range": (-3, 3)})
+    plot_cfg = ac.cfg_kine
     # prepare
-    feedbox = model_wrapper.get_feedbox()
     plot_feature_list = list(set(ic.selected_features + ic.validation_features))
     save_dir = pathlib.Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
-    # prepare event weights normalize
-    bkg_weight = get_one_feature(
-        feedbox, "xb", ic.bkg_key, "weight", use_reshape=use_reshape
-    )
-    sig_weight = get_one_feature(
-        feedbox, "xs", ic.sig_key, "weight", use_reshape=use_reshape
-    )
-    if plot_cfg.density:
-        bkg_weight = bkg_weight / np.sum(bkg_weight)
-        sig_weight = sig_weight / np.sum(sig_weight)
-    # plot one by one
+    # plot
     for feature in plot_feature_list:
-        # plot
-        logger.info(f"Plotting kinematics for {feature}")
-        bkg_fill_array = get_one_feature(
-            feedbox, "xb", ic.bkg_key, feature, use_reshape=use_reshape
+        feature_cfg = plot_cfg.clone()
+        if feature in plot_cfg.__dict__.keys():
+            feature_cfg_tmp = getattr(plot_cfg, feature)
+            feature_cfg.update(feature_cfg_tmp.get_config_dict())
+        # plot bkg
+        bkg_df = array_utils.extract_bkg_df(df)
+        bkg_wt = bkg_df["weight"].values
+        fig, ax = plt.subplots()
+        ax.hist(
+            bkg_df[feature].values,
+            weights=bkg_wt,
+            label="background",
+            **(feature_cfg.hist_kwargs_bkg.get_config_dict()),
         )
-        sig_fill_array = get_one_feature(
-            feedbox, "xs", ic.sig_key, feature, use_reshape=use_reshape
+        y_min, y_max = ax.get_ylim()
+        ax.set_ylim(y_min, y_max * 1.4)
+        ax.legend(loc="upper right")
+        if ac.plot_atlas_label:
+            ampl.plot.draw_atlas_label(
+                0.05, 0.95, ax=ax, **(ac.atlas_label.get_config_dict())
+            )
+        fig.suptitle(feature)
+        fig.savefig(f"{save_dir}/{feature}_bkg.{plot_cfg.save_format}")
+        plt.close()
+        # plot sig
+        sig_df = array_utils.extract_sig_df(df)
+        sig_wt = sig_df["weight"].values
+        fig, ax = plt.subplots()
+        ax.hist(
+            sig_df[feature].values,
+            weights=sig_wt,
+            label="signal",
+            **(feature_cfg.hist_kwargs_sig.get_config_dict()),
         )
-        plot_input_plt(
-            feature,
-            sig_fill_array,
-            sig_weight,
-            bkg_fill_array,
-            bkg_weight,
-            plot_config=plot_cfg,
-            save_dir=save_dir,
-        )
+        y_min, y_max = ax.get_ylim()
+        ax.set_ylim(y_min, y_max * 1.4)
+        ax.legend(loc="upper right")
+        if ac.plot_atlas_label:
+            ampl.plot.draw_atlas_label(
+                0.1, 0.9, ax=ax, **(ac.atlas_label.get_config_dict())
+            )
+        fig.suptitle(feature)
+        fig.savefig(f"{save_dir}/{feature}_sig.{plot_cfg.save_format}")
+        plt.close()
 
 
 def plot_input_dnn(
     model_wrapper: hep_model.Model_Base,
+    df: pd.DataFrame,
     job_config,
     dnn_cut=None,
     multi_class_cut_branch=0,
     save_dir=None,
-    compare_cut_sb_separated=False,
 ):
     """Plots input distributions comparision plots with DNN cuts applied"""
     logger.info("Plotting input distributions with DNN cuts applied.")
@@ -146,21 +146,10 @@ def plot_input_dnn(
     ic = job_config.input.clone()
     ac = job_config.apply.clone()
     plot_cfg = ac.cfg_cut_kine_study
-    feedbox = model_wrapper.get_feedbox()
     # get fill weights with dnn cut
     plot_feature_list = ic.selected_features + ic.validation_features
-    bkg_df = feedbox.get_raw_merged(
-        "xb",
-        features=plot_feature_list + ["weight"],
-        array_key=ic.bkg_key,
-        add_validation_features=True,
-    )
-    sig_df = feedbox.get_raw_merged(
-        "xs",
-        features=plot_feature_list + ["weight"],
-        array_key=ic.sig_key,
-        add_validation_features=True,
-    )
+    bkg_df = array_utils.extract_bkg_df(df)
+    sig_df = array_utils.extract_sig_df(df)
     bkg_weights = bkg_df["weight"].values
     sig_weights = sig_df["weight"].values
     # normalize
@@ -172,13 +161,6 @@ def plot_input_dnn(
         logger.error(f"DNN cut {dnn_cut} is out of range [0, 1]!")
         return
     # prepare signal
-    sig_df = feedbox.get_reweight_merged(
-        "xs",
-        features=plot_feature_list,
-        array_key=ic.sig_key,
-        add_validation_features=True,
-        reset_mass=False,
-    )
     sig_predictions, _, _ = evaluate_utils.k_folds_predict(
         model_wrapper.get_model(), sig_df[ic.selected_features].values
     )
@@ -188,13 +170,6 @@ def plot_input_dnn(
     sig_weights_dnn = sig_weights.copy()
     sig_weights_dnn[sig_cut_index] = 0
     # prepare background
-    bkg_df = feedbox.get_reweight_merged(
-        "xb",
-        features=plot_feature_list,
-        array_key=ic.bkg_key,
-        add_validation_features=True,
-        reset_mass=False,
-    )
     bkg_predictions, _, _ = evaluate_utils.k_folds_predict(
         model_wrapper.get_model(), bkg_df[ic.selected_features].values
     )
@@ -212,275 +187,109 @@ def plot_input_dnn(
         logger.debug(f"Plotting kinematics for {feature}")
         bkg_array = bkg_df[feature].values
         sig_array = sig_df[feature].values
-        plot_inputs_cut_dnn(
-            feature,
+
+        feature_cfg = plot_cfg.clone()
+        if feature in plot_cfg.__dict__.keys():
+            feature_cfg_tmp = getattr(plot_cfg, feature)
+            feature_cfg.update(feature_cfg_tmp.get_config_dict())
+
+        # plot sig
+        fig, main_ax, ratio_ax = ampl.ratio_axes()
+        main_ax.hist(
             sig_array,
-            sig_weights,
-            sig_weights_dnn,
+            bins=feature_cfg.bins,
+            weights=sig_weights,
+            histtype="step",
+            color=feature_cfg.sig_color,
+            label="before DNN cut",
+        )
+        main_ax.hist(
+            sig_array,
+            bins=feature_cfg.bins,
+            weights=sig_weights_dnn,
+            histtype="stepfilled",
+            color=feature_cfg.sig_color,
+            label="after DNN cut",
+        )
+        sig_bins, sig_edges = np.histogram(
+            sig_array, bins=feature_cfg.bins, weights=sig_weights,
+        )
+        sig_bins_dnn, _ = np.histogram(
+            sig_array, bins=feature_cfg.bins, weights=sig_weights_dnn,
+        )
+        ampl.plot.plot_ratio(
+            sig_edges,
+            sig_bins_dnn,
+            np.zeros(len(sig_bins)),
+            sig_bins,
+            np.zeros(len(sig_bins)),
+            ratio_ax,
+            plottype="raw",
+        )
+        if feature_cfg.log:
+            main_ax.set_yscale("log")
+            _, y_max = main_ax.get_ylim()
+            main_ax.set_ylim(
+                feature_cfg.logy_min, y_max * np.power(10, np.log10(y_max) / 2)
+            )
+        else:
+            _, y_max = main_ax.get_ylim()
+            main_ax.set_ylim(0, y_max * 1.4)
+        main_ax.legend(loc="upper right")
+        if ac.plot_atlas_label:
+            ampl.plot.draw_atlas_label(
+                0.05, 0.95, ax=main_ax, **(ac.atlas_label.get_config_dict())
+            )
+        fig.suptitle(f"{feature} (signal)")
+        fig.savefig(f"{save_dir}/{feature}(sig).{plot_cfg.save_format}")
+        plt.close()
+        # plot bkg
+        fig, main_ax, ratio_ax = ampl.ratio_axes()
+        main_ax.hist(
             bkg_array,
-            bkg_weights,
-            bkg_weights_dnn,
-            plot_config=plot_cfg,
-            save_dir=save_dir,
+            bins=feature_cfg.bins,
+            weights=bkg_weights,
+            histtype="step",
+            color=feature_cfg.bkg_color,
+            label="before DNN cut",
         )
-
-
-def plot_hist_plt(
-    ax, values, weights, plot_cfg,
-):
-    ax.hist(
-        values,
-        bins=plot_cfg.bins,
-        range=plot_cfg.range,
-        weights=weights,
-        # histtype=plot_cfg.histtype,
-        facecolor=plot_cfg.facecolor,
-        edgecolor=plot_cfg.edgecolor,
-        label=plot_cfg.label,
-        histtype=plot_cfg.histtype,
-        # alpha=plot_cfg.alpha,
-        # hatch=plot_cfg.hatch,
-    )
-
-
-def plot_hist_ratio_plt(
-    ax,
-    numerator_values,
-    numerator_weights,
-    denominator_values,
-    denominator_weights,
-    plot_cfg,
-):
-    numerator_ys, bin_edges = np.histogram(
-        numerator_values,
-        bins=plot_cfg.bins,
-        range=plot_cfg.range,
-        weights=numerator_weights,
-    )  # np.histogram requires "weights should have the same shape as a."
-    denominator_ys, _ = np.histogram(
-        denominator_values,
-        bins=plot_cfg.bins,
-        range=plot_cfg.range,
-        weights=denominator_weights,
-    )  # same reason to reshape
-    # Only plot ratio when bin is not 0.
-    bin_centers = np.array([])
-    bin_ys = np.array([])
-    for i, (y1, y2) in enumerate(zip(numerator_ys, denominator_ys)):
-        if y1 != 0:
-            ele_center = np.array([0.5 * (bin_edges[i] + bin_edges[i + 1])])
-            bin_centers = np.concatenate((bin_centers, ele_center))
-            ele_y = np.array([y1 / y2])
-            bin_ys = np.concatenate((bin_ys, ele_y))
-    # plot ratio
-    bin_size = bin_edges[1] - bin_edges[0]
-    ax.set_ylim([0, 1.3])
-    ax.errorbar(
-        bin_centers,
-        bin_ys,
-        xerr=bin_size / 2.0,
-        yerr=None,
-        fmt="_",
-        color=plot_cfg.edgecolor,
-        markerfacecolor=plot_cfg.edgecolor,
-        markeredgecolor=plot_cfg.edgecolor,
-    )
-
-
-def plot_input_plt(
-    feature,
-    sig_fill_array,
-    sig_fill_weights,
-    bkg_fill_array,
-    bkg_fill_weights,
-    plot_config=config_utils.Hepy_Config_Section,
-    save_dir=".",
-):
-    # prepare config of chosen feature
-    feature_cfg = plot_config.clone()
-    if feature in plot_config.__dict__.keys():
-        feature_cfg_tmp = getattr(plot_config, feature)
-        feature_cfg.update(feature_cfg_tmp.get_config_dict())
-    # make plot
-    if plot_config.separate_sig_bkg:
-        # plot bkg
-        fig, ax = plt.subplots()
-        feature_cfg.update(
-            {
-                "facecolor": plot_config.bkg_color,
-                "edgecolor": "black",
-                "label": "background",
-            }
+        main_ax.hist(
+            bkg_array,
+            bins=feature_cfg.bins,
+            weights=bkg_weights_dnn,
+            histtype="stepfilled",
+            color=feature_cfg.bkg_color,
+            label="after DNN cut",
         )
-        plot_hist_plt(
-            ax, bkg_fill_array, bkg_fill_weights, feature_cfg,
+        bkg_bins, bkg_edges = np.histogram(
+            bkg_array, bins=feature_cfg.bins, weights=bkg_weights,
         )
-        ax.legend(loc="upper right")
-        fig.suptitle(feature)
-        fig.savefig(f"{save_dir}/{feature}_bkg.{plot_config.save_format}")
+        bkg_bins_dnn, _ = np.histogram(
+            bkg_array, bins=feature_cfg.bins, weights=bkg_weights_dnn,
+        )
+        ampl.plot.plot_ratio(
+            bkg_edges,
+            bkg_bins_dnn,
+            np.zeros(len(bkg_bins)),
+            bkg_bins,
+            np.zeros(len(bkg_bins)),
+            ratio_ax,
+            plottype="raw",
+        )
+        if feature_cfg.log:
+            main_ax.set_yscale("log")
+            _, y_max = main_ax.get_ylim()
+            main_ax.set_ylim(
+                feature_cfg.logy_min, y_max * np.power(10, np.log10(y_max) / 2)
+            )
+        else:
+            _, y_max = main_ax.get_ylim()
+            main_ax.set_ylim(0, y_max * 1.4)
+        main_ax.legend(loc="upper right")
+        if ac.plot_atlas_label:
+            ampl.plot.draw_atlas_label(
+                0.05, 0.95, ax=main_ax, **(ac.atlas_label.get_config_dict())
+            )
+        fig.suptitle(f"{feature} (background)")
+        fig.savefig(f"{save_dir}/{feature}(bkg).{plot_cfg.save_format}")
         plt.close()
-        # plot sig
-        fig, ax = plt.subplots()
-        feature_cfg.update(
-            {
-                # "facecolor": plot_config.sig_color,
-                "facecolor": "none",
-                "edgecolor": "red",
-                "label": "signal",
-            }
-        )
-        plot_hist_plt(
-            ax, sig_fill_array, sig_fill_weights, feature_cfg,
-        )
-        ax.legend(loc="upper right")
-        fig.suptitle(feature)
-        fig.savefig(f"{save_dir}/{feature}_sig.{plot_config.save_format}")
-        plt.close()
-    else:
-        fig, ax = plt.subplots()
-        # plot bkg
-        feature_cfg.update(
-            {
-                "facecolor": plot_config.bkg_color,
-                "edgecolor": "black",
-                "label": "background",
-            }
-        )
-        plot_hist_plt(
-            ax, bkg_fill_array, bkg_fill_weights, feature_cfg,
-        )
-        # plot sig
-        feature_cfg.update(
-            {
-                # "facecolor": plot_config.sig_color,
-                "facecolor": "none",
-                "edgecolor": "red",
-                "label": "signal",
-            }
-        )
-        plot_hist_plt(
-            ax, sig_fill_array, sig_fill_weights, feature_cfg,
-        )
-        ax.legend(loc="upper right")
-        fig.suptitle(feature)
-        fig.savefig(f"{save_dir}/{feature}.{plot_config.save_format}")
-        plt.close()
-
-
-def plot_inputs_cut_dnn(
-    feature,
-    sig_fill_array,
-    sig_fill_weights,
-    sig_fill_weights_dnn,
-    bkg_fill_array,
-    bkg_fill_weights,
-    bkg_fill_weights_dnn,
-    plot_config={},
-    save_dir=".",
-):
-    feature_cfg = plot_config.clone()
-    if feature in plot_config.__dict__.keys():
-        feature_cfg_tmp = getattr(plot_config, feature)
-        feature_cfg.update(feature_cfg_tmp.get_config_dict())
-    # plot sig
-    fig = plt.figure()
-    gs = gridspec.GridSpec(2, 1, height_ratios=[3, 1])
-    gs.update(hspace=0)
-    ax0 = plt.subplot(gs[0])
-    feature_cfg.update(
-        {
-            "facecolor": "none",
-            "edgecolor": plot_config.sig_color,
-            "label": "signal-not-cut",
-            "hatch": "///",
-        }
-    )
-    plot_hist_plt(
-        ax0, sig_fill_array, sig_fill_weights, feature_cfg,
-    )
-    feature_cfg.update(
-        {
-            "facecolor": plot_config.sig_color,
-            "edgecolor": "none",
-            "label": "signal-cut-dnn",
-            "hatch": None,
-        }
-    )
-    plot_hist_plt(
-        ax0, sig_fill_array, sig_fill_weights_dnn, feature_cfg,
-    )
-    ax0.legend(loc="upper right")
-    xlim = ax0.get_xlim()
-    ax1 = plt.subplot(gs[1])
-    ax1.set_xlim(xlim)
-    feature_cfg.update(
-        {
-            "facecolor": "none",
-            "edgecolor": plot_config.sig_color,
-            "label": None,
-            "hatch": None,
-        }
-    )
-    plot_hist_ratio_plt(
-        ax1,
-        sig_fill_array,
-        sig_fill_weights_dnn,
-        sig_fill_array,
-        sig_fill_weights,
-        feature_cfg,
-    )
-    fig.suptitle(feature, fontsize=16)
-    fig.savefig(f"{save_dir}/{feature}_sig.{plot_config.save_format}")
-    plt.close()
-
-    # plot bkg
-    fig = plt.figure()
-    gs = gridspec.GridSpec(2, 1, height_ratios=[3, 1])
-    gs.update(hspace=0)
-    ax0 = plt.subplot(gs[0])
-    feature_cfg.update(
-        {
-            "facecolor": "none",
-            "edgecolor": plot_config.bkg_color,
-            "label": "background-no-cut",
-            "hatch": "///",
-        }
-    )
-    plot_hist_plt(
-        ax0, bkg_fill_array, bkg_fill_weights, feature_cfg,
-    )
-    feature_cfg.update(
-        {
-            "facecolor": plot_config.bkg_color,
-            "edgecolor": "none",
-            "label": "background-cut-dnn",
-            "hatch": "///",
-        }
-    )
-    plot_hist_plt(
-        ax0, bkg_fill_array, bkg_fill_weights_dnn, feature_cfg,
-    )
-    ax0.legend(loc="upper right")
-    ax0.set_xticks([])
-    xlim = ax0.get_xlim()
-    ax1 = plt.subplot(gs[1])
-    ax1.set_xlim(xlim)
-    feature_cfg.update(
-        {
-            "facecolor": "none",
-            "edgecolor": plot_config.bkg_color,
-            "label": None,
-            "hatch": None,
-        }
-    )
-    plot_hist_ratio_plt(
-        ax1,
-        bkg_fill_array,
-        bkg_fill_weights_dnn,
-        bkg_fill_array,
-        bkg_fill_weights,
-        feature_cfg,
-    )
-    fig.suptitle(feature, fontsize=16)
-    fig.savefig(f"{save_dir}/{feature}_bkg.{plot_config.save_format}")
-    plt.close()

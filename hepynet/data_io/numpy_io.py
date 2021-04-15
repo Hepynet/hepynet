@@ -196,7 +196,6 @@ def load_npy_arrays(
 
     """
     # get settings from config file
-    logger.debug("@ data_io.numpy_io.load_npy_arrays")
     job_config_copy = job_config.clone()
     rc = job_config_copy.run
     ic = job_config_copy.input

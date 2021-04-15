@@ -55,7 +55,9 @@ def execute():
             ex_test = job_executor.job_executor(yaml_cfg)
             ex_test.execute_jobs()
             job_end_time = time.perf_counter()
-            logger.info(f"Time consumed: {job_end_time - job_start_time}")
+            time_consumed = job_end_time - job_start_time
+            time_consumed_str = time.strftime("%H:%M:%S", time.gmtime(time_consumed))
+            logger.info(f"Time consumed: {time_consumed_str}")
         logger.info("#" * 80)
         logger.info("Done!")
         logger.info("#" * 80)

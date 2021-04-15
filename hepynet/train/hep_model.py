@@ -7,6 +7,7 @@ import pathlib
 from typing import Iterable, Optional
 
 import keras
+from matplotlib.pyplot import axis
 import numpy as np
 import tensorflow as tf
 import yaml
@@ -76,28 +77,6 @@ class Model_Base(object):
         logger.warn(
             "The virtual function Model_Base.compile() is called, please implement override funcion!"
         )
-
-    def get_corrcoef(self) -> dict:
-        features = self._job_config.input.selected_features
-        bkg_df = self._feedbox.get_reweight_merged(
-            "xb", array_key="all", reset_mass=False
-        )
-        bkg_matrix = array_utils.corr_matrix(
-            bkg_df[features].values, bkg_df["weight"].values
-        )
-        logger.debug(f"bkg_corr_matrix: {bkg_matrix}")
-        sig_df = self._feedbox.get_reweight_merged(
-            "xs", array_key="all", reset_mass=False
-        )
-        sig_matrix = array_utils.corr_matrix(
-            sig_df[features].values, sig_df["weight"].values
-        )
-        logger.debug(f"sig_corr_matrix: {sig_matrix}")
-        corrcoef_matrix_dict = {}
-        corrcoef_matrix_dict["bkg"] = bkg_matrix
-        corrcoef_matrix_dict["sig"] = sig_matrix
-        corrcoef_matrix_dict["labels"] = features
-        return corrcoef_matrix_dict
 
     def get_feedbox(self) -> feed_box.Feedbox:
         return self._feedbox
@@ -419,33 +398,8 @@ class Model_Sequential_Base(Model_Base):
         logger.info("-" * 40)
         logger.info("Loading inputs")
         ## get input
-        input_df = self._feedbox.get_train_test_df(
-            sig_key=ic.sig_key,
-            bkg_key=ic.bkg_key,
-            multi_class_bkgs=tc.output_bkg_node_names,
-        )
-        # input_df = self._feedbox.get_processed_df()
-        # input_df.info(verbose=True)
-        # input_df.describe()
+        input_df = self._feedbox.get_processed_df()
         cols = ic.selected_features
-
-        if ic.reset_mass:
-            ref_df = input_df.loc[
-                input_df["is_sig"] == True, [ic.reset_feature_name, "weight"]
-            ]
-            ref_array = ref_df[ic.reset_feature_name]
-            ref_weight = ref_df["weight"]
-            reset_index = input_df["is_sig"] == False
-            ref_weight_positive = ref_weight.copy()
-            ref_weight_positive[ref_weight_positive < 0] = 0
-            sump = ref_weight_positive.sum()
-            reset_values = np.random.choice(
-                ref_array.values,
-                size=len(reset_index),
-                p=(1 / sump) * ref_weight_positive.values,
-            )
-            for id, reset_value in zip(reset_index, reset_values):
-                input_df[id, ic.reset_feature_name] = reset_value
 
         train_index = input_df["is_train"] == True
         test_index = input_df["is_train"] == False
@@ -456,23 +410,6 @@ class Model_Sequential_Base(Model_Base):
         wt_train = input_df.loc[train_index, "weight"].values
         wt_test = input_df.loc[test_index, "weight"].values
         del input_df
-
-        # input_dict = self._feedbox.get_train_test_inputs()
-        #
-        # x_train = input_dict["x_train"]
-        # x_test = input_dict["x_test"]
-        # y_train = input_dict["y_train"]
-        # y_test = input_dict["y_test"]
-        # wt_train = input_dict["wt_train"]
-        # wt_test = input_dict["wt_test"]
-
-        # save_dir = pathlib.Path(rc.save_sub_dir) / "input"
-        # x_train = np.load(save_dir / "x_train.npy")
-        # x_test = np.load(save_dir / "x_test.npy")
-        # y_train = np.load(save_dir / "y_train.npy")
-        # y_test = np.load(save_dir / "y_test.npy")
-        # wt_train = np.load(save_dir / "wt_train.npy")
-        # wt_test = np.load(save_dir / "wt_test.npy")
 
         if ic.rm_negative_weight_events == True:
             wt_train = wt_train.clip(min=0)
@@ -505,7 +442,6 @@ class Model_Sequential_Base(Model_Base):
                 y_fold,
                 batch_size=tc.batch_size,
                 epochs=tc.epochs,
-                # validation_split=tc.val_split,
                 validation_data=val_fold,
                 shuffle=True,
                 class_weight={1: tc.sig_class_weight, 0: tc.bkg_class_weight},

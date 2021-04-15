@@ -73,21 +73,18 @@ def corr(x, y, w):
     return cov(x, y, w) / np.sqrt(cov(x, x, w) * cov(y, y, w))
 
 
-def corr_matrix(x, w=None, ignore_negative_weight=True):
+def corr_matrix(x, w=None):
     """Calculates correlation coefficient matrix"""
     if w is None:
         w = np.ones(x.shape[0])
     num_features = x.shape[1]
-    if ignore_negative_weight:
-        w_p = w.clip(min=0)
-        return np.cov(np.transpose(x), aweights=w_p)
-    else:
-        corr_m = np.zeros((num_features, num_features))
-        for row in range(num_features):
-            for col in range(row + 1):
-                corr_m[row][col] = corr(x[:, row], x[:, col], w)
-                corr_m[col][row] = corr_m[row][col]
-        return corr_m
+    # np.cov can't deal with negative weights, use self-defined function for now
+    corr_m = np.zeros((num_features, num_features))
+    for row in range(num_features):  # TODO: need to optimize the algorithm
+        for col in range(row + 1):
+            corr_m[row][col] = corr(x[:, row], x[:, col], w)
+            corr_m[col][row] = corr_m[row][col]
+    return corr_m
 
 
 def check_keys_has_sepa(output_keys):
@@ -108,6 +105,12 @@ def clip_negative_weights(weights: np.ndarray):
     """Sets negative weights to zero"""
     logger.debug("Clip negative weights...")
     weights[:] = np.clip(weights, a_min=0, a_max=None)
+
+def extract_bkg_df(df: pd.DataFrame):
+    return df.loc[(df["is_mc"] == True) & (df["is_sig"] == False), :]
+
+def extract_sig_df(df: pd.DataFrame):
+    return df.loc[df["is_sig"] == True, :]
 
 
 def get_cut_index(np_array, cut_values, cut_types):

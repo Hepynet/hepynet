@@ -1,20 +1,22 @@
 import logging
-import pathlib
 
+import atlas_mpl_style as ampl
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 
 from hepynet.evaluate import evaluate_utils
 from hepynet.train import hep_model
-from hepynet.common import common_utils
 
 logger = logging.getLogger("hepynet")
 
 
-# TODO: plots look strange, need to check the implementation with new data structure
-# use with cautious
 def plot_mva_scores(
-    model_wrapper: hep_model.Model_Base, job_config, save_dir, file_name="mva_scores"
+    model_wrapper: hep_model.Model_Base,
+    df: pd.DataFrame,
+    job_config,
+    save_dir,
+    file_name="mva_scores",
 ):
     # initialize
     logger.info("Plotting MVA scores")
@@ -23,165 +25,113 @@ def plot_mva_scores(
     ac = job_config.apply.clone()
     plot_config = ac.cfg_mva_scores_data_mc.clone()
     model = model_wrapper.get_model()
-    feedbox = model_wrapper.get_feedbox()
-
     # prepare signal
     sig_scores_dict = {}
     sig_weights_dict = {}
     for sig_key in plot_config.sig_list:
-        input_df = feedbox.get_reshape_merged("xs", array_key=sig_key)
-        sig_score, _, _ = evaluate_utils.k_folds_predict(
-            model, input_df[ic.selected_features].values
-        )
+        sig_df = df.loc[df["sample_name"] == sig_key, :]
+        x = sig_df[ic.selected_features].values
+        sig_score, _, _ = evaluate_utils.k_folds_predict(model, x)
         if sig_score.ndim == 1:
             sig_score = sig_score.reshape((-1, 1))
         sig_scores_dict[sig_key] = sig_score
-        sig_weights_dict[sig_key] = input_df["weight"]
-
+        sig_weights_dict[sig_key] = sig_df["weight"].values
     # prepare background
     bkg_scores_dict = {}
     bkg_weights_dict = {}
     for bkg_key in plot_config.bkg_list:
-        input_df = feedbox.get_reshape_merged("xb", array_key=bkg_key)
-        bkg_score, _, _ = evaluate_utils.k_folds_predict(
-            model, input_df[ic.selected_features].values
-        )
+        bkg_df = df.loc[df["sample_name"] == bkg_key, :]
+        x = bkg_df[ic.selected_features].values
+        bkg_score, _, _ = evaluate_utils.k_folds_predict(model, x)
         if bkg_score.ndim == 1:
             bkg_score = bkg_score.reshape((-1, 1))
         bkg_scores_dict[bkg_key] = bkg_score
-        bkg_weights_dict[bkg_key] = input_df["weight"]
-
+        bkg_weights_dict[bkg_key] = bkg_df["weight"].values
     # prepare data
-    data_scores = np.array([])
-    data_weights = np.array([])
+    # TODO: support data plots
+    data_scores = None
+    data_weights = None
     if plot_config.apply_data:
         data_key = plot_config.data_key
-        input_df = feedbox.get_reshape_merged("xd", array_key=data_key)
-        data_scores, _, _ = evaluate_utils.k_folds_predict(
-            model, input_df[ic.selected_features].values
-        )
-        data_weights = input_df["weight"]
-
+        data_df = df.loc[df["sample_name"] == data_key, :]
+        x = data_df[ic.selected_features].values
+        data_scores, _, _ = evaluate_utils.k_folds_predict(model, x)
+        data_weights = data_df["weight"].values
     # make plots
     all_nodes = ["sig"] + tc.output_bkg_node_names
     for node_id, node in enumerate(all_nodes):
-        fig, ax = plt.subplots()
-        sig_node_dict = {}
-        for key, value in sig_scores_dict.items():
-            sig_node_dict[key] = value[:, node_id]
-        bkg_node_dict = {}
+        fig, ax = plt.subplots(figsize=(16.667, 16.667))
+        # plot bkg
+        bkg_collect = list()
+        bkg_edges = None
         for key, value in bkg_scores_dict.items():
-            bkg_node_dict[key] = value[:, node_id]
-        plot_scores_plt(
-            ax,
-            plot_config,
-            sig_node_dict,
-            sig_weights_dict,
-            bkg_node_dict,
-            bkg_weights_dict,
-            data_scores,
-            data_weights,
-        )
+            bkg_bins, bkg_edges = np.histogram(
+                value[:, node_id].flatten(),
+                bins=plot_config.bins,
+                range=(0, 1),
+                weights=bkg_weights_dict[key],
+                density=plot_config.density,
+            )
+            bkg = ampl.plot.Background(key, bkg_bins)
+            bkg_collect.append(bkg)
+        ampl.plot.plot_backgrounds(bkg_collect, bkg_edges, ax=ax)
+        # plot sig
+        for key, value in sig_scores_dict.items():
+            sig_bins, sig_edges = np.histogram(
+                value[:, node_id].flatten(),
+                bins=plot_config.bins,
+                range=(0, 1),
+                weights=sig_weights_dict[key],
+                density=plot_config.density,
+            )
+            ampl.plot.plot_signal(key, sig_edges, sig_bins)
+        ax.set_xlim(0, 1)
+        if plot_config.log:
+            ax.set_yscale("log")
+            _, y_max = ax.get_ylim()
+            ax.set_ylim(
+                plot_config.logy_min,
+                y_max * np.power(10, np.log10(y_max / plot_config.logy_min) / 2),
+            )
+        else:
+            _, y_max = ax.get_ylim()
+            ax.set_ylim(0, y_max * 1.4)
+        ax.legend(loc="upper right", ncol=2)
+        if ac.plot_atlas_label:
+            ampl.plot.draw_atlas_label(
+                0.05, 0.95, ax=ax, **(ac.atlas_label.get_config_dict())
+            )
         fig.savefig(f"{save_dir}/{file_name}_node_{node}.{plot_config.save_format}")
 
     return 0  # success run
 
 
-def plot_scores_plt(
-    ax,
-    plot_config,
-    sig_scores_dict,
-    sig_weights_dict,
-    bkg_scores_dict,
-    bkg_weights_dict,
-    data_scores=None,
-    data_weights=None,
+def plot_train_test_compare(
+    model_wrapper: hep_model.Model_Base, df, job_config, save_dir
 ):
-    """Plots training score distribution for different background with matplotlib.
-    """
-    logger.debug("Plotting scores with matplotlib backend")
-    config = plot_config.clone()
-    if config.sig_list is None:
-        config.sig_list = list(sig_scores_dict.keys())
-    if config.bkg_list is None:
-        config.bkg_list = list(bkg_scores_dict.keys())
-    # plot background
-    ax.hist(
-        np.transpose(list(bkg_scores_dict.values())),
-        bins=config.bins,
-        range=config.range,
-        weights=np.transpose(list(bkg_weights_dict.values())),
-        histtype="bar",
-        label=config.bkg_list,
-        density=config.density,
-        stacked=True,
-    )
-    # plot signal
-    ax.hist(
-        np.transpose(list(sig_scores_dict.values())),
-        bins=config.bins,
-        range=config.range,
-        weights=np.transpose(list(sig_weights_dict.values())),
-        histtype="step",
-        label=config.sig_list,
-        density=config.density,
-    )
-    # plot data
-    if config.apply_data:
-        evaluate_utils.paint_bars(
-            ax,
-            data_scores,
-            "data",
-            weights=data_weights,
-            bins=config.bins,
-            range=config.range,
-            density=config.density,
-            use_error=False,
-        )
-    ax.set_title(config.plot_title)
-    ax.legend(loc="upper center")
-    ax.set_xlabel("output score")
-    ax.set_ylabel("arb. unit")
-    ax.grid()
-    if config.log:
-        ax.set_yscale("log")
-        ax.set_title(f"{config.plot_title}(log)")
-    else:
-        ax.set_title(f"{config.plot_title}(lin)")
-
-
-def plot_train_test_compare(model_wrapper: hep_model.Model_Base, job_config, save_dir):
     """Plots train/test scores distribution to check overtrain"""
     # initialize
-    logger.info("Plotting train/test scores (original mass).")
-    ic = job_config.input
-    tc = job_config.train
+    logger.info("Plotting train/test scores.")
+    ic = job_config.input.clone()
+    tc = job_config.train.clone()
+    ac = job_config.apply.clone()
     plot_config = job_config.apply.cfg_train_test_compare
     model = model_wrapper.get_model()
-    feedbox = model_wrapper.get_feedbox()
-    sig_key = common_utils.get_default_if_none(plot_config.sig_key, ic.sig_key)
-    bkg_key = common_utils.get_default_if_none(plot_config.bkg_key, ic.bkg_key)
     all_nodes = ["sig"] + tc.output_bkg_node_names
-
-    input_df = feedbox.get_train_test_df(
-        sig_key=sig_key,
-        bkg_key=bkg_key,
-        multi_class_bkgs=tc.output_bkg_node_names,
-        reset_mass=feedbox.get_job_config().input.reset_mass,
-    )
+    # get inputs
     cols = ic.selected_features
-    train_index = input_df["is_train"] == True
-    test_index = input_df["is_train"] == False
-    sig_index = (input_df["is_sig"] == True) & (input_df["is_mc"] == True)
-    bkg_index = (input_df["is_sig"] == False) & (input_df["is_mc"] == True)
-    xs_train = input_df.loc[sig_index & train_index, cols].values
-    xs_test = input_df.loc[sig_index & test_index, cols].values
-    xs_train_weight = input_df.loc[sig_index & train_index, ["weight"]].values
-    xs_test_weight = input_df.loc[sig_index & test_index, ["weight"]].values
-    xb_train = input_df.loc[bkg_index & train_index, cols].values
-    xb_test = input_df.loc[bkg_index & test_index, cols].values
-    xb_train_weight = input_df.loc[bkg_index & train_index, ["weight"]].values
-    xb_test_weight = input_df.loc[bkg_index & test_index, ["weight"]].values
+    train_index = df["is_train"] == True
+    test_index = df["is_train"] == False
+    sig_index = (df["is_sig"] == True) & (df["is_mc"] == True)
+    bkg_index = (df["is_sig"] == False) & (df["is_mc"] == True)
+    xs_train = df.loc[sig_index & train_index, cols].values
+    xs_test = df.loc[sig_index & test_index, cols].values
+    xs_train_weight = df.loc[sig_index & train_index, ["weight"]].values
+    xs_test_weight = df.loc[sig_index & test_index, ["weight"]].values
+    xb_train = df.loc[bkg_index & train_index, cols].values
+    xb_test = df.loc[bkg_index & test_index, cols].values
+    xb_train_weight = df.loc[bkg_index & train_index, ["weight"]].values
+    xb_test_weight = df.loc[bkg_index & test_index, ["weight"]].values
 
     # plot for each nodes
     num_nodes = len(all_nodes)
@@ -191,45 +141,99 @@ def plot_train_test_compare(model_wrapper: hep_model.Model_Base, job_config, sav
     xs_test_scores, _, _ = evaluate_utils.k_folds_predict(model, xs_test)
     for node_num in range(num_nodes):
         fig, ax = plt.subplots()
-        # plot scores
-        ## plot train scores
-        plot_scores_plt(
-            ax,
-            plot_config,
-            {"s-test": xs_test_scores[:, node_num].flatten()},
-            {"s-test": xs_test_weight.flatten()},
-            {"b-test": xb_test_scores[:, node_num].flatten()},
-            {"b-test": xb_test_weight.flatten()},
-        )
-        ## plot test scores
-        evaluate_utils.paint_bars(
-            ax,
-            xb_train_scores[:, [node_num]].flatten(),
-            "b-train",
-            weights=xb_train_weight.flatten(),
+        # plot test scores
+        bkg_bins, bkg_edges = np.histogram(
+            xb_test_scores,
             bins=plot_config.bins,
-            range=plot_config.range,
+            range=(0, 1),
+            weights=xb_test_weight,
             density=plot_config.density,
-            use_error=True,
-            color="green",
-            fmt=".",
         )
-        evaluate_utils.paint_bars(
-            ax,
-            xs_train_scores[:, [node_num]].flatten(),
-            "s-train",
-            weights=xs_train_weight.flatten(),
+        bkg = ampl.plot.Background(
+            "background (test)", bkg_bins, color=plot_config.bkg_color
+        )
+        ampl.plot.plot_backgrounds([bkg], bkg_edges, ax=ax)
+        sig_bins, sig_edges = np.histogram(
+            xs_test_scores,
             bins=plot_config.bins,
-            range=plot_config.range,
+            range=(0, 1),
+            weights=xs_test_weight,
             density=plot_config.density,
-            use_error=True,
-            color="pink",
-            fmt=".",
         )
-        ax.legend(loc="upper center")
-        # Make and show plots
-        if feedbox.get_job_config().input.reset_mass:
-            file_name = f"mva_scores_{all_nodes[node_num]}_original_mass"
+        ampl.plot.plot_signal(
+            "signal (test)", sig_edges, sig_bins, color=plot_config.sig_color
+        )
+        # plot train scores
+        ## bkg
+        bkg_bins, bkg_edges = np.histogram(
+            xb_train_scores,
+            bins=plot_config.bins,
+            range=(0, 1),
+            weights=xb_train_weight,
+            density=plot_config.density,
+        )
+        sumw2, _ = np.histogram(
+            xb_train_scores,
+            bins=plot_config.bins,
+            range=(0, 1),
+            weights=np.power(xb_train_weight, 2),
+        )
+        bkg_stats_errs = np.sqrt(sumw2)
+        if plot_config.density:
+            norm_sum = np.sum(xb_train_weight) * (1 / plot_config.bins)
+            bkg_stats_errs /= norm_sum
+        err_x = 0.5 * (bkg_edges[:-1] + bkg_edges[1:])
+        ax.errorbar(
+            err_x,
+            bkg_bins,
+            bkg_stats_errs,
+            0.5 / plot_config.bins,
+            fmt="ok",
+            label="background (train)",
+            markerfacecolor=plot_config.bkg_color,
+        )
+        ## sig
+        sig_bins, sig_edges = np.histogram(
+            xs_train_scores,
+            bins=plot_config.bins,
+            range=(0, 1),
+            weights=xs_train_weight,
+            density=plot_config.density,
+        )
+        sumw2, _ = np.histogram(
+            xs_train_scores,
+            bins=plot_config.bins,
+            range=(0, 1),
+            weights=np.power(xs_train_weight, 2),
+        )
+        sig_stats_errs = np.sqrt(sumw2)
+        if plot_config.density:
+            norm_sum = np.sum(xs_train_weight) * (1 / plot_config.bins)
+            sig_stats_errs /= norm_sum
+        err_x = 0.5 * (sig_edges[:-1] + sig_edges[1:])
+        ax.errorbar(
+            err_x,
+            sig_bins,
+            sig_stats_errs,
+            0.5 / plot_config.bins,
+            fmt="ok",
+            label="signal (train)",
+            markerfacecolor=plot_config.sig_color,
+        )
+        # final adjustments
+        ax.set_xlim(0, 1)
+        if plot_config.log:
+            ax.set_yscale("log")
+            _, y_max = ax.get_ylim()
+            ax.set_ylim(plot_config.logy_min, y_max * np.power(10, np.log10(y_max) / 2))
         else:
-            file_name = f"mva_scores_{all_nodes[node_num]}_reset_mass"
+            _, y_max = ax.get_ylim()
+            ax.set_ylim(0, y_max * 1.4)
+        ax.legend(loc="upper right")
+        if ac.plot_atlas_label:
+            ampl.plot.draw_atlas_label(
+                0.05, 0.95, ax=ax, **(ac.atlas_label.get_config_dict())
+            )
+        # Make and show plots
+        file_name = f"mva_scores_{all_nodes[node_num]}"
         fig.savefig(save_dir / f"{file_name}.{plot_config.save_format}")

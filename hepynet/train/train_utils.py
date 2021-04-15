@@ -6,6 +6,7 @@ import math
 import numpy as np
 from sklearn.model_selection import StratifiedKFold
 from hepynet.train import hep_model
+
 logger = logging.getLogger("hepynet")
 
 
@@ -70,6 +71,8 @@ def get_train_val_indices(x, y, wt, val_split, k_folds=None):
         # skf = KFold(n_splits=k_folds, shuffle=True)
         skf = StratifiedKFold(n_splits=k_folds, shuffle=True)
         for train_index, val_index in skf.split(x, y):
+            np.random.shuffle(train_index)
+            np.random.shuffle(val_index)
             train_indices_list.append(train_index)
             validation_indices_list.append(val_index)
     else:
@@ -82,6 +85,8 @@ def get_train_val_indices(x, y, wt, val_split, k_folds=None):
             range(array_len), int(array_len * 1.0 * val_split), replace=False
         )
         train_index = np.setdiff1d(np.array(range(array_len)), val_index)
+        np.random.shuffle(train_index)
+        np.random.shuffle(val_index)
         train_indices_list.append(train_index)
         validation_indices_list.append(val_index)
     return train_indices_list, validation_indices_list

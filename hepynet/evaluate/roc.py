@@ -1,6 +1,7 @@
 import logging
 import pathlib
 
+import atlas_mpl_style as ampl
 import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.metrics import auc, roc_auc_score, roc_curve
@@ -53,34 +54,33 @@ def plot_auc_text(ax, titles, auc_values):
     )
 
 
-def plot_multi_class_roc(model_wrapper: hep_model.Model_Base, job_config, save_dir):
+def plot_multi_class_roc(model_wrapper: hep_model.Model_Base, df, job_config, save_dir):
     """Plots roc curve."""
     logger.info("Plotting train/test roc curve.")
     # setup config
     ic = job_config.input.clone()
     tc = job_config.train.clone()
+    ac = job_config.apply.clone()
     # prepare
     model = model_wrapper.get_model()
     output_bkg_node_names = tc.output_bkg_node_names
-    feedbox = model_wrapper.get_feedbox()
     output_bkg_node_names = tc.output_bkg_node_names
     all_nodes = ["sig"] + output_bkg_node_names
-    input_df = feedbox.get_train_test_df(
-        sig_key=ic.sig_key,
-        bkg_key=ic.bkg_key,
-        multi_class_bkgs=output_bkg_node_names,
-        reset_mass=False,  # don't reset mass when apply model!
-    )
+    if df.shape[0] > 1000000:
+        logger.warn(
+            f"Too large input detected ({df.shape[0]} rows), randomly sampling 1000000 rows for roc calculation"
+        )
+        df = df.sample(n=1000000)
     cols = ic.selected_features
-    train_index = input_df["is_train"] == True
-    test_index = input_df["is_train"] == False
-    x_train = input_df.loc[train_index, cols].values
-    x_test = input_df.loc[test_index, cols].values
-    y_train = input_df.loc[train_index, ["y"]].values
-    y_test = input_df.loc[test_index, ["y"]].values
-    wt_train = input_df.loc[train_index, "weight"].values
-    wt_test = input_df.loc[test_index, "weight"].values
-    
+    train_index = df["is_train"] == True
+    test_index = df["is_train"] == False
+    x_train = df.loc[train_index, cols].values
+    x_test = df.loc[test_index, cols].values
+    y_train = df.loc[train_index, ["y"]].values
+    y_test = df.loc[test_index, ["y"]].values
+    wt_train = df.loc[train_index, "weight"].values
+    wt_test = df.loc[test_index, "weight"].values
+
     num_nodes = len(all_nodes)
     color_map = plt.get_cmap("Pastel1")
     auc_labels = []
@@ -126,15 +126,17 @@ def plot_multi_class_roc(model_wrapper: hep_model.Model_Base, job_config, save_d
     auc_dict["auc_train_original"] = auc_train
     auc_dict["auc_test_original"] = auc_test
     # Make plots
-    ## save linear scale plot
-    ax.set_ylim(0, 1)
+    ax.set_ylim(0, 1.4)
     ax.set_yscale("linear")
+    if ac.plot_atlas_label:
+        ampl.plot.draw_atlas_label(
+            0.05, 0.95, ax=ax, **(ac.atlas_label.get_config_dict())
+        )
+    ## save linear scale plot
     fig.savefig(save_dir / "roc_linear.png")
-    ## log scale
+    ## log scale x
     ax.set_xlim(1e-5, 1)
     ax.set_xscale("log")
-    # ax.set_ylim(0.1, 1 - 1e-4)
-    ax.set_yscale("linear")
     fig.savefig(save_dir / "roc_logx.png")
     return auc_dict
 
@@ -164,7 +166,7 @@ def plot_roc(
         y[:, node_num], y_pred_mean[:, node_num], sample_weight=weights
     )
     ax.plot(fpr_dm, tpr_dm, color=color, linestyle=linestyle)
-    ax.set_title("roc curve")
+    ax.set_title("Roc Curve")
     ax.set_xlabel("fpr")
     ax.set_ylabel("tpr")
     ax.set_ylim(ylim[0], ylim[-1])
