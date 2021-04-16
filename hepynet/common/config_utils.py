@@ -180,10 +180,10 @@ def load_pc_meta() -> dict:
             logger.debug(f"pc_meta config loaded: {pc_meta_cfg_path}")
             return pc_meta_dict
     except:
-        logger.critical(
+        logger.warn(
             "Can't load pc_meta config file, please check: share/cross_platform/pc_meta.yaml"
         )
-        raise FileNotFoundError
+        return dict()
 
 
 def load_yaml_dict(yaml_path) -> dict:

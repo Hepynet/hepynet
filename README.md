@@ -2,7 +2,7 @@
 
 **H**igh **e**nergy physics, **py**thon-based, neural-**net**work assistant framework
 
-![forthebadge](https://img.shields.io/badge/hepynet-v0.4.0-blue)
+![forthebadge](https://img.shields.io/badge/hepynet-v0.4.1-blue)
 
 ## **Introduction**
 
@@ -28,10 +28,9 @@ pip install hepynet
 
 ## **Set Up the Workspace**
 
-Please refer to [hepynet_workspace](https://github.com/StarPrecursor/hepynet_workspace) to see how to set up the workspace of hepynet.
+Please refer to [hepynet_example](https://github.com/Hepynet/hepynet_example) to see how to set up the workspace of hepynet.
 
-## **Release Note - v0.4.0**
+## **Release Note - v0.4.1**
 
-- This is the first public release, totally re-written to simplify the workflow and optimize memory usage.
-
-- Part of the utilities (Bayesian optimization, k-fold training ... ) are disabled to reduce the test/debug workload, will be added back in the coming releases.
+- Use pandas.Dataframe to manage data
+- Better plots styles to meet ATLAS style requirements wit* the help of [atlas-mpl-style](https://pypi.org/project/atlas-mpl-style)

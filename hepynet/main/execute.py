@@ -21,7 +21,7 @@ def execute():
         "-v",
         "--verbose",
         required=False,
-        help="verbose debug infomation",
+        help="verbose debug information",
         action="store_true",
     )
     args = parser.parse_args()
