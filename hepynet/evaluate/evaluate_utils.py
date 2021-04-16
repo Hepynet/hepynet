@@ -37,7 +37,10 @@ def dump_fit_npy(
 
     platform_meta = config_utils.load_current_platform_meta()
     data_path = platform_meta["data_path"]
-    save_dir = f"{data_path}/{npy_dir}"
+    if not data_path:
+        save_dir = pathlib.Path(npy_dir)
+    else:
+        save_dir = pathlib.Path(data_path) / npy_dir
     pathlib.Path(save_dir).mkdir(parents=True, exist_ok=True)
     logger.info(f"> Arrays to be saved to {save_dir}")
 
