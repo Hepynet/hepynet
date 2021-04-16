@@ -161,10 +161,10 @@ def load_current_platform_meta() -> dict:
             for my_platform in platform_meta[my_host]:
                 if re.match(f"({my_platform})", current_platform):
                     return platform_meta[my_host][my_platform]
-    logger.critical(
+    logger.warn(
         f"No meta data found for current host {current_hostname} with platform {current_platform}, please update the config at share/cross_platform/pc_meta.yaml"
     )
-    exit(1)
+    return {"data_path": None}
 
 
 def load_pc_meta() -> dict:
