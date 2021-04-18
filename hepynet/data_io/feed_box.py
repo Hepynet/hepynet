@@ -43,13 +43,24 @@ class Feedbox(object):
     def get_raw_df(self):
         logger.info("Loading raw input DataFrame...")
         ic = self._job_config.input.clone()
+        raw_df: pd.DataFrame = pd.read_feather(self._data_dir / ic.input_path)
+        # select events in sig/bkg sample_list
+        sample_list = ic.sig_list + ic.bkg_list
+        logger.info(f"> Loading samples in list: {sample_list}")
+        raw_df = raw_df[raw_df["sample_name"].isin(sample_list)]
+        # select events by extra cut features
+        if ic.cut_expression is not None:
+            logger.info(f"> Cutting inputs according to expression: {ic.cut_expression}")
+            raw_df = raw_df.query(ic.cut_expression)
+        # return
+        raw_df.reset_index(drop=True, inplace=True)
         logger.info("> Successfully loaded raw input DataFrame...")
-        return pd.read_feather(self._data_dir / ic.input_path)
+        return raw_df
 
     def get_processed_df(self):
         logger.info("Loading processed input DataFrame...")
         ic = self._job_config.input.clone()
-        out_df: pd.DataFrame = pd.read_feather(self._data_dir / ic.input_path)
+        out_df: pd.DataFrame = self.get_raw_df()
         # reshape inputs
         if ic.reshape_input:
             logger.info("> Reshaping inputs")

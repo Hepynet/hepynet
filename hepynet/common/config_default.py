@@ -38,6 +38,7 @@ DEFAULT_CFG = {
         "cut_features": [],
         "cut_values": [],
         "cut_types": [],
+        "cut_expression": None,
         "test_rate": 0.2,
     },
     "train": {
