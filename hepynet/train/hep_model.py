@@ -437,6 +437,9 @@ class Model_Sequential_Base(Model_Base):
             val_y_fold = y_train[val_index]
             val_wt_fold = wt_train[val_index]
             val_fold = (val_x_fold, val_y_fold, val_wt_fold)
+            logger.info(
+                f"> Training on {len(y_fold)}, validating on {len(val_y_fold)} events."
+            )
             history_obj = fold_model.fit(
                 x_fold,
                 y_fold,

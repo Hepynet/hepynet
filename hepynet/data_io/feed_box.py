@@ -61,13 +61,14 @@ class Feedbox(object):
         logger.info("Loading processed input DataFrame...")
         ic = self._job_config.input.clone()
         out_df: pd.DataFrame = self.get_raw_df()
+        feature_include = ic.selected_features + ic.validation_features
         # reshape inputs
         if ic.reshape_input:
             logger.info("> Reshaping inputs")
             # check missing norm parameters
             missing_norms = []
             norm_alias = ic.feature_norm_alias.get_config_dict()
-            for feature in ic.selected_features:
+            for feature in feature_include:
                 if feature not in self._norm_dict:
                     found_norm_alias = False
                     # check feature normalization alias
@@ -92,7 +93,7 @@ class Feedbox(object):
                 )
                 self.update_norm_dict(missing_norms)
             # reshape inputs
-            for feature in ic.selected_features:
+            for feature in feature_include:
                 if feature in self._norm_dict:
                     f_mean = self._norm_dict[feature]["mean"]
                     f_var = self._norm_dict[feature]["variance"]

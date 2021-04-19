@@ -74,7 +74,7 @@ def paint_correlation_matrix(ax, corr_matrix, labels):
     )
 
 
-def plot_input(df: pd.DataFrame, job_config, save_dir=None):
+def plot_input(df: pd.DataFrame, job_config, save_dir=None, is_raw=True):
     """Plots input distributions comparision plots for sig/bkg/data"""
     # setup config
     ic = job_config.input.clone()
@@ -90,16 +90,25 @@ def plot_input(df: pd.DataFrame, job_config, save_dir=None):
         if feature in plot_cfg.__dict__.keys():
             feature_cfg_tmp = getattr(plot_cfg, feature)
             feature_cfg.update(feature_cfg_tmp.get_config_dict())
+        if is_raw:
+            plot_range = feature_cfg.range_raw
+        else:
+            plot_range = feature_cfg.range_processed
         # plot bkg
         bkg_df = array_utils.extract_bkg_df(df)
         bkg_wt = bkg_df["weight"].values
         fig, ax = plt.subplots()
         ax.hist(
             bkg_df[feature].values,
+            range=plot_range,
             weights=bkg_wt,
             label="background",
             **(feature_cfg.hist_kwargs_bkg.get_config_dict()),
         )
+        ax.set_xlabel(feature_cfg.x_label)
+        ax.set_ylabel(feature_cfg.y_label)
+        if plot_range:
+            ax.set_xlim(plot_range[0], plot_range[1])
         y_min, y_max = ax.get_ylim()
         ax.set_ylim(y_min, y_max * 1.4)
         ax.legend(loc="upper right")
@@ -116,16 +125,21 @@ def plot_input(df: pd.DataFrame, job_config, save_dir=None):
         fig, ax = plt.subplots()
         ax.hist(
             sig_df[feature].values,
+            range=plot_range,
             weights=sig_wt,
             label="signal",
             **(feature_cfg.hist_kwargs_sig.get_config_dict()),
         )
+        ax.set_xlabel(feature_cfg.x_label)
+        ax.set_ylabel(feature_cfg.y_label)
+        if plot_range:
+            ax.set_xlim(plot_range[0], plot_range[1])
         y_min, y_max = ax.get_ylim()
         ax.set_ylim(y_min, y_max * 1.4)
         ax.legend(loc="upper right")
         if ac.plot_atlas_label:
             ampl.plot.draw_atlas_label(
-                0.1, 0.9, ax=ax, **(ac.atlas_label.get_config_dict())
+                0.05, 0.95, ax=ax, **(ac.atlas_label.get_config_dict())
             )
         fig.suptitle(feature)
         fig.savefig(f"{save_dir}/{feature}_sig.{plot_cfg.save_format}")
@@ -192,12 +206,14 @@ def plot_input_dnn(
         if feature in plot_cfg.__dict__.keys():
             feature_cfg_tmp = getattr(plot_cfg, feature)
             feature_cfg.update(feature_cfg_tmp.get_config_dict())
+        plot_range = feature_cfg.range_processed
 
         # plot sig
         fig, main_ax, ratio_ax = ampl.ratio_axes()
         main_ax.hist(
             sig_array,
             bins=feature_cfg.bins,
+            range=plot_range,
             weights=sig_weights,
             histtype="step",
             color=feature_cfg.sig_color,
@@ -206,6 +222,7 @@ def plot_input_dnn(
         main_ax.hist(
             sig_array,
             bins=feature_cfg.bins,
+            range=plot_range,
             weights=sig_weights_dnn,
             histtype="stepfilled",
             color=feature_cfg.sig_color,
@@ -226,6 +243,11 @@ def plot_input_dnn(
             ratio_ax,
             plottype="raw",
         )
+        main_ax.set_ylabel(feature_cfg.y_label)
+        ratio_ax.set_xlabel(feature_cfg.x_label)
+        if plot_range:
+            main_ax.set_xlim(plot_range[0], plot_range[1])
+            ratio_ax.set_xlim(plot_range[0], plot_range[1])
         if feature_cfg.log:
             main_ax.set_yscale("log")
             _, y_max = main_ax.get_ylim()
@@ -248,6 +270,7 @@ def plot_input_dnn(
         main_ax.hist(
             bkg_array,
             bins=feature_cfg.bins,
+            range=plot_range,
             weights=bkg_weights,
             histtype="step",
             color=feature_cfg.bkg_color,
@@ -256,6 +279,7 @@ def plot_input_dnn(
         main_ax.hist(
             bkg_array,
             bins=feature_cfg.bins,
+            range=plot_range,
             weights=bkg_weights_dnn,
             histtype="stepfilled",
             color=feature_cfg.bkg_color,
@@ -276,6 +300,11 @@ def plot_input_dnn(
             ratio_ax,
             plottype="raw",
         )
+        main_ax.set_ylabel(feature_cfg.y_label)
+        ratio_ax.set_xlabel(feature_cfg.x_label)
+        if plot_range:
+            main_ax.set_xlim(plot_range[0], plot_range[1])
+            ratio_ax.set_xlim(plot_range[0], plot_range[1])
         if feature_cfg.log:
             main_ax.set_yscale("log")
             _, y_max = main_ax.get_ylim()

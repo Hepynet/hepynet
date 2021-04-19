@@ -111,8 +111,8 @@ class job_executor(object):
         pathlib.Path(rc.save_dir).mkdir(parents=True, exist_ok=True)
 
         # load inputs
-        df = self.model_wrapper.get_feedbox().get_processed_df()
         df_raw = self.model_wrapper.get_feedbox().get_raw_df()
+        df = self.model_wrapper.get_feedbox().get_processed_df()
 
         # Studies not depending on models
         ## metrics curves
@@ -124,11 +124,17 @@ class job_executor(object):
         if ac.book_kine:
             logger.info("Plotting input (raw) distributions.")
             kinematics.plot_input(
-                df_raw, self.job_config, save_dir=f"{rc.save_dir}/kinematics/raw",
+                df_raw,
+                self.job_config,
+                save_dir=f"{rc.save_dir}/kinematics/raw",
+                is_raw=True,
             )
             logger.info("Plotting input (processed) distributions.")
             kinematics.plot_input(
-                df, self.job_config, save_dir=f"{rc.save_dir}/kinematics/processed",
+                df,
+                self.job_config,
+                save_dir=f"{rc.save_dir}/kinematics/processed",
+                is_raw=False,
             )
         ## correlation matrix
         if ac.book_cor_matrix:

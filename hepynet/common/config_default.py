@@ -95,6 +95,13 @@ DEFAULT_CFG = {
                 "edgecolor": "black",
             },
             "save_format": "png",
+            "x_label": "",
+            "y_label": "",
+            # dedicated feature configs can be made like the following:
+            ## feature:
+            ##   bins: 25
+            ##   range: [10, 200]
+            # feature config will overwrite common plot configs
         },
         "book_cor_matrix": False,
         "book_fit_npy": False,

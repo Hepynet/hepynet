@@ -31,12 +31,12 @@ def get_valid_cfg_path(path):
         return cfg_path
     elif pathlib.Path(cfg_path).is_dir():
         logger.critical(
-            f"Expect a config file path but get directory path: {cfg_path}, please check .ini file."
+            f"Expect a config file path but get directory path: {cfg_path}, please check the config file."
         )
         exit()
     else:
         logger.critical(
-            f"No valid config file found at path {cfg_path}, please check .ini file."
+            f"No valid config file found at path {cfg_path}, please check the config file."
         )
         exit()
 
