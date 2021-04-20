@@ -50,17 +50,22 @@ class Feedbox(object):
         raw_df = raw_df[raw_df["sample_name"].isin(sample_list)]
         # select events by extra cut features
         if ic.cut_expression is not None:
-            logger.info(f"> Cutting inputs according to expression: {ic.cut_expression}")
+            logger.info(
+                f"> Cutting inputs according to expression: {ic.cut_expression}"
+            )
             raw_df = raw_df.query(ic.cut_expression)
         # return
         raw_df.reset_index(drop=True, inplace=True)
         logger.info("> Successfully loaded raw input DataFrame...")
         return raw_df
 
-    def get_processed_df(self):
+    def get_processed_df(self, raw_df: pd.DataFrame = None):
         logger.info("Loading processed input DataFrame...")
         ic = self._job_config.input.clone()
-        out_df: pd.DataFrame = self.get_raw_df()
+        if raw_df is None:
+            out_df: pd.DataFrame = self.get_raw_df()
+        else:
+            out_df: pd.DataFrame = raw_df.copy()
         feature_include = ic.selected_features + ic.validation_features
         # reshape inputs
         if ic.reshape_input:

@@ -1,14 +1,32 @@
+import copy
 import logging
 
 import atlas_mpl_style as ampl
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from sklearn.metrics import auc, roc_curve
 
-from hepynet.evaluate import roc
+import hepynet.common.hepy_type as ht
+from hepynet.evaluate import evaluate_utils
 from hepynet.train import hep_model
 
 logger = logging.getLogger("hepynet")
+
+
+def calculate_auc(y_tag, y_pred, weights):
+    """Returns auc of given sig/bkg array."""
+    auc_value = []
+    num_nodes = y_tag.shape[1]
+    for node_id in range(num_nodes):
+        fpr_dm, tpr_dm, _ = roc_curve(
+            y_tag[:, node_id], y_pred[:, node_id], sample_weight=weights
+        )
+        sort_index = fpr_dm.argsort()
+        fpr_dm = fpr_dm[sort_index]
+        tpr_dm = tpr_dm[sort_index]
+        auc_value.append(auc(fpr_dm, tpr_dm))
+    return auc_value
 
 
 def plot_feature_importance(
@@ -32,14 +50,10 @@ def plot_feature_importance(
     model = model_wrapper.get_model()
     cols = ic.selected_features
     test_index = df["is_train"] == False
-    x_test = df.loc[test_index, cols].values
     y_test = df.loc[test_index, ["y"]].values
+    y_pred = df.loc[test_index, ["y_pred"]].values
     wt_test = df.loc[test_index, "weight"].values
-    all_nodes = []
-    if y_test.ndim == 2:
-        all_nodes = ["sig"] + tc.output_bkg_node_names
-    else:
-        all_nodes = ["sig"]
+    all_nodes = ["sig"] + tc.output_bkg_node_names
     # Make plots
     fig_save_pattern = f"{save_dir}/importance_{{}}.png"
     num_feature = len(cols)
@@ -47,13 +61,15 @@ def plot_feature_importance(
         canvas_height = num_feature / 2 + 5
     else:
         canvas_height = max_feature / 2 + 5
-    base_auc = roc.calculate_auc(x_test, y_test, wt_test, model, rm_last_two=True)
+    base_auc = calculate_auc(y_test, y_pred, wt_test)
     # Calculate importance
     feature_auc = []
+    logger.info("Making predictions with shuffled one column")
     for num, feature_name in enumerate(cols):
-        current_auc = roc.calculate_auc(
-            x_test, y_test, wt_test, model, shuffle_col=num, rm_last_two=True
-        )
+        x_shuffle = df.loc[test_index, cols].values
+        np.random.shuffle(x_shuffle[:, num])
+        y_pred, _, _ = evaluate_utils.k_folds_predict(model, x_shuffle, silence=True)
+        current_auc = calculate_auc(y_test, y_pred, wt_test)
         feature_auc.append(current_auc)
     for node_id, node in enumerate(all_nodes):
         logger.info(f"> making importance plot for node: {node}")

@@ -7,18 +7,11 @@ import atlas_mpl_style as ampl
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
-import yaml
+from cycler import cycler
 
 from hepynet.common import common_utils, config_utils
-from hepynet.evaluate import (
-    evaluate_utils,
-    importance,
-    kinematics,
-    mva_scores,
-    roc,
-    significance,
-    train_history,
-)
+from hepynet.evaluate import (evaluate_utils, importance, kinematics,
+                              mva_scores, roc, significance, train_history)
 from hepynet.main import job_utils
 from hepynet.train import train_utils
 
@@ -37,7 +30,10 @@ class job_executor(object):
         self.get_config(yaml_config_path)
         # set up style
         ampl.use_atlas_style(usetex=False)
-        ampl.set_color_cycle(pal="ATLAS", n=10)
+        # set up color cycle
+        color_cycle = self.job_config.apply.color_cycle
+        default_cycler = (cycler(color=color_cycle))
+        plt.rc('axes', prop_cycle=default_cycler)
 
     def execute_jobs(self):
         """Execute all planned jobs."""
@@ -112,7 +108,11 @@ class job_executor(object):
 
         # load inputs
         df_raw = self.model_wrapper.get_feedbox().get_raw_df()
-        df = self.model_wrapper.get_feedbox().get_processed_df()
+        #### debug
+        #df_raw = df_raw.sample(n=100000)
+        #df_raw.reset_index(drop=True, inplace=True)
+
+        df = self.model_wrapper.get_feedbox().get_processed_df(raw_df=df_raw)
 
         # Studies not depending on models
         ## metrics curves
@@ -183,37 +183,32 @@ class job_executor(object):
                 )
                 return
 
+            # add y values predictions
+            y_pred, _, _ = evaluate_utils.k_folds_predict(
+                self.model_wrapper.get_model(), df[ic.selected_features].values
+            )
+            df.loc[:, "y_pred"] = y_pred
+
             # roc
             if ac.book_roc:
-                logger.info("Making roc curve plot")
-                roc.plot_multi_class_roc(
-                    self.model_wrapper, df, self.job_config, epoch_subdir
-                )
+                roc.plot_multi_class_roc(df, self.job_config, epoch_subdir)
             # overtrain check
             if ac.book_train_test_compare:
-                logger.info("Making train/test compare plots")
-                mva_scores.plot_train_test_compare(
-                    self.model_wrapper, df, self.job_config, epoch_subdir
-                )
+                mva_scores.plot_train_test_compare(df, self.job_config, epoch_subdir)
             # data/mc scores comparison
             if ac.book_mva_scores_data_mc:
-                logger.info("Making data/mc scores distributions plots")
                 mva_scores.plot_mva_scores(
-                    self.model_wrapper, df, self.job_config, epoch_subdir,
+                    df, self.job_config, epoch_subdir,
                 )
             # Make significance scan plot
             if ac.book_significance_scan:
-                significance.plot_significance_scan(
-                    self.model_wrapper, df, self.job_config, epoch_subdir
-                )
+                significance.plot_significance_scan(df, self.job_config, epoch_subdir)
             # kinematics with DNN cuts
             if ac.book_cut_kine_study:
-                logger.info("Making kinematic plots with different DNN cut")
                 for dnn_cut in ac.cfg_cut_kine_study.dnn_cut_list:
                     dnn_kine_path = epoch_subdir / f"kine_cut_dnn_p{dnn_cut * 100}"
                     dnn_kine_path.mkdir(parents=True, exist_ok=True)
                     kinematics.plot_input_dnn(
-                        self.model_wrapper,
                         df,
                         self.job_config,
                         dnn_cut=dnn_cut,

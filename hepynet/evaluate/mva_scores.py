@@ -1,3 +1,4 @@
+import itertools
 import logging
 
 import atlas_mpl_style as ampl
@@ -5,33 +6,28 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from hepynet.evaluate import evaluate_utils
-from hepynet.train import hep_model
+import hepynet.common.hepy_type as ht
 
 logger = logging.getLogger("hepynet")
 
 
 def plot_mva_scores(
-    model_wrapper: hep_model.Model_Base,
     df: pd.DataFrame,
-    job_config,
-    save_dir,
-    file_name="mva_scores",
+    job_config: ht.config,
+    save_dir: ht.pathlike,
+    file_name: str = "mva_scores",
 ):
     # initialize
     logger.info("Plotting MVA scores")
-    ic = job_config.input.clone()
     tc = job_config.train.clone()
     ac = job_config.apply.clone()
     plot_config = ac.cfg_mva_scores_data_mc.clone()
-    model = model_wrapper.get_model()
     # prepare signal
     sig_scores_dict = {}
     sig_weights_dict = {}
     for sig_key in plot_config.sig_list:
         sig_df = df.loc[df["sample_name"] == sig_key, :]
-        x = sig_df[ic.selected_features].values
-        sig_score, _, _ = evaluate_utils.k_folds_predict(model, x)
+        sig_score = sig_df["y_pred"].values
         if sig_score.ndim == 1:
             sig_score = sig_score.reshape((-1, 1))
         sig_scores_dict[sig_key] = sig_score
@@ -41,8 +37,7 @@ def plot_mva_scores(
     bkg_weights_dict = {}
     for bkg_key in plot_config.bkg_list:
         bkg_df = df.loc[df["sample_name"] == bkg_key, :]
-        x = bkg_df[ic.selected_features].values
-        bkg_score, _, _ = evaluate_utils.k_folds_predict(model, x)
+        bkg_score = bkg_df["y_pred"].values
         if bkg_score.ndim == 1:
             bkg_score = bkg_score.reshape((-1, 1))
         bkg_scores_dict[bkg_key] = bkg_score
@@ -54,13 +49,14 @@ def plot_mva_scores(
     if plot_config.apply_data:
         data_key = plot_config.data_key
         data_df = df.loc[df["sample_name"] == data_key, :]
-        x = data_df[ic.selected_features].values
-        data_scores, _, _ = evaluate_utils.k_folds_predict(model, x)
+        data_score = data_df["y_pred"].values
         data_weights = data_df["weight"].values
     # make plots
     all_nodes = ["sig"] + tc.output_bkg_node_names
     for node_id, node in enumerate(all_nodes):
-        fig, ax = plt.subplots(figsize=(16.667, 16.667))
+        fig, ax = plt.subplots(figsize=(16.667, 11.111))
+        colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+        color_cycle = itertools.cycle(colors)
         # plot bkg
         bkg_collect = list()
         bkg_edges = None
@@ -72,7 +68,7 @@ def plot_mva_scores(
                 weights=bkg_weights_dict[key],
                 density=plot_config.density,
             )
-            bkg = ampl.plot.Background(key, bkg_bins)
+            bkg = ampl.plot.Background(key, bkg_bins, color=next(color_cycle))
             bkg_collect.append(bkg)
         ampl.plot.plot_backgrounds(bkg_collect, bkg_edges, ax=ax)
         # plot sig
@@ -84,7 +80,7 @@ def plot_mva_scores(
                 weights=sig_weights_dict[key],
                 density=plot_config.density,
             )
-            ampl.plot.plot_signal(key, sig_edges, sig_bins)
+            ampl.plot.plot_signal(key, sig_edges, sig_bins, color=next(color_cycle))
         ax.set_xlim(0, 1)
         if plot_config.log:
             ax.set_yscale("log")
@@ -107,38 +103,31 @@ def plot_mva_scores(
 
 
 def plot_train_test_compare(
-    model_wrapper: hep_model.Model_Base, df, job_config, save_dir
+    df: pd.DataFrame, job_config: ht.config, save_dir: ht.pathlike
 ):
     """Plots train/test scores distribution to check overtrain"""
     # initialize
     logger.info("Plotting train/test scores.")
-    ic = job_config.input.clone()
     tc = job_config.train.clone()
     ac = job_config.apply.clone()
     plot_config = job_config.apply.cfg_train_test_compare
-    model = model_wrapper.get_model()
     all_nodes = ["sig"] + tc.output_bkg_node_names
     # get inputs
-    cols = ic.selected_features
     train_index = df["is_train"] == True
     test_index = df["is_train"] == False
     sig_index = (df["is_sig"] == True) & (df["is_mc"] == True)
     bkg_index = (df["is_sig"] == False) & (df["is_mc"] == True)
-    xs_train = df.loc[sig_index & train_index, cols].values
-    xs_test = df.loc[sig_index & test_index, cols].values
+    xs_train_scores = df.loc[sig_index & train_index, ["y_pred"]].values
+    xs_test_scores = df.loc[sig_index & test_index, ["y_pred"]].values
     xs_train_weight = df.loc[sig_index & train_index, ["weight"]].values
     xs_test_weight = df.loc[sig_index & test_index, ["weight"]].values
-    xb_train = df.loc[bkg_index & train_index, cols].values
-    xb_test = df.loc[bkg_index & test_index, cols].values
+    xb_train_scores = df.loc[bkg_index & train_index, ["y_pred"]].values
+    xb_test_scores = df.loc[bkg_index & test_index, ["y_pred"]].values
     xb_train_weight = df.loc[bkg_index & train_index, ["weight"]].values
     xb_test_weight = df.loc[bkg_index & test_index, ["weight"]].values
 
     # plot for each nodes
     num_nodes = len(all_nodes)
-    xb_train_scores, _, _ = evaluate_utils.k_folds_predict(model, xb_train)
-    xs_train_scores, _, _ = evaluate_utils.k_folds_predict(model, xs_train)
-    xb_test_scores, _, _ = evaluate_utils.k_folds_predict(model, xb_test)
-    xs_test_scores, _, _ = evaluate_utils.k_folds_predict(model, xs_test)
     for node_num in range(num_nodes):
         fig, ax = plt.subplots()
         # plot test scores
@@ -188,9 +177,10 @@ def plot_train_test_compare(
             bkg_bins,
             bkg_stats_errs,
             0.5 / plot_config.bins,
-            fmt="ok",
+            fmt=".k",
+            mfc=plot_config.bkg_color,
+            ms=10,
             label="background (train)",
-            markerfacecolor=plot_config.bkg_color,
         )
         ## sig
         sig_bins, sig_edges = np.histogram(
@@ -216,12 +206,14 @@ def plot_train_test_compare(
             sig_bins,
             sig_stats_errs,
             0.5 / plot_config.bins,
-            fmt="ok",
+            fmt=".k",
+            mfc=plot_config.sig_color,
+            ms=10,
             label="signal (train)",
-            markerfacecolor=plot_config.sig_color,
         )
         # final adjustments
         ax.set_xlim(0, 1)
+        ax.set_xlabel("DNN score")
         if plot_config.log:
             ax.set_yscale("log")
             _, y_max = ax.get_ylim()

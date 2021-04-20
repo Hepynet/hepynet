@@ -72,6 +72,18 @@ DEFAULT_CFG = {
         "verbose": 0,
     },
     "apply": {
+        "color_cycle": [
+            "#f99157",  # orange
+            "#5fb3b3",  # cyan
+            "#ec5f67",  # red
+            "#6699cc",  # blue
+            "#fac863",  # yellow
+            "#99c794",  # green
+            "#c594c5",  # pink
+            "#ab7967",  # brown
+            "#cdd3de",  # grey
+            "#343d46",  # black
+        ],
         "plot_atlas_label": False,
         "atlas_label": {},
         "check_model_epoch": False,
@@ -84,14 +96,14 @@ DEFAULT_CFG = {
                 "bins": 40,
                 "histtype": "step",
                 "density": False,
-                "facecolor": "#00a1e0",  # ATLAS blue
+                "facecolor": "#f99157",  # orange
                 "edgecolor": "black",
             },
             "hist_kwargs_bkg": {
                 "bins": 40,
                 "histtype": "step",
                 "density": False,
-                "facecolor": "#a30013",  # ATLAS red
+                "facecolor": "#5fb3b3",  # cyan
                 "edgecolor": "black",
             },
             "save_format": "png",
@@ -116,8 +128,8 @@ DEFAULT_CFG = {
             "sig_key": None,
             "bkg_key": None,
             "plot_title": "train/test MVA scores compare",
-            "bkg_color": "#a30013",  # ATLAS red
-            "sig_color": "#00a1e0",  # ATLAS blue
+            "bkg_color": "#f99157",  # orange
+            "sig_color": "#5fb3b3",  # cyan
             "bins": 25,
             "range": [0, 1],
             "density": False,
@@ -133,8 +145,8 @@ DEFAULT_CFG = {
             "data_key": "",
             "apply_data_range": None,
             "plot_title": "MVA scores",
-            "bkg_color": "#a30013",  # ATLAS red
-            "sig_color": "#00a1e0",  # ATLAS blue
+            "bkg_color": "#f99157",  # orange
+            "sig_color": "#5fb3b3",  # cyan
             "bins": 25,
             "range": [0, 1],
             "density": False,
@@ -154,13 +166,13 @@ DEFAULT_CFG = {
             "histtype": "stepfilled",
             "alpha": 0.3,
             "density": False,
-            "sig_color": "tomato",
-            "bkg_color": "royalblue",
+            "bkg_color": "#f99157",  # orange
+            "sig_color": "#5fb3b3",  # cyan
             "dnn_cut_list": None,
             "save_format": "png",
         },
         "book_importance_study": False,
-        "cfg_importance_study": {"log": False}
+        "cfg_importance_study": {"log": False},
     },
     "para_scan": {"perform_para_scan": False,},
     "run": {

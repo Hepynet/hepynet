@@ -1,22 +1,22 @@
 import logging
 import pathlib
+from typing import List
 
 import atlas_mpl_style as ampl
-import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
 
-from hepynet.common import config_utils
-from hepynet.data_io import array_utils, feed_box
-from hepynet.evaluate import evaluate_utils
-from hepynet.train import hep_model, train_utils
+import hepynet.common.hepy_type as ht
+from hepynet.data_io import array_utils
 
 logger = logging.getLogger("hepynet")
 
 
-def plot_correlation_matrix(df, job_config, save_dir="."):
+def plot_correlation_matrix(
+    df: pd.DataFrame, job_config: ht.config, save_dir: ht.pathlike = "."
+):
     ic = job_config.input.clone()
     features = ic.selected_features
     save_dir = pathlib.Path(save_dir)
@@ -53,7 +53,7 @@ def plot_correlation_matrix(df, job_config, save_dir="."):
     fig.savefig(fig_save_path)
 
 
-def paint_correlation_matrix(ax, corr_matrix, labels):
+def paint_correlation_matrix(ax: ht.ax, corr_matrix: np.ndarray, labels: List[str]):
     # Generate a mask for the upper triangle
     mask = np.triu(np.ones_like(corr_matrix, dtype=np.bool))
     # Generate a custom diverging colormap
@@ -74,7 +74,12 @@ def paint_correlation_matrix(ax, corr_matrix, labels):
     )
 
 
-def plot_input(df: pd.DataFrame, job_config, save_dir=None, is_raw=True):
+def plot_input(
+    df: pd.DataFrame,
+    job_config: ht.config,
+    save_dir: ht.pathlike = None,
+    is_raw: bool = True,
+):
     """Plots input distributions comparision plots for sig/bkg/data"""
     # setup config
     ic = job_config.input.clone()
@@ -147,15 +152,14 @@ def plot_input(df: pd.DataFrame, job_config, save_dir=None, is_raw=True):
 
 
 def plot_input_dnn(
-    model_wrapper: hep_model.Model_Base,
     df: pd.DataFrame,
-    job_config,
-    dnn_cut=None,
-    multi_class_cut_branch=0,
-    save_dir=None,
+    job_config: ht.config,
+    dnn_cut: float = None,
+    multi_class_cut_branch: int = 0,
+    save_dir: ht.pathlike = None,
 ):
     """Plots input distributions comparision plots with DNN cuts applied"""
-    logger.info("Plotting input distributions with DNN cuts applied.")
+    logger.info(f"Plotting input distributions with DNN cuts {dnn_cut} applied.")
     # prepare
     ic = job_config.input.clone()
     ac = job_config.apply.clone()
@@ -175,20 +179,14 @@ def plot_input_dnn(
         logger.error(f"DNN cut {dnn_cut} is out of range [0, 1]!")
         return
     # prepare signal
-    sig_predictions, _, _ = evaluate_utils.k_folds_predict(
-        model_wrapper.get_model(), sig_df[ic.selected_features].values
-    )
-    if sig_predictions.ndim == 2:
-        sig_predictions = sig_predictions[:, multi_class_cut_branch]
+    sig_predictions = sig_df[["y_pred"]].values
+    sig_predictions = sig_predictions[:, multi_class_cut_branch]
     sig_cut_index = array_utils.get_cut_index(sig_predictions, [dnn_cut], ["<"])
     sig_weights_dnn = sig_weights.copy()
     sig_weights_dnn[sig_cut_index] = 0
     # prepare background
-    bkg_predictions, _, _ = evaluate_utils.k_folds_predict(
-        model_wrapper.get_model(), bkg_df[ic.selected_features].values
-    )
-    if bkg_predictions.ndim == 2:
-        bkg_predictions = bkg_predictions[:, multi_class_cut_branch]
+    bkg_predictions = bkg_df[["y_pred"]].values
+    bkg_predictions = bkg_predictions[:, multi_class_cut_branch]
     bkg_cut_index = array_utils.get_cut_index(bkg_predictions, [dnn_cut], ["<"])
     bkg_weights_dnn = bkg_weights.copy()
     bkg_weights_dnn[bkg_cut_index] = 0

@@ -65,9 +65,16 @@ def dump_fit_npy(
                 numpy_io.save_npy_array(predictions[:, i], save_path)
 
 
-def k_folds_predict(k_fold_models, x) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+def k_folds_predict(
+    k_fold_models, x, silence=False
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     y_pred_k_folds = list()
-    for fold_model in k_fold_models:
+    if not silence:
+        logger.info("Predicting y scores")
+    num_folds = len(k_fold_models)
+    for fold_num, fold_model in enumerate(k_fold_models):
+        if not silence:
+            logger.info(f"> Predicting with model in fold {fold_num + 1}/{num_folds}")
         y_fold_pred = fold_model.predict(x)
         y_pred_k_folds.append(y_fold_pred)
     y_pred_mean = np.mean(y_pred_k_folds, axis=0)

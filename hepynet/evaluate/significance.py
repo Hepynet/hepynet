@@ -9,19 +9,24 @@ import numpy as np
 import pandas as pd
 from matplotlib.ticker import NullFormatter
 
+import hepynet.common.hepy_type as ht
 from hepynet.common import common_utils
 from hepynet.data_io import array_utils
-from hepynet.evaluate import evaluate_utils
-from hepynet.train import hep_model
 
 logger = logging.getLogger("hepynet")
 
 
-def calculate_asimov(sig, bkg):
+def calculate_asimov(sig: float, bkg: float):
     return math.sqrt(2 * ((sig + bkg) * math.log(1 + sig / bkg) - sig))
 
 
-def calculate_significance(sig, bkg, sig_total=None, bkg_total=None, algo="asimov"):
+def calculate_significance(
+    sig: float,
+    bkg: float,
+    sig_total: float = None,
+    bkg_total: float = None,
+    algo="asimov",
+):
     """Returns asimov significance"""
     # check input
     if sig <= 0 or bkg <= 0 or sig_total <= 0 or bkg_total <= 0:
@@ -61,11 +66,10 @@ def calculate_significance(sig, bkg, sig_total=None, bkg_total=None, algo="asimo
 
 
 def get_significances(
-    model_wrapper: hep_model.Model_Base,
     df: pd.DataFrame,
-    job_config,
-    significance_algo="asimov",
-    multi_class_cut_branch=0,
+    job_config: ht.config,
+    significance_algo: str = "asimov",
+    multi_class_cut_branch: int = 0,
 ):
     """Gets significances scan arrays.
 
@@ -81,18 +85,12 @@ def get_significances(
     ic = job_config.input.clone()
     # prepare signal
     sig_df = array_utils.extract_sig_df(df)
-    sig_predictions, _, _ = evaluate_utils.k_folds_predict(
-        model_wrapper.get_model(), sig_df[ic.selected_features].values
-    )
-    if sig_predictions.ndim == 2:
-        sig_predictions = sig_predictions[:, multi_class_cut_branch]
+    sig_predictions = sig_df[["y_pred"]].values
+    sig_predictions = sig_predictions[:, multi_class_cut_branch]
     # prepare background
     bkg_df = array_utils.extract_bkg_df(df)
-    bkg_predictions, _, _ = evaluate_utils.k_folds_predict(
-        model_wrapper.get_model(), bkg_df[ic.selected_features].values
-    )
-    if bkg_predictions.ndim == 2:
-        bkg_predictions = bkg_predictions[:, multi_class_cut_branch]
+    bkg_predictions = bkg_df[["y_pred"]].values
+    bkg_predictions = bkg_predictions[:, multi_class_cut_branch]
     # prepare thresholds
     bin_array = np.array(range(-1000, 1000))
     thresholds = 1.0 / (1.0 + 1.0 / np.exp(bin_array * 0.02))
@@ -130,7 +128,7 @@ def get_significances(
 
 
 def plot_significance_scan(
-    model_wrapper, df, job_config, save_dir: pathlib.Path
+    df: pd.DataFrame, job_config: ht.config, save_dir: ht.pathlike
 ) -> None:
     """Shows significance change with threshold.
 
@@ -145,9 +143,7 @@ def plot_significance_scan(
         significances,
         sig_above_threshold,
         bkg_above_threshold,
-    ) = get_significances(
-        model_wrapper, df, job_config, significance_algo=significance_algo
-    )
+    ) = get_significances(df, job_config, significance_algo=significance_algo)
 
     significances_no_nan = np.nan_to_num(significances)
     max_significance = np.amax(significances_no_nan)
@@ -232,9 +228,10 @@ def plot_significance_scan(
     fig.savefig(fig_save_path)
 
     # collect meta data
-    model_wrapper.original_significance = original_significance
-    model_wrapper.max_significance = max_significance
-    model_wrapper.max_significance_threshold = max_significance_threshold
+    # model_wrapper.original_significance = original_significance
+    # model_wrapper.max_significance = max_significance
+    # model_wrapper.max_significance_threshold = max_significance_threshold
+
     # make extra cut table 0.1, 0.2 ... 0.8, 0.9
     # make table for different DNN cut scores
     save_path = save_dir / "scan_DNN_cut.csv"
