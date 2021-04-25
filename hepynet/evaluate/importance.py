@@ -68,7 +68,9 @@ def plot_feature_importance(
     for num, feature_name in enumerate(cols):
         x_shuffle = df.loc[test_index, cols].values
         np.random.shuffle(x_shuffle[:, num])
-        y_pred, _, _ = evaluate_utils.k_folds_predict(model, x_shuffle, silence=True)
+        y_pred, _, _ = evaluate_utils.k_folds_predict(
+            model, x_shuffle, silence=True
+        )
         current_auc = calculate_auc(y_test, y_pred, wt_test)
         feature_auc.append(current_auc)
     for node_id, node in enumerate(all_nodes):
@@ -79,7 +81,9 @@ def plot_feature_importance(
         feature_importance = np.zeros(num_feature)
         for num, feature_name in enumerate(cols):
             current_auc = feature_auc[num][node_id]
-            feature_importance[num] = (1 - current_auc) / (1 - base_auc[node_id])
+            feature_importance[num] = (1 - current_auc) / (
+                1 - base_auc[node_id]
+            )
             logger.info(f"> {feature_name} : {feature_importance[num]}")
 
         # Sort

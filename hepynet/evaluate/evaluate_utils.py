@@ -25,7 +25,11 @@ def create_epoch_subdir(save_dir, epoch, n_digit) -> pathlib.Path:
 
 
 def dump_fit_npy(
-    model_wrapper: hep_model.Model_Base, df_raw, df_train, job_config, npy_dir="./",
+    model_wrapper: hep_model.Model_Base,
+    df_raw,
+    df_train,
+    job_config,
+    npy_dir="./",
 ):
     ic = job_config.input.clone()
     tc = job_config.train.clone()
@@ -48,8 +52,12 @@ def dump_fit_npy(
         dump_branches = ac.cfg_fit_npy.fit_npy_branches + ["weight"]
         # prepare contents
         dump_df = df_raw.loc[df_raw["sample_name"] == sample, dump_branches]
-        input_df = df_train.loc[df_train["sample_name"] == sample, ic.selected_features]
-        predictions, _, _ = k_folds_predict(model_wrapper.get_model(), input_df.values)
+        input_df = df_train.loc[
+            df_train["sample_name"] == sample, ic.selected_features
+        ]
+        predictions, _, _ = k_folds_predict(
+            model_wrapper.get_model(), input_df.values
+        )
         # dump
         for branch in dump_branches:
             branch_content = dump_df[branch].values
@@ -74,7 +82,9 @@ def k_folds_predict(
     num_folds = len(k_fold_models)
     for fold_num, fold_model in enumerate(k_fold_models):
         if not silence:
-            logger.info(f"> Predicting with model in fold {fold_num + 1}/{num_folds}")
+            logger.info(
+                f"> Predicting with model in fold {fold_num + 1}/{num_folds}"
+            )
         y_fold_pred = fold_model.predict(x)
         y_pred_k_folds.append(y_fold_pred)
     y_pred_mean = np.mean(y_pred_k_folds, axis=0)
@@ -115,8 +125,12 @@ def paint_bars(
         data = [data]
         weights = [weights]
     for datum, weight in zip(data, weights):
-        assert isinstance(datum, np.ndarray), "data element should be numpy array."
-        assert isinstance(weight, np.ndarray), "weights element should be numpy array."
+        assert isinstance(
+            datum, np.ndarray
+        ), "data element should be numpy array."
+        assert isinstance(
+            weight, np.ndarray
+        ), "weights element should be numpy array."
         assert (
             datum.shape == weight.shape
         ), "Input weights should be None or have same type as arrays."

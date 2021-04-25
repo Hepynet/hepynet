@@ -106,8 +106,10 @@ def clip_negative_weights(weights: np.ndarray):
     logger.debug("Clip negative weights...")
     weights[:] = np.clip(weights, a_min=0, a_max=None)
 
+
 def extract_bkg_df(df: pd.DataFrame):
     return df.loc[(df["is_mc"] == True) & (df["is_sig"] == False), :]
+
 
 def extract_sig_df(df: pd.DataFrame):
     return df.loc[df["is_sig"] == True, :]
@@ -202,7 +204,7 @@ def merge_samples_df(
     array_key: str = "all",
 ) -> pd.DataFrame:
     ## always load "weight"
-    #if "weight" not in features:
+    # if "weight" not in features:
     #    features += ["weight"]
     df_out = pd.DataFrame(columns=features)
     if array_key in df_dict:
@@ -369,7 +371,9 @@ def shuffle_and_split(x, y, wt, split_ratio=0.0):
         range(array_len), int(array_len * 1.0 * split_ratio), replace=False
     )
     # get index for last part of the splitted array
-    last_part_index = np.setdiff1d(np.array(range(array_len)), first_part_index)
+    last_part_index = np.setdiff1d(
+        np.array(range(array_len)), first_part_index
+    )
     first_part_x = x[first_part_index]
     first_part_y = y[first_part_index]
     first_part_wt = wt[first_part_index]
@@ -449,12 +453,20 @@ def split_and_combine(
     ) = shuffle_and_split(xb, yb, xb_weight, split_ratio=1 - test_rate)
 
     if has_comb:
-        arr_comb.x_train = np.concatenate((arr_sepa.xs_train, arr_sepa.xb_train))
-        arr_comb.y_train = np.concatenate((arr_sepa.ys_train, arr_sepa.yb_train))
-        arr_comb.wt_train = np.concatenate((arr_sepa.wts_train, arr_sepa.wtb_train))
+        arr_comb.x_train = np.concatenate(
+            (arr_sepa.xs_train, arr_sepa.xb_train)
+        )
+        arr_comb.y_train = np.concatenate(
+            (arr_sepa.ys_train, arr_sepa.yb_train)
+        )
+        arr_comb.wt_train = np.concatenate(
+            (arr_sepa.wts_train, arr_sepa.wtb_train)
+        )
         arr_comb.x_test = np.concatenate((arr_sepa.xs_test, arr_sepa.xb_test))
         arr_comb.y_test = np.concatenate((arr_sepa.ys_test, arr_sepa.yb_test))
-        arr_comb.wt_test = np.concatenate((arr_sepa.wts_test, arr_sepa.wtb_test))
+        arr_comb.wt_test = np.concatenate(
+            (arr_sepa.wts_test, arr_sepa.wtb_test)
+        )
         if not has_sepa:
             arr_sepa = None
         if shuffle_combined_array:

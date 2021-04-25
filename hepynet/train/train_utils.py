@@ -36,11 +36,15 @@ def get_model_epoch_path_list(
     load_dir, model_name, job_name="*", date="*", version="*"
 ):
     # Search possible files
-    search_pattern = load_dir + "/" + date + "_" + job_name + "_" + version + "/models"
+    search_pattern = (
+        load_dir + "/" + date + "_" + job_name + "_" + version + "/models"
+    )
     model_dir_list = glob.glob(search_pattern)
     # Choose the newest one
     if len(model_dir_list) < 1:
-        raise FileNotFoundError("Model file that matched the pattern not found.")
+        raise FileNotFoundError(
+            "Model file that matched the pattern not found."
+        )
     model_dir = model_dir_list[-1]
     if len(model_dir_list) > 1:
         logger.warning(

@@ -173,7 +173,9 @@ def load_pc_meta() -> dict:
     Returns:
         dict: meta information dictionary
     """
-    pc_meta_cfg_path = f"{pathlib.Path().parent}/share/cross_platform/pc_meta.yaml"
+    pc_meta_cfg_path = (
+        f"{pathlib.Path().parent}/share/cross_platform/pc_meta.yaml"
+    )
     try:
         with open(pc_meta_cfg_path) as pc_meta_file:
             pc_meta_dict = yaml.load(pc_meta_file, Loader=yaml.FullLoader)

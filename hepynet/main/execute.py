@@ -12,10 +12,18 @@ def execute():
     parser = argparse.ArgumentParser()
     parser.add_argument("yaml_configs", nargs="*", action="store")
     parser.add_argument(
-        "-d", "--debug", required=False, help="run in debug mode", action="store_true",
+        "-d",
+        "--debug",
+        required=False,
+        help="run in debug mode",
+        action="store_true",
     )
     parser.add_argument(
-        "-t", "--time", required=False, help="display time", action="store_true",
+        "-t",
+        "--time",
+        required=False,
+        help="display time",
+        action="store_true",
     )
     parser.add_argument(
         "-v",
@@ -56,7 +64,9 @@ def execute():
             ex_test.execute_jobs()
             job_end_time = time.perf_counter()
             time_consumed = job_end_time - job_start_time
-            time_consumed_str = time.strftime("%H:%M:%S", time.gmtime(time_consumed))
+            time_consumed_str = time.strftime(
+                "%H:%M:%S", time.gmtime(time_consumed)
+            )
             logger.info(f"Time consumed: {time_consumed_str}")
         logger.info("#" * 80)
         logger.info("Done!")

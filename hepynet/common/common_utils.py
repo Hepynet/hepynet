@@ -51,7 +51,9 @@ def get_default_if_none(input_var, default_value):
         return input_var
 
 
-def get_newest_file_version(path_pattern, n_digit=2, ver_num=None, use_existing=False):
+def get_newest_file_version(
+    path_pattern, n_digit=2, ver_num=None, use_existing=False
+):
     """Check existed file and return last available file path with version.
 
     Version range 00 -> 99 (or 999)

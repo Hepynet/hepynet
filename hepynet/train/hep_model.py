@@ -213,9 +213,13 @@ class Model_Base(object):
         self._model_is_trained = model_meta_save["model_is_trained"]
         # load train history
         for fold_num in range(self._num_folds):
-            paras_path = f"{model_dir}/fold_{fold_num}/{self._model_name}_paras.yaml"
+            paras_path = (
+                f"{model_dir}/fold_{fold_num}/{self._model_name}_paras.yaml"
+            )
             with open(paras_path, "r") as paras_file:
-                fold_paras_dict = yaml.load(paras_file, Loader=yaml.UnsafeLoader)
+                fold_paras_dict = yaml.load(
+                    paras_file, Loader=yaml.UnsafeLoader
+                )
             self._train_history[fold_num] = fold_paras_dict["train_history"]
 
     def save_model(self, file_name=None, fold_num=None):
@@ -241,7 +245,9 @@ class Model_Base(object):
         else:
             self._model[0].save(save_path)
         self._model_save_path = save_path
-        logger.debug(f"model: {self._model_name} has been saved to: {save_path}")
+        logger.debug(
+            f"model: {self._model_name} has been saved to: {save_path}"
+        )
         self._model_is_saved = True
 
     def save_model_paras(self, file_name=None, fold_num=None):
@@ -270,7 +276,9 @@ class Model_Base(object):
             yaml.dump(paras_dict, write_file, indent=2)
         logger.debug(f"model parameters has been saved to: {save_path}")
 
-        norm_dict_path = pathlib.Path(rc.save_sub_dir) / "models" / "norm_dict.yaml"
+        norm_dict_path = (
+            pathlib.Path(rc.save_sub_dir) / "models" / "norm_dict.yaml"
+        )
         with open(norm_dict_path, "w") as norm_file:
             yaml.dump(self._feedbox.get_norm_dict(), norm_file, indent=2)
 
@@ -337,7 +345,9 @@ class Model_Sequential_Base(Model_Base):
         if tc.save_model:
             model_save_dir = self.get_model_save_dir(fold_num=fold_num)
             pathlib.Path(model_save_dir).mkdir(parents=True, exist_ok=True)
-            path_pattern = f"{model_save_dir}/{self._model_name}_epoch{{epoch}}.h5"
+            path_pattern = (
+                f"{model_save_dir}/{self._model_name}_epoch{{epoch}}.h5"
+            )
             checkpoint = ModelCheckpoint(path_pattern, monitor="val_loss")
             train_callbacks.append(checkpoint)
         return train_callbacks
@@ -354,7 +364,9 @@ class Model_Sequential_Base(Model_Base):
         performance_meta_dict = {}
         # try collect significance scan result
         try:
-            performance_meta_dict["original_significance"] = self.original_significance
+            performance_meta_dict[
+                "original_significance"
+            ] = self.original_significance
             performance_meta_dict["max_significance"] = self.max_significance
             performance_meta_dict[
                 "max_significance_threshold"
@@ -416,7 +428,10 @@ class Model_Sequential_Base(Model_Base):
             wt_test = wt_test.clip(min=0)
 
         ## train
-        train_index_list, validation_index_list = train_utils.get_train_val_indices(
+        (
+            train_index_list,
+            validation_index_list,
+        ) = train_utils.get_train_val_indices(
             y_train, y_train, wt_train, tc.val_split, k_folds=tc.k_folds
         )
         for fold_num in range(self._num_folds):

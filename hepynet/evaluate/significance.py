@@ -53,15 +53,21 @@ def calculate_significance(
     elif algo == "s_sqrt_sb":
         return sig / math.sqrt(sig + bkg)
     elif algo == "asimov_rel":
-        return calculate_asimov(sig, bkg) / calculate_asimov(sig_total, bkg_total)
+        return calculate_asimov(sig, bkg) / calculate_asimov(
+            sig_total, bkg_total
+        )
     elif algo == "s_b_rel":
         return (sig / sig_total) / (bkg / bkg_total)
     elif algo == "s_sqrt_b_rel":
         return (sig / sig_total) / math.sqrt(bkg / bkg_total)
     elif algo == "s_sqrt_sb_rel":
-        return (sig / sig_total) / math.sqrt((bkg + sig) / (sig_total + bkg_total))
+        return (sig / sig_total) / math.sqrt(
+            (bkg + sig) / (sig_total + bkg_total)
+        )
     else:
-        logger.warning("Unrecognized significance algorithm, will use default 'asimov'")
+        logger.warning(
+            "Unrecognized significance algorithm, will use default 'asimov'"
+        )
         return calculate_asimov(sig, bkg)
 
 
@@ -124,7 +130,12 @@ def get_significances(
             bkg_above_threshold.append(total_bkg_weights_passed)
     total_sig_weight = np.sum(sig_weights)
     total_bkg_weight = np.sum(bkg_weights)
-    return (plot_thresholds, significances, sig_above_threshold, bkg_above_threshold)
+    return (
+        plot_thresholds,
+        significances,
+        sig_above_threshold,
+        bkg_above_threshold,
+    )
 
 
 def plot_significance_scan(
@@ -166,30 +177,45 @@ def plot_significance_scan(
     ax.set_title("significance scan")
     ax.axhline(y=original_significance, color="grey", linestyle="--")
     # significance scan curve
-    ax.plot(plot_thresholds, significances_no_nan, color="r", label=significance_algo)
+    ax.plot(
+        plot_thresholds,
+        significances_no_nan,
+        color="r",
+        label=significance_algo,
+    )
     # signal/background events scan curve
     ax2 = ax.twinx()
     max_sig_events = sig_above_threshold[0]
     max_bkg_events = bkg_above_threshold[0]
     sig_eff_above_threshold = np.array(sig_above_threshold) / max_sig_events
     bkg_eff_above_threshold = np.array(bkg_above_threshold) / max_bkg_events
-    ax2.plot(plot_thresholds, sig_eff_above_threshold, color="orange", label="sig")
-    ax2.plot(plot_thresholds, bkg_eff_above_threshold, color="blue", label="bkg")
+    ax2.plot(
+        plot_thresholds, sig_eff_above_threshold, color="orange", label="sig"
+    )
+    ax2.plot(
+        plot_thresholds, bkg_eff_above_threshold, color="blue", label="bkg"
+    )
     ax2.set_ylabel("sig(bkg) ratio after cut")
     # reference threshold
     ax.axvline(x=max_significance_threshold, color="green", linestyle="-.")
     # more infomation
     content = (
         "best threshold:"
-        + str(common_utils.get_significant_digits(max_significance_threshold, 6))
+        + str(
+            common_utils.get_significant_digits(max_significance_threshold, 6)
+        )
         + "\nmax significance:"
         + str(common_utils.get_significant_digits(max_significance, 6))
         + "\nbase significance:"
         + str(common_utils.get_significant_digits(original_significance, 6))
         + "\nsig events above threshold:"
-        + str(common_utils.get_significant_digits(max_significance_sig_total, 6))
+        + str(
+            common_utils.get_significant_digits(max_significance_sig_total, 6)
+        )
         + "\nbkg events above threshold:"
-        + str(common_utils.get_significant_digits(max_significance_bkg_total, 6))
+        + str(
+            common_utils.get_significant_digits(max_significance_bkg_total, 6)
+        )
     )
     ax.text(
         0.05,
@@ -249,13 +275,22 @@ def plot_significance_scan(
         ]
         for index in range(1, 100):
             dnn_cut = (100 - index) / 100.0
-            threshold_id = (np.abs(np.array(plot_thresholds) - dnn_cut)).argmin()
+            threshold_id = (
+                np.abs(np.array(plot_thresholds) - dnn_cut)
+            ).argmin()
             sig_events = sig_above_threshold[threshold_id]
             sig_eff = sig_eff_above_threshold[threshold_id]
             bkg_events = bkg_above_threshold[threshold_id]
             bkg_eff = bkg_eff_above_threshold[threshold_id]
             significance = significances[threshold_id]
-            new_row = [dnn_cut, sig_events, sig_eff, bkg_events, bkg_eff, significance]
+            new_row = [
+                dnn_cut,
+                sig_events,
+                sig_eff,
+                bkg_events,
+                bkg_eff,
+                significance,
+            ]
             row_list.append(new_row)
         row_list.append([""])
         row_list.append(
@@ -294,7 +329,14 @@ def plot_significance_scan(
             bkg_events = bkg_above_threshold[threshold_id]
             bkg_eff = bkg_eff_above_threshold[threshold_id]
             significance = significances[threshold_id]
-            new_row = [dnn_cut, sig_events, sig_eff, bkg_events, bkg_eff, significance]
+            new_row = [
+                dnn_cut,
+                sig_events,
+                sig_eff,
+                bkg_events,
+                bkg_eff,
+                significance,
+            ]
             row_list.append(new_row)
         row_list.append([""])
         row_list.append(
@@ -333,7 +375,14 @@ def plot_significance_scan(
             bkg_events = bkg_above_threshold[threshold_id]
             bkg_eff = bkg_eff_cut
             significance = significances[threshold_id]
-            new_row = [dnn_cut, sig_events, sig_eff, bkg_events, bkg_eff, significance]
+            new_row = [
+                dnn_cut,
+                sig_events,
+                sig_eff,
+                bkg_events,
+                bkg_eff,
+                significance,
+            ]
             row_list.append(new_row)
         row_list.append([""])
         row_list.append(

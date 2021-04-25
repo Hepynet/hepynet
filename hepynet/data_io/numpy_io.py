@@ -104,7 +104,9 @@ def get_cut_pass_index_dict(
                     if feature_array is None:
                         feature_array = temp_array
                     else:
-                        feature_array = np.concatenate((feature_array, temp_array))
+                        feature_array = np.concatenate(
+                            (feature_array, temp_array)
+                        )
 
                 feature_array = feature_array
 
@@ -130,7 +132,9 @@ def get_cut_pass_index_dict(
                     pass_index = temp_pass_index
                 else:
                     pass_index = np.intersect1d(pass_index, temp_pass_index)
-            logger.debug(f"Got cut-passed index for {array_type} {sample_component}")
+            logger.debug(
+                f"Got cut-passed index for {array_type} {sample_component}"
+            )
             if pass_index is not None:
                 logger.debug(f"Shape {pass_index.shape}")
             pass_id_dict[array_type][sample_component] = pass_index
@@ -264,7 +268,9 @@ def load_npy_arrays(
             # use float32 to reduce memory consumption, risky?
             feature_array = np.array(feature_array, dtype=np.float32)
             if pass_index is not None:
-                sample_array_dict[feature] = feature_array[pass_index].flatten()
+                sample_array_dict[feature] = feature_array[
+                    pass_index
+                ].flatten()
             else:
                 sample_array_dict[feature] = feature_array.flatten()
         if "weight" in out_features:

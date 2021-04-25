@@ -54,7 +54,9 @@ def plot_correlation_matrix(
     fig.savefig(fig_save_path)
 
 
-def paint_correlation_matrix(ax: ht.ax, corr_matrix: np.ndarray, labels: List[str]):
+def paint_correlation_matrix(
+    ax: ht.ax, corr_matrix: np.ndarray, labels: List[str]
+):
     # Generate a mask for the upper triangle
     mask = np.triu(np.ones_like(corr_matrix, dtype=np.bool))
     # Generate a custom diverging colormap
@@ -87,7 +89,9 @@ def plot_input(
     ac = job_config.apply.clone()
     plot_cfg = ac.cfg_kine
     # prepare
-    plot_feature_list = list(set(ic.selected_features + ic.validation_features))
+    plot_feature_list = list(
+        set(ic.selected_features + ic.validation_features)
+    )
     save_dir = pathlib.Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
     # plot
@@ -106,7 +110,9 @@ def plot_input(
             sig_scale = feature_cfg.sig_scale_processed
         if feature_cfg.logbin and plot_range:
             plot_bins = np.logspace(
-                np.log10(plot_range[0]), np.log10(plot_range[1]), feature_cfg.bins
+                np.log10(plot_range[0]),
+                np.log10(plot_range[1]),
+                feature_cfg.bins,
             )
         else:
             plot_bins = feature_cfg.bins
@@ -132,7 +138,7 @@ def plot_input(
                 ampl.plot.draw_atlas_label(
                     0.05, 0.95, ax=ax, **(ac.atlas_label.get_config_dict())
                 )
-            #fig.suptitle(feature)
+            # fig.suptitle(feature)
             fig.savefig(f"{save_dir}/{feature}_bkg.{plot_cfg.save_format}")
             plt.close()
             fig, ax = plt.subplots()
@@ -155,7 +161,7 @@ def plot_input(
             ampl.plot.draw_atlas_label(
                 0.05, 0.95, ax=ax, **(ac.atlas_label.get_config_dict())
             )
-        #fig.suptitle(feature)
+        # fig.suptitle(feature)
         if plot_cfg.separate_bkg_sig:
             fig.savefig(f"{save_dir}/{feature}_sig.{plot_cfg.save_format}")
         else:
@@ -172,7 +178,9 @@ def plot_input_dnn(
     save_dir: ht.pathlike = None,
 ):
     """Plots input distributions comparision plots with DNN cuts applied"""
-    logger.info(f"Plotting input distributions with DNN cuts {dnn_cut} applied.")
+    logger.info(
+        f"Plotting input distributions with DNN cuts {dnn_cut} applied."
+    )
     # prepare
     ic = job_config.input.clone()
     ac = job_config.apply.clone()
@@ -195,12 +203,16 @@ def plot_input_dnn(
         return
     # prepare signal
     sig_predictions = sig_predictions[:, multi_class_cut_branch]
-    sig_cut_index = array_utils.get_cut_index(sig_predictions, [dnn_cut], ["<"])
+    sig_cut_index = array_utils.get_cut_index(
+        sig_predictions, [dnn_cut], ["<"]
+    )
     sig_weights_dnn = sig_weights.copy()
     sig_weights_dnn[sig_cut_index] = 0
     # prepare background
     bkg_predictions = bkg_predictions[:, multi_class_cut_branch]
-    bkg_cut_index = array_utils.get_cut_index(bkg_predictions, [dnn_cut], ["<"])
+    bkg_cut_index = array_utils.get_cut_index(
+        bkg_predictions, [dnn_cut], ["<"]
+    )
     bkg_weights_dnn = bkg_weights.copy()
     bkg_weights_dnn[bkg_cut_index] = 0
     # normalize weights for density plots
@@ -268,7 +280,7 @@ def plot_input_dnn(
             _, y_max = main_ax.get_ylim()
             main_ax.set_ylim(0, y_max * 1.4)
         main_ax.legend(loc="upper right")
-        #main_ax.set_ylabel(feature_cfg.y_label)
+        # main_ax.set_ylabel(feature_cfg.y_label)
         ratio_ax.set_xlabel(feature)
         if ac.plot_atlas_label:
             ampl.plot.draw_atlas_label(
@@ -325,7 +337,7 @@ def plot_input_dnn(
             _, y_max = main_ax.get_ylim()
             main_ax.set_ylim(0, y_max * 1.4)
         main_ax.legend(loc="upper right")
-        #main_ax.set_ylabel(feature_cfg.y_label)
+        # main_ax.set_ylabel(feature_cfg.y_label)
         ratio_ax.set_xlabel(feature)
         if ac.plot_atlas_label:
             ampl.plot.draw_atlas_label(

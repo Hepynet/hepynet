@@ -80,14 +80,17 @@ def plot_mva_scores(
                 weights=sig_weights_dict[key],
                 density=plot_config.density,
             )
-            ampl.plot.plot_signal(key, sig_edges, sig_bins, color=next(color_cycle))
+            ampl.plot.plot_signal(
+                key, sig_edges, sig_bins, color=next(color_cycle)
+            )
         ax.set_xlim(0, 1)
         if plot_config.log:
             ax.set_yscale("log")
             _, y_max = ax.get_ylim()
             ax.set_ylim(
                 plot_config.logy_min,
-                y_max * np.power(10, np.log10(y_max / plot_config.logy_min) / 2),
+                y_max
+                * np.power(10, np.log10(y_max / plot_config.logy_min) / 2),
             )
         else:
             _, y_max = ax.get_ylim()
@@ -97,7 +100,9 @@ def plot_mva_scores(
             ampl.plot.draw_atlas_label(
                 0.05, 0.95, ax=ax, **(ac.atlas_label.get_config_dict())
             )
-        fig.savefig(f"{save_dir}/{file_name}_node_{node}.{plot_config.save_format}")
+        fig.savefig(
+            f"{save_dir}/{file_name}_node_{node}.{plot_config.save_format}"
+        )
 
     return 0  # success run
 
@@ -217,7 +222,9 @@ def plot_train_test_compare(
         if plot_config.log:
             ax.set_yscale("log")
             _, y_max = ax.get_ylim()
-            ax.set_ylim(plot_config.logy_min, y_max * np.power(10, np.log10(y_max) / 2))
+            ax.set_ylim(
+                plot_config.logy_min, y_max * np.power(10, np.log10(y_max) / 2)
+            )
         else:
             _, y_max = ax.get_ylim()
             ax.set_ylim(0, y_max * 1.4)

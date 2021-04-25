@@ -55,7 +55,9 @@ def plot_2d_density(
         ylow=min(y),
         yup=max(y),
     )
-    hist_sig.fill_hist(fill_array_x=x, fill_array_y=y, weight_array=sig_weights)
+    hist_sig.fill_hist(
+        fill_array_x=x, fill_array_y=y, weight_array=sig_weights
+    )
     hist_sig.set_canvas(plot_canvas)
     hist_sig.set_palette("kBird")
     hist_sig.update_config("hist", "SetStats", 0)
@@ -85,7 +87,9 @@ def plot_2d_density(
         ylow=min(y),
         yup=max(y),
     )
-    hist_bkg.fill_hist(fill_array_x=x, fill_array_y=y, weight_array=bkg_weights)
+    hist_bkg.fill_hist(
+        fill_array_x=x, fill_array_y=y, weight_array=bkg_weights
+    )
     hist_bkg.set_canvas(plot_canvas)
     hist_bkg.set_palette("kBird")
     hist_bkg.update_config("hist", "SetStats", 0)
@@ -186,7 +190,9 @@ def plot_2d_significance_scan(
         )
         plot_significances = []
         for dnn_cut in dnn_cut_list:
-            threshold_id = (np.abs(np.array(plot_thresholds) - dnn_cut)).argmin()
+            threshold_id = (
+                np.abs(np.array(plot_thresholds) - dnn_cut)
+            ).argmin()
             plot_significances.append(significances[threshold_id])
         w_inputs.append(plot_significances)
     x = []
@@ -208,7 +214,9 @@ def plot_2d_significance_scan(
             y += new_y
             w += new_w
     # make plot
-    plot_canvas = ROOT.TCanvas("2d_significance_c", "2d_significance_c", 800, 600)
+    plot_canvas = ROOT.TCanvas(
+        "2d_significance_c", "2d_significance_c", 800, 600
+    )
     hist_sig = th1_tools.TH2FTool(
         "2d_significance",
         "2d_significance",
@@ -238,7 +246,9 @@ def plot_2d_significance_scan(
     hist_sig.update_config("y_axis", "SetLabelOffset", 0.003)
     hist_sig.draw("colz")
     hist_sig_text.fill_hist(
-        fill_array_x=x, fill_array_y=y, weight_array=np.array(w).round(decimals=2)
+        fill_array_x=x,
+        fill_array_y=y,
+        weight_array=np.array(w).round(decimals=2),
     )
     hist_sig_text.set_canvas(plot_canvas)
     hist_sig_text.update_config("hist", "SetMarkerSize", 1.8)

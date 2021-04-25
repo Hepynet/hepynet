@@ -12,8 +12,15 @@ import yaml
 from cycler import cycler
 
 from hepynet.common import common_utils, config_utils
-from hepynet.evaluate import (evaluate_utils, importance, kinematics, metrics,
-                              mva_scores, significance, train_history)
+from hepynet.evaluate import (
+    evaluate_utils,
+    importance,
+    kinematics,
+    metrics,
+    mva_scores,
+    significance,
+    train_history,
+)
 from hepynet.main import job_utils
 from hepynet.train import train_utils
 
@@ -170,10 +177,16 @@ class job_executor(object):
             save_region = ac.cfg_fit_npy.fit_npy_region
             if save_region is None:
                 save_region = ic.region
-            npy_dir = f"{ac.cfg_fit_npy.npy_save_dir}/{ic.campaign}/{save_region}"
+            npy_dir = (
+                f"{ac.cfg_fit_npy.npy_save_dir}/{ic.campaign}/{save_region}"
+            )
             logger.info("Dumping numpy arrays for fitting.")
             evaluate_utils.dump_fit_npy(
-                self.model_wrapper, df_raw, df, self.job_config, npy_dir=npy_dir,
+                self.model_wrapper,
+                df_raw,
+                df,
+                self.job_config,
+                npy_dir=npy_dir,
             )
 
         ## loop over models at different epochs
@@ -211,10 +224,14 @@ class job_executor(object):
 
             # metrics (PR, ROC, confusion matrix)
             if ac.book_confusion_matrix or ac.book_roc or ac.book_pr:
-                metrics.make_metrics_plot(df_raw, df, self.job_config, epoch_subdir)
+                metrics.make_metrics_plot(
+                    df_raw, df, self.job_config, epoch_subdir
+                )
             # overtrain check
             if ac.book_train_test_compare:
-                mva_scores.plot_train_test_compare(df, self.job_config, epoch_subdir)
+                mva_scores.plot_train_test_compare(
+                    df, self.job_config, epoch_subdir
+                )
             # data/mc scores comparison
             if ac.book_mva_scores_data_mc:
                 mva_scores.plot_mva_scores(
@@ -222,11 +239,15 @@ class job_executor(object):
                 )
             # Make significance scan plot
             if ac.book_significance_scan:
-                significance.plot_significance_scan(df, self.job_config, epoch_subdir)
+                significance.plot_significance_scan(
+                    df, self.job_config, epoch_subdir
+                )
             # kinematics with DNN cuts
             if ac.book_cut_kine_study:
                 for dnn_cut in ac.cfg_cut_kine_study.dnn_cut_list:
-                    dnn_kine_path = epoch_subdir / f"kine_cut_dnn_p{dnn_cut * 100}"
+                    dnn_kine_path = (
+                        epoch_subdir / f"kine_cut_dnn_p{dnn_cut * 100}"
+                    )
                     dnn_kine_path.mkdir(parents=True, exist_ok=True)
                     kinematics.plot_input_dnn(
                         df_raw,
@@ -367,7 +388,9 @@ class job_executor(object):
             pathlib.Path(rc.save_sub_dir).mkdir(parents=True, exist_ok=True)
         elif jc.job_type == "apply":
             # use same directory as input "train" directory for "apply" type jobs
-            dir_pattern = f"{jc.save_dir}/{rc.datestr}_{jc.load_job_name}_v{{}}"
+            dir_pattern = (
+                f"{jc.save_dir}/{rc.datestr}_{jc.load_job_name}_v{{}}"
+            )
             output_match = common_utils.get_newest_file_version(
                 dir_pattern, use_existing=True
             )

@@ -23,10 +23,14 @@ def get_metrics_band(train_history, metric_name, num_folds):
     max_len = max(folds_lengths)
 
     # process train metrics
-    train_mean, train_low, train_high = train_utils.merge_unequal_length_arrays(
-        train_folds
+    (
+        train_mean,
+        train_low,
+        train_high,
+    ) = train_utils.merge_unequal_length_arrays(train_folds)
+    val_mean, val_low, val_high = train_utils.merge_unequal_length_arrays(
+        val_folds
     )
-    val_mean, val_low, val_high = train_utils.merge_unequal_length_arrays(val_folds)
 
     return {
         "epoch": range(max_len),
@@ -63,7 +67,11 @@ def plot_history(model_wrapper, job_config, save_dir=None):
 
 
 def plot_metrics(
-    metric_name, train_history, plot_config, num_folds: int = 1, save_dir: str = ".",
+    metric_name,
+    train_history,
+    plot_config,
+    num_folds: int = 1,
+    save_dir: str = ".",
 ) -> None:
     logger.info(f"> Plotting {metric_name}")
     plot_dict = get_metrics_band(train_history, metric_name, num_folds)

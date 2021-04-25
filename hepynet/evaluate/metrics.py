@@ -48,7 +48,9 @@ def make_metrics_plot(
     save_dir = pathlib.Path(save_dir) / "metrics"
     save_dir.mkdir(parents=True, exist_ok=True)
     if ac.book_confusion_matrix:
-        make_confusion_matrix_plot(train_inputs, test_inputs, job_config, save_dir)
+        make_confusion_matrix_plot(
+            train_inputs, test_inputs, job_config, save_dir
+        )
     if ac.book_pr:
         make_pr_curve_plot(train_inputs, test_inputs, job_config, save_dir)
     if ac.book_roc:
@@ -122,7 +124,9 @@ def make_confusion_matrix_plot(
         with open(
             save_dir / f"node_{node}_cut_{score_cut}_test_report.txt"
         ) as report_file:
-            report = classification_report(y_test, y_test_pred[:, node_num] > score_cut)
+            report = classification_report(
+                y_test, y_test_pred[:, node_num] > score_cut
+            )
             print(report, file=report_file)
 
 
@@ -302,7 +306,9 @@ def plot_single_pr(
     ax.set_ylim(ylim[0], ylim[-1])
     ax.set_yscale(yscal)
     # auc_value = my_roc_auc(y_true[:, node_num], y_pred[:, node_num], weights)
-    auc_value = np.trapz(y=precision, x=recall)  # use Trapezium rule for simplicity
+    auc_value = np.trapz(
+        y=precision, x=recall
+    )  # use Trapezium rule for simplicity
     return auc_value, precision, recall
 
 
@@ -336,7 +342,9 @@ def plot_single_roc(
     ax.set_ylim(ylim[0], ylim[-1])
     ax.set_yscale(yscal)
     # auc_value = my_roc_auc(y_true[:, node_num], y_pred[:, node_num], weights)
-    auc_value = np.trapz(y=tpr_dm, x=fpr_dm)  # use Trapezium rule for simplicity
+    auc_value = np.trapz(
+        y=tpr_dm, x=fpr_dm
+    )  # use Trapezium rule for simplicity
     return auc_value, fpr_dm, tpr_dm
 
 
@@ -357,7 +365,11 @@ def my_roc_auc(
 
     data = np.empty(
         shape=len(classes),
-        dtype=[("c", classes.dtype), ("p", predictions.dtype), ("w", weights.dtype)],
+        dtype=[
+            ("c", classes.dtype),
+            ("p", predictions.dtype),
+            ("w", weights.dtype),
+        ],
     )
     data["c"], data["p"], data["w"] = classes, predictions, weights
 
@@ -382,7 +394,9 @@ def my_roc_auc(
                 [
                     ((dsplit["c"] == class0) * dsplit["w"] * msplit).sum()
                     * ((dsplit["c"] == class1) * dsplit["w"] * msplit).sum()
-                    for dsplit, msplit in zip(np.split(data, ids), np.split(mask1, ids))
+                    for dsplit, msplit in zip(
+                        np.split(data, ids), np.split(mask1, ids)
+                    )
                 ]
             )
             * 0.5
