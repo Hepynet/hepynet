@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+from matplotlib.ticker import AutoMinorLocator, LogLocator
 
 import hepynet.common.hepy_type as ht
 from hepynet.data_io import array_utils
@@ -97,61 +98,73 @@ def plot_input(
             feature_cfg.update(feature_cfg_tmp.get_config_dict())
         if is_raw:
             plot_range = feature_cfg.range_raw
+            bkg_scale = feature_cfg.bkg_scale_raw
+            sig_scale = feature_cfg.sig_scale_raw
         else:
             plot_range = feature_cfg.range_processed
+            bkg_scale = feature_cfg.bkg_scale_processed
+            sig_scale = feature_cfg.sig_scale_processed
+        if feature_cfg.logbin and plot_range:
+            plot_bins = np.logspace(
+                np.log10(plot_range[0]), np.log10(plot_range[1]), feature_cfg.bins
+            )
+        else:
+            plot_bins = feature_cfg.bins
         # plot bkg
         bkg_df = array_utils.extract_bkg_df(df)
         bkg_wt = bkg_df["weight"].values
         fig, ax = plt.subplots()
+        hist_kwargs = feature_cfg.hist_kwargs_bkg.get_config_dict()
+        remove_hist_kwargs_duplicates(hist_kwargs)
         ax.hist(
             bkg_df[feature].values,
+            bins=plot_bins,
             range=plot_range,
-            weights=bkg_wt,
+            weights=bkg_wt * bkg_scale,
             label="background",
-            **(feature_cfg.hist_kwargs_bkg.get_config_dict()),
+            **(hist_kwargs),
         )
-        ax.set_xlabel(feature_cfg.x_label)
-        ax.set_ylabel(feature_cfg.y_label)
-        if plot_range:
-            ax.set_xlim(plot_range[0], plot_range[1])
-        y_min, y_max = ax.get_ylim()
-        ax.set_ylim(y_min, y_max * 1.4)
-        ax.legend(loc="upper right")
-        if ac.plot_atlas_label:
-            ampl.plot.draw_atlas_label(
-                0.05, 0.95, ax=ax, **(ac.atlas_label.get_config_dict())
-            )
-        fig.suptitle(feature)
-        fig.savefig(f"{save_dir}/{feature}_bkg.{plot_cfg.save_format}")
-        plt.close()
+        modify_hist(ax, feature_cfg, plot_range)
+        ax.set_xlabel(feature)
+        # decide wether plot in same place
+        if plot_cfg.separate_bkg_sig:
+            if ac.plot_atlas_label:
+                ampl.plot.draw_atlas_label(
+                    0.05, 0.95, ax=ax, **(ac.atlas_label.get_config_dict())
+                )
+            #fig.suptitle(feature)
+            fig.savefig(f"{save_dir}/{feature}_bkg.{plot_cfg.save_format}")
+            plt.close()
+            fig, ax = plt.subplots()
         # plot sig
         sig_df = array_utils.extract_sig_df(df)
         sig_wt = sig_df["weight"].values
-        fig, ax = plt.subplots()
+        hist_kwargs = feature_cfg.hist_kwargs_sig.get_config_dict()
+        remove_hist_kwargs_duplicates(hist_kwargs)
         ax.hist(
             sig_df[feature].values,
+            bins=plot_bins,
             range=plot_range,
-            weights=sig_wt,
+            weights=sig_wt * sig_scale,
             label="signal",
-            **(feature_cfg.hist_kwargs_sig.get_config_dict()),
+            **(hist_kwargs),
         )
-        ax.set_xlabel(feature_cfg.x_label)
-        ax.set_ylabel(feature_cfg.y_label)
-        if plot_range:
-            ax.set_xlim(plot_range[0], plot_range[1])
-        y_min, y_max = ax.get_ylim()
-        ax.set_ylim(y_min, y_max * 1.4)
-        ax.legend(loc="upper right")
+        modify_hist(ax, feature_cfg, plot_range)
+        ax.set_xlabel(feature)
         if ac.plot_atlas_label:
             ampl.plot.draw_atlas_label(
                 0.05, 0.95, ax=ax, **(ac.atlas_label.get_config_dict())
             )
-        fig.suptitle(feature)
-        fig.savefig(f"{save_dir}/{feature}_sig.{plot_cfg.save_format}")
+        #fig.suptitle(feature)
+        if plot_cfg.separate_bkg_sig:
+            fig.savefig(f"{save_dir}/{feature}_sig.{plot_cfg.save_format}")
+        else:
+            fig.savefig(f"{save_dir}/{feature}.{plot_cfg.save_format}")
         plt.close()
 
 
 def plot_input_dnn(
+    df_raw: pd.DataFrame,
     df: pd.DataFrame,
     job_config: ht.config,
     dnn_cut: float = None,
@@ -164,12 +177,14 @@ def plot_input_dnn(
     ic = job_config.input.clone()
     ac = job_config.apply.clone()
     plot_cfg = ac.cfg_cut_kine_study
-    # get fill weights with dnn cut
-    plot_feature_list = ic.selected_features + ic.validation_features
-    bkg_df = array_utils.extract_bkg_df(df)
-    sig_df = array_utils.extract_sig_df(df)
-    bkg_weights = bkg_df["weight"].values
-    sig_weights = sig_df["weight"].values
+    # get sig/bkg DataFrame and weights
+    bkg_df_raw = array_utils.extract_bkg_df(df_raw)
+    sig_df_raw = array_utils.extract_sig_df(df_raw)
+    bkg_weights = bkg_df_raw["weight"].values
+    sig_weights = sig_df_raw["weight"].values
+    # get predictions
+    bkg_predictions = array_utils.extract_bkg_df(df)[["y_pred"]].values
+    sig_predictions = array_utils.extract_sig_df(df)[["y_pred"]].values
     # normalize
     if plot_cfg.density:
         bkg_weights = bkg_weights / np.sum(bkg_weights)
@@ -179,13 +194,11 @@ def plot_input_dnn(
         logger.error(f"DNN cut {dnn_cut} is out of range [0, 1]!")
         return
     # prepare signal
-    sig_predictions = sig_df[["y_pred"]].values
     sig_predictions = sig_predictions[:, multi_class_cut_branch]
     sig_cut_index = array_utils.get_cut_index(sig_predictions, [dnn_cut], ["<"])
     sig_weights_dnn = sig_weights.copy()
     sig_weights_dnn[sig_cut_index] = 0
     # prepare background
-    bkg_predictions = bkg_df[["y_pred"]].values
     bkg_predictions = bkg_predictions[:, multi_class_cut_branch]
     bkg_cut_index = array_utils.get_cut_index(bkg_predictions, [dnn_cut], ["<"])
     bkg_weights_dnn = bkg_weights.copy()
@@ -195,10 +208,11 @@ def plot_input_dnn(
         bkg_weights_dnn = bkg_weights_dnn / np.sum(bkg_weights)
         sig_weights_dnn = sig_weights_dnn / np.sum(sig_weights)
     # plot
+    plot_feature_list = ic.selected_features + ic.validation_features
     for feature in plot_feature_list:
         logger.debug(f"Plotting kinematics for {feature}")
-        bkg_array = bkg_df[feature].values
-        sig_array = sig_df[feature].values
+        bkg_array = bkg_df_raw[feature].values
+        sig_array = sig_df_raw[feature].values
 
         feature_cfg = plot_cfg.clone()
         if feature in plot_cfg.__dict__.keys():
@@ -241,8 +255,6 @@ def plot_input_dnn(
             ratio_ax,
             plottype="raw",
         )
-        main_ax.set_ylabel(feature_cfg.y_label)
-        ratio_ax.set_xlabel(feature_cfg.x_label)
         if plot_range:
             main_ax.set_xlim(plot_range[0], plot_range[1])
             ratio_ax.set_xlim(plot_range[0], plot_range[1])
@@ -256,6 +268,8 @@ def plot_input_dnn(
             _, y_max = main_ax.get_ylim()
             main_ax.set_ylim(0, y_max * 1.4)
         main_ax.legend(loc="upper right")
+        #main_ax.set_ylabel(feature_cfg.y_label)
+        ratio_ax.set_xlabel(feature)
         if ac.plot_atlas_label:
             ampl.plot.draw_atlas_label(
                 0.05, 0.95, ax=main_ax, **(ac.atlas_label.get_config_dict())
@@ -298,8 +312,6 @@ def plot_input_dnn(
             ratio_ax,
             plottype="raw",
         )
-        main_ax.set_ylabel(feature_cfg.y_label)
-        ratio_ax.set_xlabel(feature_cfg.x_label)
         if plot_range:
             main_ax.set_xlim(plot_range[0], plot_range[1])
             ratio_ax.set_xlim(plot_range[0], plot_range[1])
@@ -313,6 +325,8 @@ def plot_input_dnn(
             _, y_max = main_ax.get_ylim()
             main_ax.set_ylim(0, y_max * 1.4)
         main_ax.legend(loc="upper right")
+        #main_ax.set_ylabel(feature_cfg.y_label)
+        ratio_ax.set_xlabel(feature)
         if ac.plot_atlas_label:
             ampl.plot.draw_atlas_label(
                 0.05, 0.95, ax=main_ax, **(ac.atlas_label.get_config_dict())
@@ -320,3 +334,45 @@ def plot_input_dnn(
         fig.suptitle(f"{feature} (background)")
         fig.savefig(f"{save_dir}/{feature}(bkg).{plot_cfg.save_format}")
         plt.close()
+
+
+def remove_hist_kwargs_duplicates(hist_kwargs: dict):
+    if "bins" in hist_kwargs:
+        del hist_kwargs["bins"]
+    if "logbin" in hist_kwargs:
+        del hist_kwargs["logbin"]
+    if "logx" in hist_kwargs:
+        del hist_kwargs["logx"]
+    if "logy" in hist_kwargs:
+        del hist_kwargs["logy"]
+    if "range" in hist_kwargs:
+        del hist_kwargs["range"]
+    if "weights" in hist_kwargs:
+        del hist_kwargs["weights"]
+    if "label" in hist_kwargs:
+        del hist_kwargs["label"]
+    return hist_kwargs
+
+
+def modify_hist(ax: ht.ax, feature_cfg: ht.sub_config, plot_range: ht.bound):
+    ax.set_xlabel(feature_cfg.x_label)
+    ax.set_ylabel(feature_cfg.y_label)
+    log_minor_locator = LogLocator(
+        base=10, subs=np.arange(1.0, 10.0) * 0.1, numticks=10
+    )
+    if feature_cfg.logx:
+        ax.set_xscale("symlog")
+        ax.xaxis.set_minor_locator(log_minor_locator)
+    if plot_range:
+        ax.set_xlim(plot_range[0], plot_range[1])
+    y_min, y_max = ax.get_ylim()
+    if feature_cfg.logy:
+        ax.set_yscale("symlog")
+        log_range = np.log10(y_max)
+        y_max = pow(10, np.log10(y_max) + log_range * 0.4)
+        ax.set_ylim(y_min, y_max * 1.4)
+        ax.yaxis.set_minor_locator(log_minor_locator)
+    else:
+        ax.set_ylim(y_min, y_max * 1.4)
+        ax.yaxis.set_minor_locator(AutoMinorLocator())
+    ax.legend(loc="upper right")

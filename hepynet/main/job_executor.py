@@ -2,16 +2,18 @@ import datetime
 import logging
 import pathlib
 import random as python_random
+import time
 
 import atlas_mpl_style as ampl
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
+import yaml
 from cycler import cycler
 
 from hepynet.common import common_utils, config_utils
-from hepynet.evaluate import (evaluate_utils, importance, kinematics,
-                              mva_scores, roc, significance, train_history)
+from hepynet.evaluate import (evaluate_utils, importance, kinematics, metrics,
+                              mva_scores, significance, train_history)
 from hepynet.main import job_utils
 from hepynet.train import train_utils
 
@@ -32,8 +34,8 @@ class job_executor(object):
         ampl.use_atlas_style(usetex=False)
         # set up color cycle
         color_cycle = self.job_config.apply.color_cycle
-        default_cycler = (cycler(color=color_cycle))
-        plt.rc('axes', prop_cycle=default_cycler)
+        default_cycler = cycler(color=color_cycle)
+        plt.rc("axes", prop_cycle=default_cycler)
 
     def execute_jobs(self):
         """Execute all planned jobs."""
@@ -93,6 +95,12 @@ class job_executor(object):
         return self.model_wrapper.get_train_performance_meta()
 
     def execute_train_job(self):
+        # Save the final job_config
+        rc = self.job_config.run
+        yaml_path = pathlib.Path(rc.save_sub_dir) / "train_config.yaml"
+        with open(yaml_path, "w") as yaml_file:
+            yaml.dump(self.job_config.get_config_dict(), yaml_file, indent=4)
+        # Train
         self.model_wrapper.compile()
         self.model_wrapper.train()
 
@@ -106,11 +114,20 @@ class job_executor(object):
         rc.save_dir = f"{rc.save_sub_dir}/apply/{jc.job_name}"
         pathlib.Path(rc.save_dir).mkdir(parents=True, exist_ok=True)
 
+        # Save the final job_config
+        yaml_path = pathlib.Path(rc.save_dir) / "apply_config.yaml"
+        with open(yaml_path, "w") as yaml_file:
+            yaml.dump(self.job_config.get_config_dict(), yaml_file, indent=4)
+
         # load inputs
         df_raw = self.model_wrapper.get_feedbox().get_raw_df()
-        #### debug
-        #df_raw = df_raw.sample(n=100000)
-        #df_raw.reset_index(drop=True, inplace=True)
+        if logger.level == logging.DEBUG:
+            logger.warn(
+                f"Randomly sampling 10000 events as input for debugging purpose."
+            )
+            time.sleep(3)
+            df_raw = df_raw.sample(n=10000)
+            df_raw.reset_index(drop=True, inplace=True)
 
         df = self.model_wrapper.get_feedbox().get_processed_df(raw_df=df_raw)
 
@@ -144,6 +161,9 @@ class job_executor(object):
             )
 
         # Studies depending on models
+        if ac.jump_model_studies:
+            logger.info("Ignoring model dependent studies as specified")
+            return
 
         ## generate fit arrays
         if ac.book_fit_npy:
@@ -189,9 +209,9 @@ class job_executor(object):
             )
             df.loc[:, "y_pred"] = y_pred
 
-            # roc
-            if ac.book_roc:
-                roc.plot_multi_class_roc(df, self.job_config, epoch_subdir)
+            # metrics (PR, ROC, confusion matrix)
+            if ac.book_confusion_matrix or ac.book_roc or ac.book_pr:
+                metrics.make_metrics_plot(df_raw, df, self.job_config, epoch_subdir)
             # overtrain check
             if ac.book_train_test_compare:
                 mva_scores.plot_train_test_compare(df, self.job_config, epoch_subdir)
@@ -209,6 +229,7 @@ class job_executor(object):
                     dnn_kine_path = epoch_subdir / f"kine_cut_dnn_p{dnn_cut * 100}"
                     dnn_kine_path.mkdir(parents=True, exist_ok=True)
                     kinematics.plot_input_dnn(
+                        df_raw,
                         df,
                         self.job_config,
                         dnn_cut=dnn_cut,

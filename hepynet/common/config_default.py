@@ -92,19 +92,31 @@ DEFAULT_CFG = {
         "cfg_history": {},
         "book_kine": False,
         "cfg_kine": {
+            "separate_bkg_sig": True,
+            "bkg_scale_raw": 1,
+            "bkg_scale_processed": 1,
+            "sig_scale_raw": 1,
+            "sig_scale_processed": 1,
             "hist_kwargs_sig": {  # kwargs of plt.hist
                 "bins": 40,
+                "logbin": False,
+                "logx": False,
+                "logy": False,
                 "histtype": "step",
                 "density": False,
                 "facecolor": "#f99157",  # orange
-                "edgecolor": "black",
+                "edgecolor": "#f99157",
+                "lw": 2,
             },
             "hist_kwargs_bkg": {
                 "bins": 40,
-                "histtype": "step",
+                "logbin": False,
+                "logx": False,
+                "logy": False,
+                "histtype": "stepfilled",
                 "density": False,
                 "facecolor": "#5fb3b3",  # cyan
-                "edgecolor": "black",
+                "edgecolor": "#5fb3b3",
             },
             "save_format": "png",
             "x_label": "",
@@ -116,13 +128,18 @@ DEFAULT_CFG = {
             # feature config will overwrite common plot configs
         },
         "book_cor_matrix": False,
+        # model dependent studies
+        "jump_model_studies": False,
         "book_fit_npy": False,
         "cfg_fit_npy": {
             "fit_npy_region": "",
             "fit_npy_branches": [],
             "npy_save_dir": "",
         },
+        "book_confusion_matrix": False,
+        "cfg_confusion_matrix": {"dnn_cut": 0.5},
         "book_roc": False,
+        "book_pr": False,
         "book_train_test_compare": False,
         "cfg_train_test_compare": {
             "sig_key": None,

@@ -179,6 +179,8 @@ class Feedbox(object):
         total_wt = df.loc[
             (df["is_mc"] == is_mc) & (df["is_sig"] == is_sig), "weight"
         ].sum()
+        if array_key in sample_list:
+            sample_list = [array_key]
         for sample in sample_list:
             sample_wt = df.loc[df["sample_name"] == sample, "weight"]
             sample_sumw = sample_wt.sum()
@@ -195,7 +197,7 @@ class Feedbox(object):
             elif array_key == sample:
                 norm_factor = sumofweight / sample_sumw
             else:
-                logger.warn(f"Unknown array_key {array_key}")
+                logger.warn(f"Unknown array_key {array_key} for sample {sample}")
             df.loc[df["sample_name"] == sample, "weight"] = sample_wt * norm_factor
 
     def update_norm_dict(self, features: Optional[List[str]] = None):
