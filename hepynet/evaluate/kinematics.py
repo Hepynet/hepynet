@@ -34,7 +34,7 @@ def plot_correlation_matrix(
         )
         bkg_df = bkg_df.sample(n=1000000)
     bkg_matrix = array_utils.corr_matrix(
-        bkg_df[features].values, bkg_df["weight"].values
+        bkg_df[features].to_numpy("float32"), bkg_df["weight"].to_numpy("float32")
     )
     paint_correlation_matrix(ax[0], bkg_matrix, features)
     # plot sig
@@ -46,7 +46,7 @@ def plot_correlation_matrix(
         )
         sig_df = sig_df.sample(n=1000000)
     sig_matrix = array_utils.corr_matrix(
-        sig_df[features].values, sig_df["weight"].values
+        sig_df[features].to_numpy("float32"), sig_df["weight"].to_numpy("float32")
     )
     paint_correlation_matrix(ax[1], sig_matrix, features)
     fig_save_path = save_dir / "correlation_matrix.png"
@@ -117,13 +117,17 @@ def plot_input(
         else:
             plot_bins = feature_cfg.bins
         # plot bkg
-        bkg_df = array_utils.extract_bkg_df(df)
-        bkg_wt = bkg_df["weight"].values
+        # bkg_df = array_utils.extract_bkg_df(df)
+        bkg_wt = df.loc[
+            (df["is_mc"] == True) & (df["is_sig"] == False), "weight"
+        ].to_numpy("float32")
         fig, ax = plt.subplots()
         hist_kwargs = feature_cfg.hist_kwargs_bkg.get_config_dict()
         remove_hist_kwargs_duplicates(hist_kwargs)
         ax.hist(
-            bkg_df[feature].values,
+            df.loc[
+                (df["is_mc"] == True) & (df["is_sig"] == False), feature
+            ].to_numpy("float32"),
             bins=plot_bins,
             range=plot_range,
             weights=bkg_wt * bkg_scale,
@@ -144,11 +148,11 @@ def plot_input(
             fig, ax = plt.subplots()
         # plot sig
         sig_df = array_utils.extract_sig_df(df)
-        sig_wt = sig_df["weight"].values
+        sig_wt = sig_df["weight"].to_numpy("float32")
         hist_kwargs = feature_cfg.hist_kwargs_sig.get_config_dict()
         remove_hist_kwargs_duplicates(hist_kwargs)
         ax.hist(
-            sig_df[feature].values,
+            sig_df[feature].to_numpy("float32"),
             bins=plot_bins,
             range=plot_range,
             weights=sig_wt * sig_scale,
@@ -188,11 +192,11 @@ def plot_input_dnn(
     # get sig/bkg DataFrame and weights
     bkg_df_raw = array_utils.extract_bkg_df(df_raw)
     sig_df_raw = array_utils.extract_sig_df(df_raw)
-    bkg_weights = bkg_df_raw["weight"].values
-    sig_weights = sig_df_raw["weight"].values
+    bkg_weights = bkg_df_raw["weight"].to_numpy("float32")
+    sig_weights = sig_df_raw["weight"].to_numpy("float32")
     # get predictions
-    bkg_predictions = array_utils.extract_bkg_df(df)[["y_pred"]].values
-    sig_predictions = array_utils.extract_sig_df(df)[["y_pred"]].values
+    bkg_predictions = array_utils.extract_bkg_df(df)[["y_pred"]].to_numpy("float32")
+    sig_predictions = array_utils.extract_sig_df(df)[["y_pred"]].to_numpy("float32")
     # normalize
     if plot_cfg.density:
         bkg_weights = bkg_weights / np.sum(bkg_weights)
@@ -223,8 +227,8 @@ def plot_input_dnn(
     plot_feature_list = ic.selected_features + ic.validation_features
     for feature in plot_feature_list:
         logger.debug(f"Plotting kinematics for {feature}")
-        bkg_array = bkg_df_raw[feature].values
-        sig_array = sig_df_raw[feature].values
+        bkg_array = bkg_df_raw[feature].to_numpy("float32")
+        sig_array = sig_df_raw[feature].to_numpy("float32")
 
         feature_cfg = plot_cfg.clone()
         if feature in plot_cfg.__dict__.keys():

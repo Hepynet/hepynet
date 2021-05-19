@@ -50,9 +50,9 @@ def plot_feature_importance(
     model = model_wrapper.get_model()
     cols = ic.selected_features
     test_index = df["is_train"] == False
-    y_test = df.loc[test_index, ["y"]].values
-    y_pred = df.loc[test_index, ["y_pred"]].values
-    wt_test = df.loc[test_index, "weight"].values
+    y_test = df.loc[test_index, ["y"]].to_numpy("float32")
+    y_pred = df.loc[test_index, ["y_pred"]].to_numpy("float32")
+    wt_test = df.loc[test_index, "weight"].to_numpy("float32")
     all_nodes = ["sig"] + tc.output_bkg_node_names
     # Make plots
     fig_save_pattern = f"{save_dir}/importance_{{}}.png"

@@ -108,11 +108,11 @@ def clip_negative_weights(weights: np.ndarray):
 
 
 def extract_bkg_df(df: pd.DataFrame):
-    return df.loc[(df["is_mc"] == True) & (df["is_sig"] == False), :]
+    return df.loc[(df["is_mc"] == True) & (df["is_sig"] == False)]
 
 
 def extract_sig_df(df: pd.DataFrame):
-    return df.loc[df["is_sig"] == True, :]
+    return df.loc[df["is_sig"] == True]
 
 
 def get_cut_index(np_array, cut_values, cut_types):

@@ -2,6 +2,7 @@ import itertools
 import logging
 
 import atlas_mpl_style as ampl
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -12,6 +13,7 @@ logger = logging.getLogger("hepynet")
 
 
 def plot_mva_scores(
+    df_raw: pd.DataFrame,
     df: pd.DataFrame,
     job_config: ht.config,
     save_dir: ht.pathlike,
@@ -26,50 +28,100 @@ def plot_mva_scores(
     sig_scores_dict = {}
     sig_weights_dict = {}
     for sig_key in plot_config.sig_list:
-        sig_df = df.loc[df["sample_name"] == sig_key, :]
-        sig_score = sig_df["y_pred"].values
+        sig_score = df.loc[df["sample_name"] == sig_key, "y_pred"].values
         if sig_score.ndim == 1:
             sig_score = sig_score.reshape((-1, 1))
         sig_scores_dict[sig_key] = sig_score
-        sig_weights_dict[sig_key] = sig_df["weight"].values
+        sig_weight = df_raw.loc[df["sample_name"] == sig_key, "weight"].values
+        sig_weights_dict[sig_key] = sig_weight
     # prepare background
     bkg_scores_dict = {}
     bkg_weights_dict = {}
     for bkg_key in plot_config.bkg_list:
-        bkg_df = df.loc[df["sample_name"] == bkg_key, :]
-        bkg_score = bkg_df["y_pred"].values
+        bkg_score = df.loc[df["sample_name"] == bkg_key, "y_pred"].values
         if bkg_score.ndim == 1:
             bkg_score = bkg_score.reshape((-1, 1))
         bkg_scores_dict[bkg_key] = bkg_score
-        bkg_weights_dict[bkg_key] = bkg_df["weight"].values
+        bkg_weight = df_raw.loc[df["sample_name"] == bkg_key, "weight"].values
+        bkg_weights_dict[bkg_key] = bkg_weight
     # prepare data
     # TODO: support data plots
-    data_scores = None
-    data_weights = None
     if plot_config.apply_data:
         data_key = plot_config.data_key
-        data_df = df.loc[df["sample_name"] == data_key, :]
-        data_score = data_df["y_pred"].values
-        data_weights = data_df["weight"].values
+        data_scores = df.loc[df["sample_name"] == data_key, "y_pred"].values
+        if data_scores.ndim == 1:
+            data_scores = data_scores.reshape((-1, 1))
+        data_weights = df_raw.loc[
+            df["sample_name"] == data_key, "weight"
+        ].values
+
     # make plots
     all_nodes = ["sig"] + tc.output_bkg_node_names
     for node_id, node in enumerate(all_nodes):
-        fig, ax = plt.subplots(figsize=(16.667, 11.111))
+        if plot_config.show_ratio:
+            fig = plt.figure(figsize=(50 / 3, 50 / 3))
+            gs = mpl.gridspec.GridSpec(4, 1, hspace=0.0, wspace=0.0)
+            ax = fig.add_subplot(gs[0:3])
+            ax.tick_params(labelbottom=False)
+            ratio_ax = fig.add_subplot(gs[3], sharex=ax)
+            #ratio_ax.yaxis.set_major_locator(
+            #    mpl.ticker.MaxNLocator(
+            #        symmetric=True, prune="both", min_n_ticks=5, nbins=4
+            #    )
+            #)
+            ratio_ax.autoscale(axis="x", tight=True)
+            plt.sca(ax)
+        else:
+            fig, ax = plt.subplots(figsize=(50 / 3, 100 / 9))
         colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
         color_cycle = itertools.cycle(colors)
         # plot bkg
         bkg_collect = list()
-        bkg_edges = None
+        bkg_scores_all = None
+        bkg_weights_all = None
         for key, value in bkg_scores_dict.items():
-            bkg_bins, bkg_edges = np.histogram(
-                value[:, node_id].flatten(),
+            node_score = value[:, node_id].flatten()
+            node_weight = bkg_weights_dict[key] * plot_config.bkg_scale
+            bkg_bins, _ = np.histogram(
+                node_score,
                 bins=plot_config.bins,
                 range=(0, 1),
-                weights=bkg_weights_dict[key],
+                weights=node_weight,
                 density=plot_config.density,
             )
-            bkg = ampl.plot.Background(key, bkg_bins, color=next(color_cycle))
+            if plot_config.bkg_scale != 1:
+                bkg_label = f"{key} x{plot_config.bkg_scale}"
+            else:
+                bkg_label = key
+            bkg = ampl.plot.Background(
+                bkg_label, bkg_bins, color=next(color_cycle)
+            )
             bkg_collect.append(bkg)
+            if bkg_scores_all is None:
+                bkg_scores_all = node_score
+                bkg_weights_all = node_weight
+            else:
+                bkg_scores_all = np.concatenate((bkg_scores_all, node_score))
+                bkg_weights_all = np.concatenate(
+                    (bkg_weights_all, node_weight)
+                )
+        bkg_all_bins, bkg_edges = np.histogram(
+            bkg_scores_all,
+            bins=plot_config.bins,
+            range=(0, 1),
+            weights=bkg_weights_all,
+            density=plot_config.density,
+        )
+        sumw2, _ = np.histogram(
+            bkg_scores_all,
+            bins=plot_config.bins,
+            range=(0, 1),
+            weights=np.power(bkg_weights_all, 2),
+        )
+        bkg_stats_errs = np.sqrt(sumw2)
+        if plot_config.density:
+            norm_sum = np.sum(bkg_weights_all) * (1 / plot_config.bins)
+            bkg_stats_errs /= norm_sum
         ampl.plot.plot_backgrounds(bkg_collect, bkg_edges, ax=ax)
         # plot sig
         for key, value in sig_scores_dict.items():
@@ -77,12 +129,60 @@ def plot_mva_scores(
                 value[:, node_id].flatten(),
                 bins=plot_config.bins,
                 range=(0, 1),
-                weights=sig_weights_dict[key],
+                weights=sig_weights_dict[key] * plot_config.sig_scale,
                 density=plot_config.density,
             )
+            if plot_config.sig_scale != 1:
+                sig_label = f"{key} x{plot_config.sig_scale}"
+            else:
+                sig_label = key
             ampl.plot.plot_signal(
-                key, sig_edges, sig_bins, color=next(color_cycle)
+                sig_label, sig_edges, sig_bins, color=next(color_cycle), ax=ax
             )
+        # plot data
+        if plot_config.apply_data:
+            data_bins, data_edges = np.histogram(
+                data_scores[:, node_id].flatten(),
+                bins=plot_config.bins,
+                range=(0, 1),
+                weights=data_weights * plot_config.data_scale,
+                density=plot_config.density,
+            )
+            sumw2, _ = np.histogram(
+                data_scores[:, node_id].flatten(),
+                bins=plot_config.bins,
+                range=(0, 1),
+                weights=np.power(data_weights * plot_config.data_scale, 2),
+            )
+            data_stats_errs = np.sqrt(sumw2)
+            if plot_config.density:
+                norm_sum = np.sum(data_weights * plot_config.data_scale) * (
+                    1 / plot_config.bins
+                )
+                data_stats_errs /= norm_sum
+            if plot_config.data_scale != 1:
+                data_label = f"data x{plot_config.data_scale}"
+            else:
+                data_label = "data"
+            ampl.plot.plot_data(
+                data_edges,
+                data_bins,
+                stat_errs=data_stats_errs,
+                label=data_label,
+                ax=ax,
+            )
+            # plot ratio
+            if plot_config.show_ratio:
+                ampl.plot.plot_ratio(
+                    data_edges,
+                    data_bins,
+                    data_stats_errs,
+                    bkg_all_bins,
+                    bkg_stats_errs,
+                    ratio_ax,
+                    plottype="raw",
+                )
+            ratio_ax.set_ylim(0, 2)
         ax.set_xlim(0, 1)
         if plot_config.log:
             ax.set_yscale("log")

@@ -216,7 +216,7 @@ class job_executor(object):
                 )
                 return
 
-            # add y values predictions
+            # update y values predictions
             y_pred, _, _ = evaluate_utils.k_folds_predict(
                 self.model_wrapper.get_model(), df[ic.selected_features].values
             )
@@ -235,7 +235,7 @@ class job_executor(object):
             # data/mc scores comparison
             if ac.book_mva_scores_data_mc:
                 mva_scores.plot_mva_scores(
-                    df, self.job_config, epoch_subdir,
+                    df_raw, df, self.job_config, epoch_subdir,
                 )
             # Make significance scan plot
             if ac.book_significance_scan:

@@ -40,20 +40,25 @@ class Feedbox(object):
 
         self._array_prepared = True
 
-    def get_raw_df(self):
+    def get_raw_df(self) -> pd.DataFrame:
         logger.info("Loading raw input DataFrame...")
         ic = self._job_config.input.clone()
         raw_df: pd.DataFrame = pd.read_feather(self._data_dir / ic.input_path)
         # select events in sig/bkg sample_list
-        sample_list = ic.sig_list + ic.bkg_list
+        sample_list = ic.sig_list + ic.bkg_list + ic.data_list
         logger.info(f"> Loading samples in list: {sample_list}")
-        raw_df = raw_df[raw_df["sample_name"].isin(sample_list)]
+        # raw_df = raw_df[raw_df["sample_name"].isin(sample_list)]
+        # raw_df.drop(raw_df[~raw_df["sample_name"].isin(sample_list)], inplace=True)
+        raw_df.drop(
+            raw_df.index[~raw_df["sample_name"].isin(sample_list)],
+            inplace=True,
+        )
         # select events by extra cut features
-        if ic.cut_expression is not None:
+        if ic.cut_expression:
             logger.info(
                 f"> Cutting inputs according to expression: {ic.cut_expression}"
             )
-            raw_df = raw_df.query(ic.cut_expression)
+            raw_df.query(ic.cut_expression, inplace=True)
         # return
         raw_df.reset_index(drop=True, inplace=True)
         logger.info("> Successfully loaded raw input DataFrame...")
@@ -102,7 +107,9 @@ class Feedbox(object):
                 if feature in self._norm_dict:
                     f_mean = self._norm_dict[feature]["mean"]
                     f_var = self._norm_dict[feature]["variance"]
-                    new_values = (out_df[feature].values - f_mean) / np.sqrt(f_var)
+                    new_values = (
+                        out_df[feature].to_numpy("float32") - f_mean
+                    ) / np.sqrt(f_var)
                     out_df.loc[:, feature].update(new_values)
                 else:
                     logger.debug(
@@ -130,7 +137,12 @@ class Feedbox(object):
             )
             # reweight background
             self.reweight_df(
-                out_df, ic.bkg_list, ic.bkg_key, ic.bkg_sumofweight, True, False
+                out_df,
+                ic.bkg_list,
+                ic.bkg_key,
+                ic.bkg_sumofweight,
+                True,
+                False,
             )
         # reset physic para for pDNN
         if ic.reset_mass:
@@ -144,13 +156,13 @@ class Feedbox(object):
             ref_weight_positive[ref_weight_positive < 0] = 0
             sump = ref_weight_positive.sum()
             reset_values = np.random.choice(
-                ref_array.values,
+                ref_array.to_numpy("float32"),
                 size=len(ref_weight),
-                p=(1 / sump) * ref_weight_positive.values,
+                p=(1 / sump) * ref_weight_positive.to_numpy("float32"),
             )
-            out_df.loc[out_df["is_sig"] == False, ic.reset_feature_name].update(
-                reset_values
-            )
+            out_df.loc[
+                out_df["is_sig"] == False, ic.reset_feature_name
+            ].update(reset_values)
         # set y
         logger.info("> Setting up y values")
         out_df.loc[:, "y"] = 0
@@ -158,7 +170,7 @@ class Feedbox(object):
         # tag train / test
         logger.info("> Tagging train / test")
         sss = StratifiedShuffleSplit(n_splits=1)
-        y_arr = out_df["y"].values
+        y_arr = out_df["y"].to_numpy("float32")
         for train_index, _ in sss.split(y_arr, y_arr):
             break
         out_df.loc[:, "is_train"] = False
@@ -174,7 +186,13 @@ class Feedbox(object):
         return self._norm_dict
 
     def reweight_df(
-        self, df: pd.DataFrame, sample_list, array_key, sumofweight, is_mc, is_sig
+        self,
+        df: pd.DataFrame,
+        sample_list,
+        array_key,
+        sumofweight,
+        is_mc,
+        is_sig,
     ):
         total_wt = df.loc[
             (df["is_mc"] == is_mc) & (df["is_sig"] == is_sig), "weight"
@@ -197,8 +215,12 @@ class Feedbox(object):
             elif array_key == sample:
                 norm_factor = sumofweight / sample_sumw
             else:
-                logger.warn(f"Unknown array_key {array_key} for sample {sample}")
-            df.loc[df["sample_name"] == sample, "weight"] = sample_wt * norm_factor
+                logger.warn(
+                    f"Unknown array_key {array_key} for sample {sample}"
+                )
+            df.loc[df["sample_name"] == sample, "weight"] = (
+                sample_wt * norm_factor
+            )
 
     def update_norm_dict(self, features: Optional[List[str]] = None):
         ic = self._job_config.input.clone()
@@ -211,13 +233,15 @@ class Feedbox(object):
         df = self.get_raw_df()
         weight_array = df.loc[
             (df["is_mc"] == True) & (df["is_sig"] == False), "weight"
-        ].values
+        ].to_numpy("float32")
         for feature in feature_list:
             feature_array = df.loc[
                 (df["is_mc"] == True) & (df["is_sig"] == False), feature
-            ].values
+            ].to_numpy("float32")
             mean = np.average(feature_array, weights=weight_array)
-            variance = np.average((feature_array - mean) ** 2, weights=weight_array)
+            variance = np.average(
+                (feature_array - mean) ** 2, weights=weight_array
+            )
             self._norm_dict[feature] = {"mean": mean, "variance": variance}
             logger.info(
                 f"> > Recalculated norm factors for feature {feature} mean: {mean}, variance: {variance}"
