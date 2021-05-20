@@ -169,7 +169,7 @@ class Feedbox(object):
         out_df.loc[out_df["is_sig"] == True, "y"] = 1
         # tag train / test
         logger.info("> Tagging train / test")
-        sss = StratifiedShuffleSplit(n_splits=1)
+        sss = StratifiedShuffleSplit(n_splits=1, test_size=ic.test_rate)
         y_arr = out_df["y"].to_numpy("float32")
         for train_index, _ in sss.split(y_arr, y_arr):
             break
