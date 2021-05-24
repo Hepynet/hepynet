@@ -2,6 +2,7 @@ import datetime
 import logging
 import pathlib
 import random as python_random
+from sys import path
 import time
 
 import atlas_mpl_style as ampl
@@ -10,8 +11,9 @@ import numpy as np
 import tensorflow as tf
 import yaml
 from cycler import cycler
-
+import shutil
 from hepynet.common import common_utils, config_utils
+from hepynet.data_io import feed_box
 from hepynet.evaluate import (
     evaluate_utils,
     importance,
@@ -88,6 +90,8 @@ class job_executor(object):
 
         if jc.job_type == "train":
             self.execute_train_job()
+        elif jc.job_type == "tune":
+            self.execute_tune_job()
         elif jc.job_type == "apply":
             self.execute_apply_job()
         else:
@@ -108,8 +112,61 @@ class job_executor(object):
         with open(yaml_path, "w") as yaml_file:
             yaml.dump(self.job_config.get_config_dict(), yaml_file, indent=4)
         # Train
-        self.model_wrapper.compile()
+        self.model_wrapper.build()
         self.model_wrapper.train()
+
+    def execute_tune_job(self):
+        # Save the final job_config
+        ic = self.job_config.input
+        uc = self.job_config.tune
+        rc = self.job_config.run
+        yaml_path = pathlib.Path(rc.save_sub_dir) / "tune_config.yaml"
+        with open(yaml_path, "w") as yaml_file:
+            yaml.dump(self.job_config.get_config_dict(), yaml_file, indent=4)
+
+        # prepare tmp inputs
+        feedbox = feed_box.Feedbox(self.job_config.clone())
+        ## get input
+        input_df = feedbox.get_processed_df()
+        cols = ic.selected_features
+        # load and save train/test
+        train_index = (
+            input_df["is_train"] == True
+        )  # index for train and validation
+        x = input_df.loc[train_index, cols].values
+        y = input_df.loc[train_index, ["y"]].values
+        wt = input_df.loc[train_index, "weight"].values
+
+        val_ids = np.random.choice(
+            range(len(wt)),
+            int(len(wt) * 1.0 * uc.model.val_split),
+            replace=False,
+        )
+
+        train_ids = np.setdiff1d(np.array(range(len(wt))), val_ids)
+        x_train = x[train_ids]
+        y_train = y[train_ids]
+        wt_train = wt[train_ids]
+        x_val = x[val_ids]
+        y_val = y[val_ids]
+        wt_val = wt[val_ids]
+        # remove negative weight events
+        if ic.rm_negative_weight_events == True:
+            wt_train = wt_train.clip(min=0)
+        tune_input_dir = pathlib.Path(rc.tune_input_cache)
+        np.save(tune_input_dir / "x_train.npy", x_train)
+        np.save(tune_input_dir / "y_train.npy", y_train)
+        np.save(tune_input_dir / "wt_train.npy", wt_train)
+        np.save(tune_input_dir / "x_val.npy", x_val)
+        np.save(tune_input_dir / "y_val.npy", y_val)
+        np.save(tune_input_dir / "wt_val.npy", wt_val)
+
+        # tuning hypers
+        self.model_wrapper.ray_tune()
+
+        # remove temporary training inputs
+        shutil.rmtree(tune_input_dir)
+
 
     def execute_apply_job(self):
         jc = self.job_config.job
@@ -381,11 +438,15 @@ class job_executor(object):
         jc = self.job_config.job
         rc = self.job_config.run
         # Set save sub-directory for this task
-        if jc.job_type == "train":
+        if jc.job_type in ["train", "tune"]:
             dir_pattern = f"{jc.save_dir}/{rc.datestr}_{jc.job_name}_v{{}}"
             output_match = common_utils.get_newest_file_version(dir_pattern)
             rc.save_sub_dir = output_match["path"]
             pathlib.Path(rc.save_sub_dir).mkdir(parents=True, exist_ok=True)
+            if jc.job_type == "tune":
+                tune_input_cache = pathlib.Path(rc.save_sub_dir) / "tmp"
+                tune_input_cache.mkdir(parents=True, exist_ok=True)
+                rc.tune_input_cache = str(tune_input_cache)
         elif jc.job_type == "apply":
             # use same directory as input "train" directory for "apply" type jobs
             dir_pattern = (

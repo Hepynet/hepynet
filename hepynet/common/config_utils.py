@@ -20,6 +20,7 @@ class Hepy_Config(object):
         self.job = Hepy_Config_Section({})
         self.input = Hepy_Config_Section({})
         self.train = Hepy_Config_Section({})
+        self.tune = Hepy_Config_Section({})
         self.apply = Hepy_Config_Section({})
         self.para_scan = Hepy_Config_Section({})
         self.run = Hepy_Config_Section({})
@@ -47,6 +48,7 @@ class Hepy_Config(object):
         out_dict["job"] = self.job.get_config_dict()
         out_dict["input"] = self.input.get_config_dict()
         out_dict["train"] = self.train.get_config_dict()
+        out_dict["tune"] = self.tune.get_config_dict()
         out_dict["apply"] = self.apply.get_config_dict()
         out_dict["para_scan"] = self.para_scan.get_config_dict()
         out_dict["run"] = self.run.get_config_dict()
@@ -124,7 +126,11 @@ class Hepy_Config_Section(object):
         """
         for key, value in cfg_dict.items():
             if type(value) is dict:
-                if key in self.__dict__.keys() and key != "_config_dict":
+                if (
+                    key in self.__dict__.keys()
+                    and key != "_config_dict"
+                    and isinstance(getattr(self, key), Hepy_Config_Section)
+                ):
                     getattr(self, key).update(value)
                 else:
                     setattr(self, key, Hepy_Config_Section(value))
@@ -185,7 +191,7 @@ def load_pc_meta() -> dict:
         logger.warn(
             "Can't load pc_meta config file, please check: share/cross_platform/pc_meta.yaml"
         )
-        return dict()
+        return {"platform_meta": {}}
 
 
 def load_yaml_dict(yaml_path) -> dict:

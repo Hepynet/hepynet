@@ -7,8 +7,8 @@ import pathlib
 from typing import Iterable, Optional
 
 import keras
-from matplotlib.pyplot import axis
 import numpy as np
+import ray
 import tensorflow as tf
 import yaml
 from keras import backend as K
@@ -16,6 +16,11 @@ from keras.callbacks import ModelCheckpoint, TensorBoard, callbacks
 from keras.layers import Dense, Dropout
 from keras.models import Sequential
 from keras.optimizers import SGD, Adagrad, Adam, RMSprop
+from matplotlib.pyplot import axis
+from ray import tune
+from ray.tune import analysis, schedulers
+from ray.tune.integration.keras import TuneCallback, TuneReportCallback
+from ray.tune.schedulers import AsyncHyperBandScheduler
 
 from hepynet.data_io import array_utils, feed_box
 from hepynet.train import train_utils
@@ -73,9 +78,9 @@ class Model_Base(object):
         else:
             self._num_folds = 1
 
-    def compile(self):
+    def build(self):
         logger.warn(
-            "The virtual function Model_Base.compile() is called, please implement override funcion!"
+            "The virtual function Model_Base.build() is called, please implement override funcion!"
         )
 
     def get_feedbox(self) -> feed_box.Feedbox:
@@ -163,8 +168,13 @@ class Model_Base(object):
                 )
             if model_path.exists():
                 fold_model = keras.models.load_model(
-                    model_path, custom_objects={"plain_acc": plain_acc},
+                    model_path,
+                    custom_objects={"plain_acc": plain_acc,},
+                    compile=False,
                 )  # it's important to specify custom_objects
+
+                weighted_metrics = [tf.keras.metrics.AUC(name="auc")]
+
                 self._model.append(fold_model)
                 num_exist_models += 1
         self._model_is_loaded = True
@@ -318,9 +328,57 @@ class Model_Sequential_Base(Model_Base):
         self._save_tb_logs = tc.save_tb_logs
         self._tb_logs_path = tc.tb_logs_path
 
+    def get_hypers(self):
+        tc = self._job_config.train.clone()
+        hypers = {
+            # hypers for building model
+            "layers": tc.layers,
+            "nodes": tc.nodes,
+            "dropout_rate": tc.dropout_rate,
+            "output_bkg_node_names": tc.output_bkg_node_names,
+            "train_metrics": tc.train_metrics,
+            "train_metrics_weighted": tc.train_metrics_weighted,
+            "learn_rate": tc.learn_rate,
+            "learn_rate_decay": tc.learn_rate_decay,
+            "momentum": tc.momentum,
+            "nesterov": tc.nesterov,
+            # hypers for training
+            "val_split": tc.val_split,
+            "batch_size": tc.batch_size,
+            "epochs": tc.epochs,
+            "sig_class_weight": tc.sig_class_weight,
+            "bkg_class_weight": tc.bkg_class_weight,
+        }
+        return hypers
+
+    def get_inputs(self):
+        ic = self._job_config.input.clone()
+        ## get input
+        input_df = self._feedbox.get_processed_df()
+        cols = ic.selected_features
+        # load train/test
+        train_index = input_df["is_train"] == True
+        test_index = input_df["is_train"] == False
+        x_train = input_df.loc[train_index, cols].values
+        x_test = input_df.loc[test_index, cols].values
+        y_train = input_df.loc[train_index, ["y"]].values
+        y_test = input_df.loc[test_index, ["y"]].values
+        wt_train = input_df.loc[train_index, "weight"].values
+        wt_test = input_df.loc[test_index, "weight"].values
+        del input_df
+        # remove negative weight events
+        if ic.rm_negative_weight_events == True:
+            wt_train = wt_train.clip(min=0)
+            wt_test = wt_test.clip(min=0)
+
+        return {
+            "train": (x_train, y_train, wt_train),
+            "test": (x_test, y_test, wt_test),
+        }
+
     def get_train_callbacks(self, fold_num: Optional[int] = None) -> list:
         train_callbacks = []
-        tc = self._job_config.train
+        tc = self._job_config.train.clone()
         if self._save_tb_logs:  # TODO: add back this function
             pass
             # if self._tb_logs_path is None:
@@ -392,56 +450,40 @@ class Model_Sequential_Base(Model_Base):
 
     def train(self):
         """Performs training."""
-
-        # prepare config alias
-        ic = self._job_config.input.clone()
-        tc = self._job_config.train.clone()
-        rc = self._job_config.run.clone()
-
         # Check
         if not self._model_is_compiled:
-            logger.critical("DNN model is not yet compiled, recompiling")
-            self.compile()
+            logger.critical("DNN model is not yet built, rebuilding")
+            self.build()
         if not self._array_prepared:
             logger.critical("Training data is not ready, pleas set up inputs")
             exit(1)
-
+        # prepare
+        tc = self._job_config.train.clone()
+        input_dict = self.get_inputs()
+        model = self.get_model()
+        hypers = self.get_hypers()
+        n_folds = self._num_folds
+        verbose = tc.verbose
+        # Input
+        x_train, y_train, wt_train = input_dict["train"]
+        x_test, y_test, wt_test = input_dict["test"]
         # Train
         logger.info("-" * 40)
         logger.info("Loading inputs")
-        ## get input
-        input_df = self._feedbox.get_processed_df()
-        cols = ic.selected_features
-
-        train_index = input_df["is_train"] == True
-        test_index = input_df["is_train"] == False
-        x_train = input_df.loc[train_index, cols].values
-        x_test = input_df.loc[test_index, cols].values
-        y_train = input_df.loc[train_index, ["y"]].values
-        y_test = input_df.loc[test_index, ["y"]].values
-        wt_train = input_df.loc[train_index, "weight"].values
-        wt_test = input_df.loc[test_index, "weight"].values
-        del input_df
-
-        if ic.rm_negative_weight_events == True:
-            wt_train = wt_train.clip(min=0)
-            wt_test = wt_test.clip(min=0)
-
-        ## train
         (
             train_index_list,
             validation_index_list,
         ) = train_utils.get_train_val_indices(
-            y_train, y_train, wt_train, tc.val_split, k_folds=tc.k_folds
+            y_train, y_train, wt_train, hypers["val_split"], k_folds=tc.k_folds
         )
-        for fold_num in range(self._num_folds):
+        for fold_num in range(n_folds):
             logger.info(f"Training start. Using model: {self._model_name}")
             logger.info(f"Model info: {self._model_note}")
-            if self._num_folds >= 2:
+            if n_folds >= 2:
                 logger.info(
-                    f"Performing k-fold training {fold_num + 1}/{self._num_folds}"
+                    f"Performing k-fold training {fold_num + 1}/{n_folds}"
                 )
-            fold_model = self.get_model(fold_num=fold_num)
+            fold_model = model[fold_num]
             fold_model.summary()
             train_index = train_index_list[fold_num]
             val_index = validation_index_list[fold_num]
@@ -458,20 +500,23 @@ class Model_Sequential_Base(Model_Base):
             history_obj = fold_model.fit(
                 x_fold,
                 y_fold,
-                batch_size=tc.batch_size,
-                epochs=tc.epochs,
+                batch_size=hypers["batch_size"],
+                epochs=hypers["epochs"],
                 validation_data=val_fold,
                 shuffle=True,
-                class_weight={1: tc.sig_class_weight, 0: tc.bkg_class_weight},
+                class_weight={
+                    1: hypers["sig_class_weight"],
+                    0: hypers["bkg_class_weight"],
+                },
                 sample_weight=wt_fold,
                 callbacks=self.get_train_callbacks(fold_num=fold_num),
-                verbose=tc.verbose,
+                verbose=verbose,
             )
             logger.info("Training finished.")
             # evaluation
             logger.info("Evaluate with test dataset:")
             score = fold_model.evaluate(
-                x_test, y_test, verbose=tc.verbose, sample_weight=wt_test,
+                x_test, y_test, verbose=verbose, sample_weight=wt_test,
             )
             if not isinstance(score, Iterable):
                 logger.info(f"> test loss: {score}")
@@ -482,119 +527,35 @@ class Model_Sequential_Base(Model_Base):
             self._train_history[fold_num] = history_obj.history
             self.save_model(fold_num=fold_num)
             self.save_model_paras(fold_num=fold_num)
-
         # update status
         self._model_is_trained = True
-
-    '''
-    def tuning_train(
-        self,
-        sig_key="all",
-        bkg_key="all",
-        batch_size=128,
-        epochs=20,
-        val_split=0.25,
-        sig_class_weight=1.0,
-        bkg_class_weight=1.0,
-        verbose=1,
-    ):
-        """Performs quick training for hyperparameters tuning."""
-        # Check
-        if self._model_is_compiled == False:
-            raise ValueError("DNN model is not yet compiled")
-        if self._array_prepared == False:
-            raise ValueError("Training data is not ready.")
-        # separate validation samples
-        train_test_dict = self._feedbox.get_train_test_df(
-            sig_key=sig_key,
-            bkg_key=bkg_key,
-            multi_class_bkgs=self.model_hypers["output_bkg_node_names"],
-            use_selected=False,
-        )
-        x_train = train_test_dict["x_train"]
-        y_train = train_test_dict["y_train"]
-        x_train_selected = train_test_dict["x_train_selected"]
-        num_val = math.ceil(len(y_train) * val_split)
-        x_tr = x_train_selected[:-num_val, :]
-        x_val = x_train_selected[-num_val:, :]
-        y_tr = y_train[:-num_val]
-        y_val = y_train[-num_val:]
-        wt_tr = x_train[:-num_val, -1]
-        wt_val = x_train[-num_val:, -1]
-        val_tuple = (x_val, y_val, wt_val)
-        self.x_tr = x_tr
-        self.x_val = x_val
-        self.y_tr = y_tr
-        self.y_val = y_val
-        self.wt_tr = wt_tr
-        self.wt_val = wt_val
-        # Train
-        self.class_weight = {1: sig_class_weight, 0: bkg_class_weight}
-        train_callbacks = []
-        if self.model_hypers["use_early_stop"]:
-            early_stop_callback = callbacks.EarlyStopping(
-                monitor=self.model_hypers["early_stop_paras"]["monitor"],
-                min_delta=self.model_hypers["early_stop_paras"]["min_delta"],
-                patience=self.model_hypers["early_stop_paras"]["patience"],
-                mode=self.model_hypers["early_stop_paras"]["mode"],
-                restore_best_weights=self.model_hypers["early_stop_paras"][
-                    "restore_best_weights"
-                ],
-            )
-            train_callbacks.append(early_stop_callback)
-        self._train_history = self.get_model().fit(
-            x_tr,
-            y_tr,
-            batch_size=batch_size,
-            epochs=epochs,
-            validation_data=val_tuple,
-            class_weight=self.class_weight,
-            sample_weight=wt_tr,
-            callbacks=train_callbacks,
-            verbose=verbose,
-        )
-        # Final evaluation
-        score = self.get_model().evaluate(
-            x_val, y_val, verbose=verbose, sample_weight=wt_val
-        )
-        # update status
-        self._model_is_trained = True
-        return score[0]
-    '''
 
 
 class Model_Sequential_Flat(Model_Sequential_Base):
-    """Sequential model optimized with old ntuple at Sep. 9th 2019.
+    """Flat sequential model"""
 
-    Major modification based on 1002 model:
-        1. Change structure to make quantity of nodes decrease with layer num.
-
-    """
-
-    def __init__(
-        self, job_config,
-    ):
+    def __init__(self, job_config):
         super().__init__(job_config)
 
         self._model_label = "mod_seq"
         self._model_note = "Sequential model with flexible layers and nodes."
 
-    def compile(self):
+    def build(self):
+        hypers = self.get_hypers()
         for fold_num in range(self._num_folds):
-            self.compile_single(fold_num=fold_num)
+            fold_model = self._model[fold_num]
+            self.build_single(fold_model, hypers)
         self._model_is_compiled = True
 
-    def compile_single(self, fold_num):
+    def build_single(self, fold_model, hypers):
         """ Compile model, function to be changed in the future."""
-        tc = self._job_config.train
-        fold_model = self._model[fold_num]
         # Add layers
-        for layer in range(tc.layers):
+        for layer in range(int(hypers["layers"])):
             # input layer
             if layer == 0:
                 fold_model.add(
                     Dense(
-                        tc.nodes,
+                        hypers["nodes"],
                         kernel_initializer="glorot_uniform",
                         activation="relu",
                         input_dim=self._model_input_dim,
@@ -604,16 +565,16 @@ class Model_Sequential_Flat(Model_Sequential_Base):
             else:
                 fold_model.add(
                     Dense(
-                        tc.nodes,
+                        hypers["nodes"],
                         kernel_initializer="glorot_uniform",
                         activation="relu",
                     )
                 )
-            if tc.dropout_rate != 0:
-                fold_model.add(Dropout(tc.dropout_rate))
+            if hypers["dropout_rate"] != 0:
+                fold_model.add(Dropout(hypers["dropout_rate"]))
         # output layer
-        if tc.output_bkg_node_names:
-            num_nodes_out = len(tc.output_bkg_node_names) + 1
+        if hypers["output_bkg_node_names"]:
+            num_nodes_out = len(hypers["output_bkg_node_names"]) + 1
         else:
             num_nodes_out = 1
         fold_model.add(
@@ -625,23 +586,183 @@ class Model_Sequential_Flat(Model_Sequential_Base):
         )
         # Compile
         # transfer self-defined metrics into real function
-        metrics = copy.deepcopy(tc.train_metrics)
-        weighted_metrics = copy.deepcopy(tc.train_metrics_weighted)
-        if metrics is not None and "plain_acc" in metrics:
+        metrics = copy.deepcopy(hypers["train_metrics"])
+        weighted_metrics = copy.deepcopy(hypers["train_metrics_weighted"])
+        if "plain_acc" in metrics:
             index = metrics.index("plain_acc")
             metrics[index] = plain_acc
-        if weighted_metrics is not None and "plain_acc" in weighted_metrics:
+        if "plain_acc" in weighted_metrics:
             index = weighted_metrics.index("plain_acc")
             weighted_metrics[index] = plain_acc
+        if "auc" in weighted_metrics:
+            index = weighted_metrics.index("auc")
+            weighted_metrics[index] = tf.keras.metrics.AUC(name="auc")
         # compile model
         fold_model.compile(
             loss="binary_crossentropy",
             optimizer=SGD(
-                lr=tc.learn_rate,
-                decay=tc.learn_rate_decay,
-                momentum=tc.momentum,
-                nesterov=tc.nesterov,
+                lr=hypers["learn_rate"],
+                decay=hypers["learn_rate_decay"],
+                momentum=hypers["momentum"],
+                nesterov=hypers["nesterov"],
             ),
             metrics=metrics,
             weighted_metrics=weighted_metrics,
         )
+
+    def get_hypers_tune(self):
+        ic = self._job_config.input.clone()
+        rc = self._job_config.run.clone()
+        model_cfg = self._job_config.tune.clone().model
+        hypers = {
+            # hypers for building model
+            "layers": self.get_single_hyper(model_cfg.layers),
+            "nodes": self.get_single_hyper(model_cfg.nodes),
+            "dropout_rate": self.get_single_hyper(model_cfg.dropout_rate),
+            "output_bkg_node_names": model_cfg.output_bkg_node_names,
+            "train_metrics": model_cfg.train_metrics,
+            "train_metrics_weighted": model_cfg.train_metrics_weighted,
+            "learn_rate": self.get_single_hyper(model_cfg.learn_rate),
+            "learn_rate_decay": self.get_single_hyper(
+                model_cfg.learn_rate_decay
+            ),
+            "momentum": self.get_single_hyper(model_cfg.momentum),
+            "nesterov": self.get_single_hyper(model_cfg.nesterov),
+            # hypers for training
+            "val_split": model_cfg.val_split,
+            "batch_size": self.get_single_hyper(model_cfg.batch_size),
+            "epochs": self.get_single_hyper(model_cfg.epochs),
+            "sig_class_weight": self.get_single_hyper(
+                model_cfg.sig_class_weight
+            ),
+            "bkg_class_weight": self.get_single_hyper(
+                model_cfg.bkg_class_weight
+            ),
+            "use_early_stop": model_cfg.use_early_stop,
+            "early_stop_paras": model_cfg.early_stop_paras.get_config_dict(),
+            # job config
+            "input_dim": len(ic.selected_features),
+            # input dir
+            "input_dir": str(pathlib.Path(rc.tune_input_cache).resolve()),
+        }
+        return hypers
+
+    def get_single_hyper(self, hyper_config):
+        if hasattr(hyper_config, "spacer"):
+            paras = hyper_config.paras.get_config_dict()
+            return getattr(tune, hyper_config.spacer)(**paras)
+        else:
+            return hyper_config
+
+    def ray_tune(self):
+        tuner = self._job_config.tune.clone().tuner
+        ray.init(**(tuner.init.get_config_dict()))
+        # set up scheduler
+        sched_class = getattr(schedulers, tuner.scheduler_class)
+        sched_config = tuner.scheduler.get_config_dict()
+        sched = sched_class(**sched_config)
+        # run
+        run_config = tuner.run.get_config_dict()
+        analysis = tune.run(
+            test_tune_run,
+            name="ray_tunes",
+            scheduler=sched,
+            config=self.get_hypers_tune(),
+            local_dir=self._job_config.run.save_sub_dir,
+            **run_config,
+        )
+        logger.info(f"Best hyperparameters found were: {analysis.best_config}")
+
+
+def test_tune_run(config):
+    input_dir = pathlib.Path(config["input_dir"])
+    x_train = np.load(input_dir / "x_train.npy")
+    y_train = np.load(input_dir / "y_train.npy")
+    wt_train = np.load(input_dir / "wt_train.npy")
+    x_val = np.load(input_dir / "x_val.npy")
+    y_val = np.load(input_dir / "y_val.npy")
+    wt_val = np.load(input_dir / "wt_val.npy")
+
+    # build model
+    import tensorflow as tf
+
+    model = tf.keras.models.Sequential()
+    for layer in range(int(config["layers"])):
+        ## input layer
+        if layer == 0:
+            model.add(
+                tf.keras.layers.Dense(
+                    config["nodes"],
+                    kernel_initializer="glorot_uniform",
+                    activation="relu",
+                    input_dim=config["input_dim"],
+                )
+            )
+        ## hidden layers
+        else:
+            model.add(
+                tf.keras.layers.Dense(
+                    config["nodes"],
+                    kernel_initializer="glorot_uniform",
+                    activation="relu",
+                )
+            )
+        if config["dropout_rate"] != 0:
+            model.add(tf.keras.layers.Dropout(config["dropout_rate"]))
+    ## output layer
+    if config["output_bkg_node_names"]:
+        num_nodes_out = len(config["output_bkg_node_names"]) + 1
+    else:
+        num_nodes_out = 1
+    model.add(
+        tf.keras.layers.Dense(
+            num_nodes_out,
+            kernel_initializer="glorot_uniform",
+            activation="sigmoid",
+        )
+    )
+    metric_auc = tf.keras.metrics.AUC()
+    model.compile(
+        loss="binary_crossentropy",
+        optimizer=tf.keras.optimizers.SGD(
+            lr=config["learn_rate"],
+            decay=config["learn_rate_decay"],
+            momentum=config["momentum"],
+            nesterov=config["nesterov"],
+        ),
+        # metrics=["accuracy", metric_auc],
+        weighted_metrics=["accuracy", metric_auc],
+    )
+
+    es_callback = tf.keras.callbacks.EarlyStopping()
+    if config["use_early_stop"]:
+        es_config = config["early_stop_paras"]
+        early_stop_callback = tf.keras.callbacks.EarlyStopping(**es_config)
+
+    # train
+    history_obj = model.fit(
+        x_train,
+        y_train,
+        batch_size=config["batch_size"],
+        epochs=config["epochs"],
+        # validation_split=config["val_split"],
+        validation_data=(x_val, y_val, wt_val),
+        shuffle=True,
+        class_weight={
+            1: config["sig_class_weight"],
+            0: config["bkg_class_weight"],
+        },
+        sample_weight=wt_train,
+        # callbacks=[es_callback],
+        callbacks=[
+            es_callback,
+            TuneReportCallback(
+                {"val_accuracy": "val_accuracy", "val_auc": "val_auc"}
+            ),
+        ],
+    )
+
+    # evaluate metric
+    val_accuracy = history_obj.history["val_accuracy"][-1]
+    val_auc = history_obj.history["val_auc"][-1]
+    tune.report(val_accuracy=val_accuracy, val_auc=val_auc)

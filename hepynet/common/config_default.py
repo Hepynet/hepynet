@@ -2,7 +2,7 @@ DEFAULT_CFG = {
     "config": {"include": [],},
     "job": {
         "job_name": "JOB_NAME_DEF",
-        "job_type": "JOB_TYPE_DEF",
+        "job_type": "JOB_TYPE_DEF",  # could be train/tune/apply
         "save_dir": ".",
         "load_job_name": "LOAD_JOB_NAME_DEF",
         "fix_rdm_seed": True,
@@ -70,6 +70,52 @@ DEFAULT_CFG = {
         "train_metrics_weighted": ["accuracy"],
         "save_model": True,
         "verbose": 0,
+    },
+    "tune": {
+        "tuner": {
+            "init": {
+                "num_cpus": None,
+                "num_gpus": None,
+                "log_to_driver": False,
+            },
+            "scheduler_class": "AsyncHyperBandScheduler",
+            "scheduler": {
+                "time_attr": "training_iteration",
+                "max_t": 200,
+                "grace_period": 10,
+            },
+            "run": {
+                "metric": None,
+                "mode": None,
+                "num_samples": 10,
+                "resources_per_trial":{"cpu": 1, "gpu": 0},
+                "log_to_file": True,
+            },
+        },
+        "model_class": "Model_Sequential_Flat",
+        "model": {
+            "output_bkg_node_names": [],
+            "layers": 1,
+            "nodes": 1,
+            "learn_rate": 0.01,
+            "learn_rate_decay": 0.01,
+            "batch_size": 32,
+            "epochs": 1,
+            "momentum": 0,
+            "nesterov": False,
+            "dropout_rate": 0,
+            "sig_class_weight": 1,
+            "bkg_class_weight": 1,
+            "val_split": 0.25,
+            "use_early_stop": False,
+            "early_stop_paras": {
+                "monitor": "val_loss",
+                "min_delta": 0,
+                "patience": 1,
+                "mode": "min",
+                "restore_best_weights": True,
+            },
+        },
     },
     "apply": {
         "color_cycle": [
@@ -194,7 +240,6 @@ DEFAULT_CFG = {
         "book_importance_study": False,
         "cfg_importance_study": {"log": False},
     },
-    "para_scan": {"perform_para_scan": False,},
     "run": {
         "datestr": "",
         "npy_path": "",
