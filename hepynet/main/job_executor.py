@@ -85,6 +85,18 @@ class job_executor(object):
         if jc.fix_rdm_seed:
             self.fix_random_seed()
 
+        # Check best tuned config overwrite
+        if self.job_config.config.best_tune_overwrite:
+            best_hypers_path = (
+                pathlib.Path(rc.save_sub_dir) / "best_hypers.yaml"
+            )
+            if best_hypers_path.is_file():
+                with open(best_hypers_path, "r") as best_hypers_file:
+                    best_hypers = yaml.load(
+                        best_hypers_file, Loader=yaml.FullLoader
+                    )
+                    self.job_config.train.update(best_hypers)
+
         self.set_model()
         self.set_model_input()
 
@@ -162,11 +174,20 @@ class job_executor(object):
         np.save(tune_input_dir / "wt_val.npy", wt_val)
 
         # tuning hypers
-        self.model_wrapper.ray_tune()
+        analysis = train_utils.ray_tune(self.model_wrapper, self.job_config)
 
-        # remove temporary training inputs
+        # save results
+        best_config = analysis.best_config
+        save_path = pathlib.Path(rc.save_sub_dir) / "best_hypers.yaml"
+        with open(save_path, "w") as best_hypers_file:
+            yaml.dump(best_config, best_hypers_file, indent=4)
+        results = analysis.results
+        save_path = pathlib.Path(rc.save_sub_dir) / "tune_results.yaml"
+        with open(save_path, "w") as tune_results_file:
+            yaml.dump(results, tune_results_file, indent=4)
+
+        # remove temporary tuning inputs
         shutil.rmtree(tune_input_dir)
-
 
     def execute_apply_job(self):
         jc = self.job_config.job
@@ -230,20 +251,17 @@ class job_executor(object):
             return
 
         ## generate fit arrays
-        if ac.book_fit_npy:
-            save_region = ac.cfg_fit_npy.fit_npy_region
+        if ac.book_fit_inputs:
+            save_region = ac.fit_df.region
             if save_region is None:
                 save_region = ic.region
-            npy_dir = (
-                f"{ac.cfg_fit_npy.npy_save_dir}/{ic.campaign}/{save_region}"
-            )
             logger.info("Dumping numpy arrays for fitting.")
-            evaluate_utils.dump_fit_npy(
+            evaluate_utils.dump_fit_df(
                 self.model_wrapper,
                 df_raw,
                 df,
                 self.job_config,
-                npy_dir=npy_dir,
+                save_dir=ac.fit_df.save_dir,
             )
 
         ## loop over models at different epochs
@@ -439,10 +457,40 @@ class job_executor(object):
         rc = self.job_config.run
         # Set save sub-directory for this task
         if jc.job_type in ["train", "tune"]:
-            dir_pattern = f"{jc.save_dir}/{rc.datestr}_{jc.job_name}_v{{}}"
-            output_match = common_utils.get_newest_file_version(dir_pattern)
-            rc.save_sub_dir = output_match["path"]
+            # no load job found
+            if jc.load_job_name == "LOAD_JOB_NAME_DEF":
+                dir_pattern = f"{jc.save_dir}/{rc.datestr}_{jc.job_name}_v{{}}"
+                output_match = common_utils.get_newest_file_version(
+                    dir_pattern
+                )
+                rc.save_sub_dir = output_match["path"]
+            # have tune job to be loaded
+            else:
+                dir_pattern = (
+                    f"{jc.save_dir}/{rc.datestr}_{jc.load_job_name}_v{{}}"
+                )
+                output_match = common_utils.get_newest_file_version(
+                    dir_pattern, use_existing=True
+                )
+                if output_match:
+                    rc.save_sub_dir = output_match["path"]
+                else:
+                    logger.warning(
+                        f"Can't find existing train folder matched with date {rc.datestr}, trying to search without specifying the date."
+                    )
+                    dir_pattern = f"{jc.save_dir}/*_{jc.load_job_name}_v{{}}"
+                    output_match = common_utils.get_newest_file_version(
+                        dir_pattern, use_existing=True
+                    )
+                    if output_match:
+                        rc.save_sub_dir = output_match["path"]
+                    else:
+                        logger.error(
+                            "Can't find existing train folder matched pattern, please check the settings."
+                        )
+                    rc.save_sub_dir = output_match["path"]
             pathlib.Path(rc.save_sub_dir).mkdir(parents=True, exist_ok=True)
+            # set input cache for tune job
             if jc.job_type == "tune":
                 tune_input_cache = pathlib.Path(rc.save_sub_dir) / "tmp"
                 tune_input_cache.mkdir(parents=True, exist_ok=True)

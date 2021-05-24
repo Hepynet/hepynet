@@ -4,7 +4,12 @@ import logging
 import math
 
 import numpy as np
+import ray
+import yaml
+from ray import tune
+from ray.tune import schedulers
 from sklearn.model_selection import StratifiedKFold
+
 from hepynet.train import hep_model
 
 logger = logging.getLogger("hepynet")
@@ -65,6 +70,14 @@ def get_mean_var(array, axis=None, weights=None):
     if 0 in variance:
         logger.warn("Encountered 0 variance, adding shift value 0.000001")
     return average, variance + 0.000001
+
+
+def get_single_hyper(hyper_config):
+    if hasattr(hyper_config, "spacer"):
+        paras = hyper_config.paras.get_config_dict()
+        return getattr(tune, hyper_config.spacer)(**paras)
+    else:
+        return hyper_config
 
 
 def get_train_val_indices(x, y, wt, val_split, k_folds=None):
@@ -158,3 +171,27 @@ def norm_array_min_max(array, min, max, axis=None):
         return None
     ratio = (max - min) / 2.0
     output_array = output_array / ratio
+
+
+def ray_tune(model_wrapper, job_config):
+    tuner = job_config.tune.clone().tuner
+    ray.init(**(tuner.init.get_config_dict()))
+    # set up scheduler
+    sched_class = getattr(schedulers, tuner.scheduler_class)
+    sched_config = tuner.scheduler.get_config_dict()
+    sched = sched_class(**sched_config)
+    # run
+    run_config = tuner.run.get_config_dict()
+    tune_func = getattr(hep_model, model_wrapper._tune_fun_name)
+    analysis = tune.run(
+        tune_func,
+        name="ray_tunes",
+        scheduler=sched,
+        config=model_wrapper.get_hypers_tune(),
+        local_dir=job_config.run.save_sub_dir,
+        **run_config,
+    )
+    logger.info("Best hyperparameters found were:")
+    print(yaml.dump(analysis.best_config))
+
+    return analysis

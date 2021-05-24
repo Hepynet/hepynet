@@ -1,5 +1,8 @@
 DEFAULT_CFG = {
-    "config": {"include": [],},
+    "config": {
+        "include": [],
+        "best_tune_overwrite": False,  # overwrite with best tuned config
+    },
     "job": {
         "job_name": "JOB_NAME_DEF",
         "job_type": "JOB_TYPE_DEF",  # could be train/tune/apply
@@ -85,8 +88,6 @@ DEFAULT_CFG = {
                 "grace_period": 10,
             },
             "run": {
-                "metric": None,
-                "mode": None,
                 "num_samples": 10,
                 "resources_per_trial":{"cpu": 1, "gpu": 0},
                 "log_to_file": True,
@@ -115,6 +116,8 @@ DEFAULT_CFG = {
                 "mode": "min",
                 "restore_best_weights": True,
             },
+            "tune_metrics": [],
+            "tune_metrics_weighted": [],
         },
     },
     "apply": {
@@ -176,11 +179,11 @@ DEFAULT_CFG = {
         "book_cor_matrix": False,
         # model dependent studies
         "jump_model_studies": False,
-        "book_fit_npy": False,
-        "cfg_fit_npy": {
-            "fit_npy_region": "",
-            "fit_npy_branches": [],
-            "npy_save_dir": "",
+        "book_fit_inputs": False,
+        "fit_df": {
+            "region": "",
+            "branches": [],
+            "save_dir": "",
         },
         "book_confusion_matrix": False,
         "cfg_confusion_matrix": {"dnn_cut": 0.5},

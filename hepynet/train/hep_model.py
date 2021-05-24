@@ -539,6 +539,7 @@ class Model_Sequential_Flat(Model_Sequential_Base):
 
         self._model_label = "mod_seq"
         self._model_note = "Sequential model with flexible layers and nodes."
+        self._tune_fun_name = "tune_Model_Sequential_Flat"
 
     def build(self):
         hypers = self.get_hypers()
@@ -614,30 +615,25 @@ class Model_Sequential_Flat(Model_Sequential_Base):
         ic = self._job_config.input.clone()
         rc = self._job_config.run.clone()
         model_cfg = self._job_config.tune.clone().model
+        gs = train_utils.get_single_hyper
         hypers = {
             # hypers for building model
-            "layers": self.get_single_hyper(model_cfg.layers),
-            "nodes": self.get_single_hyper(model_cfg.nodes),
-            "dropout_rate": self.get_single_hyper(model_cfg.dropout_rate),
+            "layers": gs(model_cfg.layers),
+            "nodes": gs(model_cfg.nodes),
+            "dropout_rate": gs(model_cfg.dropout_rate),
             "output_bkg_node_names": model_cfg.output_bkg_node_names,
-            "train_metrics": model_cfg.train_metrics,
-            "train_metrics_weighted": model_cfg.train_metrics_weighted,
-            "learn_rate": self.get_single_hyper(model_cfg.learn_rate),
-            "learn_rate_decay": self.get_single_hyper(
-                model_cfg.learn_rate_decay
-            ),
-            "momentum": self.get_single_hyper(model_cfg.momentum),
-            "nesterov": self.get_single_hyper(model_cfg.nesterov),
+            "tune_metrics": model_cfg.tune_metrics,
+            "tune_metrics_weighted": model_cfg.tune_metrics_weighted,
+            "learn_rate": gs(model_cfg.learn_rate),
+            "learn_rate_decay": gs(model_cfg.learn_rate_decay),
+            "momentum": gs(model_cfg.momentum),
+            "nesterov": gs(model_cfg.nesterov),
             # hypers for training
             "val_split": model_cfg.val_split,
-            "batch_size": self.get_single_hyper(model_cfg.batch_size),
-            "epochs": self.get_single_hyper(model_cfg.epochs),
-            "sig_class_weight": self.get_single_hyper(
-                model_cfg.sig_class_weight
-            ),
-            "bkg_class_weight": self.get_single_hyper(
-                model_cfg.bkg_class_weight
-            ),
+            "batch_size": gs(model_cfg.batch_size),
+            "epochs": gs(model_cfg.epochs),
+            "sig_class_weight": gs(model_cfg.sig_class_weight),
+            "bkg_class_weight": gs(model_cfg.bkg_class_weight),
             "use_early_stop": model_cfg.use_early_stop,
             "early_stop_paras": model_cfg.early_stop_paras.get_config_dict(),
             # job config
@@ -647,34 +643,13 @@ class Model_Sequential_Flat(Model_Sequential_Base):
         }
         return hypers
 
-    def get_single_hyper(self, hyper_config):
-        if hasattr(hyper_config, "spacer"):
-            paras = hyper_config.paras.get_config_dict()
-            return getattr(tune, hyper_config.spacer)(**paras)
-        else:
-            return hyper_config
 
-    def ray_tune(self):
-        tuner = self._job_config.tune.clone().tuner
-        ray.init(**(tuner.init.get_config_dict()))
-        # set up scheduler
-        sched_class = getattr(schedulers, tuner.scheduler_class)
-        sched_config = tuner.scheduler.get_config_dict()
-        sched = sched_class(**sched_config)
-        # run
-        run_config = tuner.run.get_config_dict()
-        analysis = tune.run(
-            test_tune_run,
-            name="ray_tunes",
-            scheduler=sched,
-            config=self.get_hypers_tune(),
-            local_dir=self._job_config.run.save_sub_dir,
-            **run_config,
-        )
-        logger.info(f"Best hyperparameters found were: {analysis.best_config}")
+# tuning functions for ray.tune
+
+## Note: such functions take one config argument and report the score
 
 
-def test_tune_run(config):
+def tune_Model_Sequential_Flat(config, checkpoint_dir=None):
     input_dir = pathlib.Path(config["input_dir"])
     x_train = np.load(input_dir / "x_train.npy")
     y_train = np.load(input_dir / "y_train.npy")
@@ -730,14 +705,25 @@ def test_tune_run(config):
             momentum=config["momentum"],
             nesterov=config["nesterov"],
         ),
-        # metrics=["accuracy", metric_auc],
-        weighted_metrics=["accuracy", metric_auc],
+        metrics=config["tune_metrics"],
+        weighted_metrics=config["tune_metrics_weighted"] + [metric_auc],
     )
 
-    es_callback = tf.keras.callbacks.EarlyStopping()
+    # set callbacks
+    callbacks = list()
+    report_dict = {
+        "auc": "auc",
+        "val_auc": "val_auc",
+    }  # default includes AUC of ROC
+    for metric in config["tune_metrics"] + config["tune_metrics_weighted"]:
+        report_dict[metric] = metric
+        report_dict["val_" + metric] = "val_" + metric
+    tune_report_callback = TuneReportCallback(report_dict)
+    callbacks.append(tune_report_callback)
     if config["use_early_stop"]:
         es_config = config["early_stop_paras"]
         early_stop_callback = tf.keras.callbacks.EarlyStopping(**es_config)
+        callbacks.append(early_stop_callback)
 
     # train
     history_obj = model.fit(
@@ -753,16 +739,12 @@ def test_tune_run(config):
             0: config["bkg_class_weight"],
         },
         sample_weight=wt_train,
-        # callbacks=[es_callback],
-        callbacks=[
-            es_callback,
-            TuneReportCallback(
-                {"val_accuracy": "val_accuracy", "val_auc": "val_auc"}
-            ),
-        ],
+        callbacks=callbacks,
     )
 
     # evaluate metric
-    val_accuracy = history_obj.history["val_accuracy"][-1]
-    val_auc = history_obj.history["val_auc"][-1]
-    tune.report(val_accuracy=val_accuracy, val_auc=val_auc)
+    final_report = dict()
+    for key in report_dict.keys():
+        metric = str(key)
+        final_report[metric] = history_obj.history[metric][-1]
+    tune.report(**final_report)
