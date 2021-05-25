@@ -188,11 +188,12 @@ class job_executor(object):
             yaml.dump(results, tune_results_file, indent=4)
 
         # remove temporary tuning inputs
-        shutil.rmtree(tune_input_dir)
+        shutil.rmtree(tune_input_dir, ignore_errors=True)
         # remove temporary tuning logs
         if uc.rm_tmp_log:
-            tmp_log_dir = pathlib.Path(rc.save_sub_dir) / "tmp_log"
-            shutil.rmtree(tmp_log_dir)
+            #tmp_log_dir = pathlib.Path(rc.save_sub_dir) / "tmp_log"
+            tmp_log_dir = uc.tmp_dir
+            shutil.rmtree(tmp_log_dir, ignore_errors=True)
 
     def execute_apply_job(self):
         jc = self.job_config.job

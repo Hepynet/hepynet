@@ -2,6 +2,7 @@
 import glob
 import logging
 import math
+import os
 import pathlib
 
 import numpy as np
@@ -111,11 +112,11 @@ def get_train_val_indices(x, y, wt, val_split, k_folds=None):
 
 
 def merge_unequal_length_arrays(array_list):
-    """Merges arrays with unequal length to average/min/max 
+    """Merges arrays with unequal length to average/min/max
 
     Note:
-        mainly used to deal with k-fold results with early-stopping (which 
-        results in unequal length of results as different folds may stop at 
+        mainly used to deal with k-fold results with early-stopping (which
+        results in unequal length of results as different folds may stop at
         different epochs) enabled
 
     """
@@ -175,10 +176,18 @@ def norm_array_min_max(array, min, max, axis=None):
 
 
 def ray_tune(model_wrapper, job_config, resume=False):
+    # initialize
     tuner = job_config.tune.clone().tuner
     log_dir = pathlib.Path(job_config.run.save_sub_dir) / "tmp_log"
     log_dir.mkdir(parents=True, exist_ok=True)
-    ray.init(_temp_dir=str(log_dir), **(tuner.init.get_config_dict()))
+    if os.name == "posix":
+        logger.info(f"Ignoring tune.tmp.tmp_dir setting on Unix OS")
+        ray.init(**(tuner.init.get_config_dict()))
+    else:
+        ray.init(
+            _temp_dir=str(job_config.tune.tmp_dir),
+            **(tuner.init.get_config_dict()),
+        )
     # set up scheduler
     sched_class = getattr(schedulers, tuner.scheduler_class)
     logger.info(f"Setting up scheduler: {tuner.scheduler_class}")
@@ -189,7 +198,9 @@ def ray_tune(model_wrapper, job_config, resume=False):
     logger.info(f"Setting up search algorithm: {tuner.algo_class}")
     algo_config = tuner.algo.get_config_dict()
     algo = None
-    if algo_class == "AxSearch":
+    if algo_class is None:
+        algo = None
+    elif algo_class == "AxSearch":
         from ray.tune.suggest.ax import AxSearch
 
         algo = AxSearch(**algo_config)
