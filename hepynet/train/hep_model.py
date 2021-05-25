@@ -4,7 +4,7 @@ import copy
 import datetime
 import logging
 import pathlib
-from typing import Iterable, Optional
+from typing import Dict, Iterable, Optional, Tuple
 
 import keras
 import numpy as np
@@ -12,17 +12,15 @@ import ray
 import tensorflow as tf
 import yaml
 from keras import backend as K
-from keras.callbacks import ModelCheckpoint, TensorBoard, callbacks
+from keras.callbacks import ModelCheckpoint, callbacks
 from keras.layers import Dense, Dropout
 from keras.models import Sequential
 from keras.optimizers import SGD, Adagrad, Adam, RMSprop
-from matplotlib.pyplot import axis
 from ray import tune
-from ray.tune import analysis, schedulers
-from ray.tune.integration.keras import TuneCallback, TuneReportCallback
-from ray.tune.schedulers import AsyncHyperBandScheduler
+from ray.tune.integration.keras import TuneReportCallback
 
-from hepynet.data_io import array_utils, feed_box
+import hepynet.common.hepy_type as ht
+from hepynet.data_io import feed_box
 from hepynet.train import train_utils
 
 logger = logging.getLogger("hepynet")
@@ -54,14 +52,7 @@ class Model_Base(object):
     """Base model of deep neural network
     """
 
-    def __init__(self, job_config):
-        """Initialize model.
-
-        Args:
-        name: str
-            Name of the model.
-
-        """
+    def __init__(self, job_config: ht.config):
         self._job_config = job_config.clone()
         self._model_create_time = str(datetime.datetime.now())
         self._model_is_compiled = False
@@ -86,7 +77,7 @@ class Model_Base(object):
     def get_feedbox(self) -> feed_box.Feedbox:
         return self._feedbox
 
-    def get_job_config(self):
+    def get_job_config(self) -> ht.config:
         return self._job_config
 
     def get_model(self, fold_num=None):
@@ -98,26 +89,19 @@ class Model_Base(object):
         else:
             return self._model[fold_num]
 
-    def get_model_meta(self):
+    def get_model_meta(self) -> dict:
         return self._model_meta
 
-    def get_model_save_dir(self, fold_num=None):
+    def get_model_save_dir(
+        self, fold_num: Optional[int] = None
+    ) -> ht.pathlike:
         save_dir = f"{self._job_config.run.save_sub_dir}/models"
         if fold_num is not None:
             save_dir += f"/fold_{fold_num}"
         return save_dir
 
-    def get_train_history(self, fold_num=0):
-        """Returns train history."""
-        fold_train_history = self._train_history[fold_num]
-        if not self._model_is_compiled:
-            logger.warning("Model is not compiled")
-        if len(fold_train_history) == 0:
-            logger.warning("Empty training history found")
-        return fold_train_history
-
-    def set_inputs(self, job_config) -> None:
-        """Prepares array for training."""
+    def set_inputs(self, job_config: ht.config):
+        """Prepare feedbox to generate inputs"""
         rc = self._job_config.run.clone()
         try:
             input_dir = pathlib.Path(rc.save_sub_dir) / "models"
@@ -131,30 +115,8 @@ class Model_Base(object):
         self._feedbox = feedbox
         self._array_prepared = feedbox._array_prepared
 
-    def load_model(self, epoch=None):
+    def load_model(self, epoch: Optional[int] = None):
         """Loads saved model."""
-        # # Search possible files
-        # search_pattern = (
-        #     load_dir + "/" + date + "_" + job_name + "_" + version + "/models"
-        # )
-        # model_dir_list = glob.glob(search_pattern)
-        # if not model_dir_list:
-        #     search_pattern = "/work/" + search_pattern
-        #     logger.debug(f"search pattern:{search_pattern}")
-        #     model_dir_list = glob.glob(search_pattern)
-        # model_dir_list = sorted(model_dir_list)
-        # # Choose the newest one
-        # if len(model_dir_list) < 1:
-        #     raise FileNotFoundError("Model file that matched the pattern not found.")
-        # model_dir = model_dir_list[-1]
-        # if len(model_dir_list) > 1:
-        #     logger.info(
-        #         "More than one valid model file found, maybe you should try to specify # more infomation."
-        #     )
-        #     logger.info(f"Loading the last matched model path: {model_dir}")
-        # else:
-        #     logger.info(f"Loading model at: {model_dir}")
-
         # load model(s)
         self._model = list()
         num_exist_models = 0
@@ -172,9 +134,6 @@ class Model_Base(object):
                     custom_objects={"plain_acc": plain_acc,},
                     compile=False,
                 )  # it's important to specify custom_objects
-
-                weighted_metrics = [tf.keras.metrics.AUC(name="auc")]
-
                 self._model.append(fold_model)
                 num_exist_models += 1
         self._model_is_loaded = True
@@ -189,24 +148,7 @@ class Model_Base(object):
                 f"{num_exist_models}/{self._num_folds} models loaded for epoch {epoch}"
             )
 
-    # def load_model_with_path(self, model_path, paras_path=None, fold_num=0):
-    #    """Loads model with given path
-    #
-    #    Note:
-    #        Should load model parameters manually.
-    #    """
-    #    self._model[fold_num] = keras.models.load_model(
-    #        model_path, custom_objects={"plain_acc": plain_acc},
-    #    )  # it's important to specify
-    #    if paras_path is not None:
-    #        try:
-    #            self.load_model_parameters(paras_path)
-    #            self.model_paras_is_loaded = True
-    #        except:
-    #            logger.warning("Model parameters not successfully loaded.")
-    #    logger.info("Model loaded.")
-
-    def load_model_parameters(self, model_dir):
+    def load_model_parameters(self, model_dir: ht.pathlike):
         """Retrieves model parameters from yaml file."""
         paras_path = f"{model_dir}/fold_{0}/{self._model_name}_paras.yaml"
         with open(paras_path, "r") as paras_file:
@@ -232,19 +174,13 @@ class Model_Base(object):
                 )
             self._train_history[fold_num] = fold_paras_dict["train_history"]
 
-    def save_model(self, file_name=None, fold_num=None):
-        """Saves trained model.
-
-        Args:
-            save_dir: str
-            Path to save model.
-
-        """
+    def save_model(
+        self, file_name: Optional[str] = None, fold_num: Optional[int] = None
+    ):
+        """Saves trained model."""
         # Define save path
         save_dir = self.get_model_save_dir(fold_num=fold_num)
         if file_name is None:
-            # datestr = datetime.date.today().strftime("%Y-%m-%d")
-            # file_name = self._model_name + "_" + self._model_label + "_" + datestr
             file_name = self._model_name
         # Check path
         save_path = f"{save_dir}/{file_name}.h5"
@@ -260,7 +196,9 @@ class Model_Base(object):
         )
         self._model_is_saved = True
 
-    def save_model_paras(self, file_name=None, fold_num=None):
+    def save_model_paras(
+        self, file_name: Optional[str] = None, fold_num: Optional[int] = None
+    ):
         """Save model parameters to yaml file."""
         rc = self._job_config.run.clone()
         # prepare paras
@@ -278,8 +216,6 @@ class Model_Base(object):
         # save to file
         save_dir = self.get_model_save_dir(fold_num=fold_num)
         if file_name is None:
-            # datestr = datetime.date.today().strftime("%Y-%m-%d")
-            # file_name = self._model_name + "_" + self._model_label + "_" + datestr
             file_name = self._model_name
         save_path = f"{save_dir}/{file_name}_paras.yaml"
         with open(save_path, "w") as write_file:
@@ -300,8 +236,7 @@ class Model_Sequential_Base(Model_Base):
         This class should not be used directly
     """
 
-    def __init__(self, job_config):
-        """Initialize model."""
+    def __init__(self, job_config: ht.config):
         super().__init__(job_config)
         tc = self._job_config.train
         ic = self._job_config.input
@@ -329,6 +264,7 @@ class Model_Sequential_Base(Model_Base):
         self._tb_logs_path = tc.tb_logs_path
 
     def get_hypers(self):
+        """Gets a dictionary of hyper-parameters that defines a training"""
         tc = self._job_config.train.clone()
         hypers = {
             # hypers for building model
@@ -351,7 +287,10 @@ class Model_Sequential_Base(Model_Base):
         }
         return hypers
 
-    def get_inputs(self):
+    def get_inputs(
+        self,
+    ) -> Dict[str, Tuple[np.ndarray, np.ndarray, np.ndarray]]:
+        """Gets train/test datasets from feedbox"""
         ic = self._job_config.input.clone()
         ## get input
         input_df = self._feedbox.get_processed_df()
@@ -377,6 +316,7 @@ class Model_Sequential_Base(Model_Base):
         }
 
     def get_train_callbacks(self, fold_num: Optional[int] = None) -> list:
+        """Prepares callbacks of training"""
         train_callbacks = []
         tc = self._job_config.train.clone()
         if self._save_tb_logs:  # TODO: add back this function
@@ -410,46 +350,7 @@ class Model_Sequential_Base(Model_Base):
             train_callbacks.append(checkpoint)
         return train_callbacks
 
-    def get_train_performance_meta(self):
-        """Returns meta data of training performance
-
-        Note:
-            This function should be called after show_performance and
-        plot_significance_scan being called, otherwise "-" will be used as
-        content.
-
-        """
-        performance_meta_dict = {}
-        # try collect significance scan result
-        try:
-            performance_meta_dict[
-                "original_significance"
-            ] = self.original_significance
-            performance_meta_dict["max_significance"] = self.max_significance
-            performance_meta_dict[
-                "max_significance_threshold"
-            ] = self.max_significance_threshold
-        except:
-            performance_meta_dict["original_significance"] = "-"
-            performance_meta_dict["max_significance"] = "-"
-            performance_meta_dict["max_significance_threshold"] = "-"
-        # try collect auc value
-        try:
-            # performance_meta_dict["auc_train"] = self.auc_train
-            # performance_meta_dict["auc_test"] = self.auc_test
-            # performance_meta_dict["auc_train_original"] = self.auc_train_original
-            # performance_meta_dict["auc_test_original"] = self.auc_test_original
-            pass
-        except:
-            # performance_meta_dict["auc_train"] = "-"
-            # performance_meta_dict["auc_test"] = "-"
-            # performance_meta_dict["auc_train_original"] = "-"
-            # performance_meta_dict["auc_test_original"] = "-"
-            pass
-        return performance_meta_dict
-
     def train(self):
-        """Performs training."""
         # Check
         if not self._model_is_compiled:
             logger.critical("DNN model is not yet built, rebuilding")
@@ -457,7 +358,7 @@ class Model_Sequential_Base(Model_Base):
         if not self._array_prepared:
             logger.critical("Training data is not ready, pleas set up inputs")
             exit(1)
-        # prepare
+        # Prepare
         tc = self._job_config.train.clone()
         input_dict = self.get_inputs()
         model = self.get_model()
@@ -527,7 +428,7 @@ class Model_Sequential_Base(Model_Base):
             self._train_history[fold_num] = history_obj.history
             self.save_model(fold_num=fold_num)
             self.save_model_paras(fold_num=fold_num)
-        # update status
+        # Update status
         self._model_is_trained = True
 
 
@@ -549,7 +450,6 @@ class Model_Sequential_Flat(Model_Sequential_Base):
         self._model_is_compiled = True
 
     def build_single(self, fold_model, hypers):
-        """ Compile model, function to be changed in the future."""
         # Add layers
         for layer in range(int(hypers["layers"])):
             # input layer
@@ -612,6 +512,7 @@ class Model_Sequential_Flat(Model_Sequential_Base):
         )
 
     def get_hypers_tune(self):
+        """Gets a dict of hyperparameter (space) for auto-tuning"""
         ic = self._job_config.input.clone()
         rc = self._job_config.run.clone()
         model_cfg = self._job_config.tune.clone().model
@@ -649,6 +550,7 @@ class Model_Sequential_Flat(Model_Sequential_Base):
 
 
 def tune_Model_Sequential_Flat(config, checkpoint_dir=None):
+    """Trainable function for ray-tune"""
     input_dir = pathlib.Path(config["input_dir"])
     x_train = np.load(input_dir / "x_train.npy")
     y_train = np.load(input_dir / "y_train.npy")
@@ -658,7 +560,7 @@ def tune_Model_Sequential_Flat(config, checkpoint_dir=None):
     wt_val = np.load(input_dir / "wt_val.npy")
 
     # build model
-    import tensorflow as tf
+    import tensorflow as tf  # must import inside function, other wise will get errors of ray tune
 
     model = tf.keras.models.Sequential()
     for layer in range(int(config["layers"])):
