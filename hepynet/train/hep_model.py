@@ -629,7 +629,6 @@ class Model_Sequential_Flat(Model_Sequential_Base):
             "momentum": gs(model_cfg.momentum),
             "nesterov": gs(model_cfg.nesterov),
             # hypers for training
-            "val_split": model_cfg.val_split,
             "batch_size": gs(model_cfg.batch_size),
             "epochs": gs(model_cfg.epochs),
             "sig_class_weight": gs(model_cfg.sig_class_weight),
@@ -706,7 +705,7 @@ def tune_Model_Sequential_Flat(config, checkpoint_dir=None):
             nesterov=config["nesterov"],
         ),
         metrics=config["tune_metrics"],
-        weighted_metrics=config["tune_metrics_weighted"] + [metric_auc],
+        weighted_metrics=list(config["tune_metrics_weighted"]) + [metric_auc],
     )
 
     # set callbacks
@@ -731,7 +730,6 @@ def tune_Model_Sequential_Flat(config, checkpoint_dir=None):
         y_train,
         batch_size=config["batch_size"],
         epochs=config["epochs"],
-        # validation_split=config["val_split"],
         validation_data=(x_val, y_val, wt_val),
         shuffle=True,
         class_weight={

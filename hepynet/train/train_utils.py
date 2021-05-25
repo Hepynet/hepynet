@@ -2,6 +2,7 @@
 import glob
 import logging
 import math
+import pathlib
 
 import numpy as np
 import ray
@@ -167,28 +168,55 @@ def norm_array_min_max(array, min, max, axis=None):
     middle = (min + max) / 2.0
     output_array = array.copy() - middle
     if max < min:
-        logger.error("ERROR: max shouldn't be smaller than min.")
+        logger.error("Max shouldn't be smaller than min.")
         return None
     ratio = (max - min) / 2.0
     output_array = output_array / ratio
 
 
-def ray_tune(model_wrapper, job_config):
+def ray_tune(model_wrapper, job_config, resume=False):
     tuner = job_config.tune.clone().tuner
-    ray.init(**(tuner.init.get_config_dict()))
+    log_dir = pathlib.Path(job_config.run.save_sub_dir) / "tmp_log"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    ray.init(_temp_dir=str(log_dir), **(tuner.init.get_config_dict()))
     # set up scheduler
     sched_class = getattr(schedulers, tuner.scheduler_class)
+    logger.info(f"Setting up scheduler: {tuner.scheduler_class}")
     sched_config = tuner.scheduler.get_config_dict()
     sched = sched_class(**sched_config)
+    # set up algorithm
+    algo_class = tuner.algo_class
+    logger.info(f"Setting up search algorithm: {tuner.algo_class}")
+    algo_config = tuner.algo.get_config_dict()
+    algo = None
+    if algo_class == "AxSearch":
+        from ray.tune.suggest.ax import AxSearch
+
+        algo = AxSearch(**algo_config)
+    elif algo_class == "HyperOptSearch":
+        from ray.tune.suggest.hyperopt import HyperOptSearch
+
+        algo = HyperOptSearch(**algo_config)
+    elif algo_class == "HEBOSearch":
+        from ray.tune.suggest.hebo import HEBOSearch
+
+        algo = HEBOSearch(**algo_config)
+    else:
+        logger.error(f"Unsupported search algorithm: {algo_class}")
+        logger.info(f"Using default value None for search algorithm")
     # run
-    run_config = tuner.run.get_config_dict()
+    run_config = (
+        tuner.run.get_config_dict()
+    )  # important: convert Hepy_Config class to dict
     tune_func = getattr(hep_model, model_wrapper._tune_fun_name)
     analysis = tune.run(
         tune_func,
         name="ray_tunes",
+        search_alg=algo,
         scheduler=sched,
         config=model_wrapper.get_hypers_tune(),
         local_dir=job_config.run.save_sub_dir,
+        resume=resume,
         **run_config,
     )
     logger.info("Best hyperparameters found were:")

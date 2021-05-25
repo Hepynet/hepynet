@@ -19,6 +19,13 @@ def execute():
         action="store_true",
     )
     parser.add_argument(
+        "-r",
+        "--resume",
+        required=False,
+        help="resume (tune) job",
+        action="store_true",
+    )
+    parser.add_argument(
         "-t",
         "--time",
         required=False,
@@ -60,8 +67,8 @@ def execute():
             logger.info("#" * 80)
             logger.info(f"Executing: {yaml_cfg}")
             job_start_time = time.perf_counter()
-            ex_test = job_executor.job_executor(yaml_cfg)
-            ex_test.execute_jobs()
+            executor = job_executor.job_executor(yaml_cfg)
+            executor.execute_jobs(resume=args.resume)
             job_end_time = time.perf_counter()
             time_consumed = job_end_time - job_start_time
             time_consumed_str = time.strftime(

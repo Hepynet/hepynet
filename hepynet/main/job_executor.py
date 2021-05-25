@@ -2,7 +2,7 @@ import datetime
 import logging
 import pathlib
 import random as python_random
-from sys import path
+import shutil
 import time
 
 import atlas_mpl_style as ampl
@@ -11,7 +11,7 @@ import numpy as np
 import tensorflow as tf
 import yaml
 from cycler import cycler
-import shutil
+
 from hepynet.common import common_utils, config_utils
 from hepynet.data_io import feed_box
 from hepynet.evaluate import (
@@ -25,9 +25,6 @@ from hepynet.evaluate import (
 )
 from hepynet.main import job_utils
 from hepynet.train import train_utils
-
-# from hepynet.common.hepy_const import SCANNED_PARAS
-
 
 logger = logging.getLogger("hepynet")
 
@@ -46,13 +43,13 @@ class job_executor(object):
         default_cycler = cycler(color=color_cycle)
         plt.rc("axes", prop_cycle=default_cycler)
 
-    def execute_jobs(self):
+    def execute_jobs(self, resume=False):
         """Execute all planned jobs."""
         self.job_config.print()
-        self.set_save_dir()
+        self.set_save_dir(resume=resume)
         # Execute single job if parameter scan is not needed
         if not self.job_config.para_scan.perform_para_scan:
-            self.execute_single_job()
+            self.execute_single_job(resume=resume)
         # Otherwise perform scan as specified
         else:
             # TODO: add Basyesian scan back
@@ -73,7 +70,7 @@ class job_executor(object):
             # self.execute_single_job()
             # return 0
 
-    def execute_single_job(self):
+    def execute_single_job(self, resume=False):
         """Execute single DNN training with given configuration."""
         # Prepare
         jc = self.job_config.job
@@ -87,6 +84,7 @@ class job_executor(object):
 
         # Check best tuned config overwrite
         if self.job_config.config.best_tune_overwrite:
+            logger.info("Overwriting training config with best tuned results")
             best_hypers_path = (
                 pathlib.Path(rc.save_sub_dir) / "best_hypers.yaml"
             )
@@ -103,7 +101,7 @@ class job_executor(object):
         if jc.job_type == "train":
             self.execute_train_job()
         elif jc.job_type == "tune":
-            self.execute_tune_job()
+            self.execute_tune_job(resume=resume)
         elif jc.job_type == "apply":
             self.execute_apply_job()
         else:
@@ -127,7 +125,7 @@ class job_executor(object):
         self.model_wrapper.build()
         self.model_wrapper.train()
 
-    def execute_tune_job(self):
+    def execute_tune_job(self, resume=False):
         # Save the final job_config
         ic = self.job_config.input
         uc = self.job_config.tune
@@ -172,9 +170,12 @@ class job_executor(object):
         np.save(tune_input_dir / "x_val.npy", x_val)
         np.save(tune_input_dir / "y_val.npy", y_val)
         np.save(tune_input_dir / "wt_val.npy", wt_val)
+        logger.info(f"Temporary tuning input files saved to: {tune_input_dir}")
 
         # tuning hypers
-        analysis = train_utils.ray_tune(self.model_wrapper, self.job_config)
+        analysis = train_utils.ray_tune(
+            self.model_wrapper, self.job_config, resume=resume
+        )
 
         # save results
         best_config = analysis.best_config
@@ -188,6 +189,10 @@ class job_executor(object):
 
         # remove temporary tuning inputs
         shutil.rmtree(tune_input_dir)
+        # remove temporary tuning logs
+        if uc.rm_tmp_log:
+            tmp_log_dir = pathlib.Path(rc.save_sub_dir) / "tmp_log"
+            shutil.rmtree(tmp_log_dir)
 
     def execute_apply_job(self):
         jc = self.job_config.job
@@ -387,11 +392,13 @@ class job_executor(object):
         else:
             self.job_config = job_config_temp
 
-        datestr = datetime.date.today().strftime("%Y-%m-%d")
+        jc = self.job_config.job
         ic = self.job_config.input
         rc = self.job_config.run
-        rc.datestr = datestr
-        rc.npy_path = f"{ic.arr_path}/{ic.arr_version}/{ic.variation}"
+        if jc.date_str is None:
+            rc.datestr = datetime.date.today().strftime("%Y-%m-%d")
+        else:
+            rc.datestr = jc.date_str
         if ic.selected_features:
             rc.input_dim = len(ic.selected_features)
         rc.config_collected = True
@@ -451,72 +458,63 @@ class job_executor(object):
         logger.info("Processing inputs")
         self.model_wrapper.set_inputs(self.job_config)
 
-    def set_save_dir(self) -> None:
+    def set_save_dir(self, resume=False) -> None:
         """Sets the directory to save the outputs"""
         jc = self.job_config.job
         rc = self.job_config.run
-        # Set save sub-directory for this task
-        if jc.job_type in ["train", "tune"]:
-            # no load job found
-            if jc.load_job_name == "LOAD_JOB_NAME_DEF":
-                dir_pattern = f"{jc.save_dir}/{rc.datestr}_{jc.job_name}_v{{}}"
-                output_match = common_utils.get_newest_file_version(
-                    dir_pattern
-                )
-                rc.save_sub_dir = output_match["path"]
-            # have tune job to be loaded
-            else:
-                dir_pattern = (
-                    f"{jc.save_dir}/{rc.datestr}_{jc.load_job_name}_v{{}}"
-                )
-                output_match = common_utils.get_newest_file_version(
-                    dir_pattern, use_existing=True
-                )
-                if output_match:
-                    rc.save_sub_dir = output_match["path"]
-                else:
-                    logger.warning(
-                        f"Can't find existing train folder matched with date {rc.datestr}, trying to search without specifying the date."
-                    )
-                    dir_pattern = f"{jc.save_dir}/*_{jc.load_job_name}_v{{}}"
-                    output_match = common_utils.get_newest_file_version(
-                        dir_pattern, use_existing=True
-                    )
-                    if output_match:
-                        rc.save_sub_dir = output_match["path"]
-                    else:
-                        logger.error(
-                            "Can't find existing train folder matched pattern, please check the settings."
-                        )
-                    rc.save_sub_dir = output_match["path"]
-            pathlib.Path(rc.save_sub_dir).mkdir(parents=True, exist_ok=True)
-            # set input cache for tune job
-            if jc.job_type == "tune":
-                tune_input_cache = pathlib.Path(rc.save_sub_dir) / "tmp"
-                tune_input_cache.mkdir(parents=True, exist_ok=True)
-                rc.tune_input_cache = str(tune_input_cache)
+
+        # Determine sub-directory for result saving
+        create_new = True
+        job_dir_name = jc.job_name
+        if jc.job_type == "tune":
+            if resume:
+                create_new = False
+        elif jc.job_type == "train":
+            if jc.tune_job_name != "TUNE_JOB_NAME_DEF":
+                create_new = False
+                job_dir_name = jc.tune_job_name
         elif jc.job_type == "apply":
-            # use same directory as input "train" directory for "apply" type jobs
-            dir_pattern = (
-                f"{jc.save_dir}/{rc.datestr}_{jc.load_job_name}_v{{}}"
-            )
+            create_new = False
+            if jc.tune_job_name != "TUNE_JOB_NAME_DEF":
+                job_dir_name = jc.tune_job_name
+            elif jc.train_job_name != "TRAIN_JOB_NAME_DEF":
+                job_dir_name = jc.train_job_name
+            else:
+                logger.critical(
+                    f"Job type is apply but neither tune_job_name nor train_job_name specified! Please update the config."
+                )
+                exit()
+        else:
+            logger.critical(f"Unknown job_type {jc.job_type}!")
+            exit()
+
+        if create_new:
+            dir_pattern = f"{jc.save_dir}/{rc.datestr}_{job_dir_name}_v{{}}"
+            output_match = common_utils.get_newest_file_version(dir_pattern)
+            rc.save_sub_dir = output_match["path"]
+        else:
+            if jc.fix_date_str:
+                dir_pattern = (
+                    f"{jc.save_dir}/{rc.datestr}_{job_dir_name}_v{{}}"
+                )
+            else:
+                dir_pattern = f"{jc.save_dir}/*_{job_dir_name}_v{{}}"
             output_match = common_utils.get_newest_file_version(
                 dir_pattern, use_existing=True
             )
             if output_match:
                 rc.save_sub_dir = output_match["path"]
             else:
-                logger.warning(
-                    f"Can't find existing train folder matched with date {rc.datestr}, trying to search without specifying the date."
+                logger.error(
+                    f"Can't find existing work folder matched pattern {dir_pattern}, please check the settings."
                 )
-                dir_pattern = f"{jc.save_dir}/*_{jc.load_job_name}_v{{}}"
-                output_match = common_utils.get_newest_file_version(
-                    dir_pattern, use_existing=True
-                )
-                if output_match:
-                    rc.save_sub_dir = output_match["path"]
-                else:
-                    logger.error(
-                        "Can't find existing train folder matched pattern, please check the settings."
-                    )
-            pathlib.Path(rc.save_sub_dir).mkdir(parents=True, exist_ok=True)
+                exit()
+        logger.info(f"Setup work directory: {rc.save_sub_dir}")
+        pathlib.Path(rc.save_sub_dir).mkdir(parents=True, exist_ok=True)
+
+        # set input cache for tune job
+        if jc.job_type == "tune":
+            tune_input_cache = pathlib.Path(rc.save_sub_dir) / "tmp"
+            tune_input_cache.mkdir(parents=True, exist_ok=True)
+            rc.tune_input_cache = str(tune_input_cache)
+
