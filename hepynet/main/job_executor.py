@@ -112,9 +112,6 @@ class job_executor(object):
         # post procedure
         plt.close("all")
 
-        # return training meta data
-        return self.model_wrapper.get_train_performance_meta()
-
     def execute_train_job(self):
         # Save the final job_config
         rc = self.job_config.run

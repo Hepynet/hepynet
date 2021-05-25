@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+
+# TODO: evaluate.py is disables and should be remove once equivalent functions developed
+
 """Functions for making plots"""
 
 import logging
