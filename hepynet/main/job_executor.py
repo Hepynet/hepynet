@@ -12,6 +12,7 @@ import tensorflow as tf
 import yaml
 from cycler import cycler
 
+import hepynet.common.hepy_type as ht
 from hepynet.common import common_utils, config_utils
 from hepynet.data_io import feed_box
 from hepynet.evaluate import (
@@ -32,45 +33,30 @@ logger = logging.getLogger("hepynet")
 class job_executor(object):
     """Core class to execute a pdnn job based on given cfg file."""
 
-    def __init__(self, yaml_config_path):
+    def __init__(self, yaml_config_path: ht.pathlike):
         """Initialize executor."""
         self.job_config = None
         self.get_config(yaml_config_path)
-        # set up style
+        # Set up global plot style and color cycle
         ampl.use_atlas_style(usetex=False)
-        # set up color cycle
         color_cycle = self.job_config.apply.color_cycle
         default_cycler = cycler(color=color_cycle)
         plt.rc("axes", prop_cycle=default_cycler)
 
-    def execute_jobs(self, resume=False):
-        """Execute all planned jobs."""
+    def execute_jobs(self, resume: bool = False):
+        """Execute all planned jobs.
+
+        TODO: This function is no longer needed as tune job has been designed to
+        be an independent job type. Consider merge with execute_single_job in
+        future.
+
+        """
         self.job_config.print()
         self.set_save_dir(resume=resume)
         # Execute single job if parameter scan is not needed
-        if not self.job_config.para_scan.perform_para_scan:
-            self.execute_single_job(resume=resume)
-        # Otherwise perform scan as specified
-        else:
-            # TODO: add Basyesian scan back
-            pass
-            # self.get_scan_space()
-            # self.execute_tuning_jobs()
-            # # Perform final training with best hyperparmaters
-            # logger.info("#" * 80)
-            # logger.info("Performing final training with best hyper parameter set")
-            # keys = list(self.best_hyper_set.keys())
-            # for key in keys:
-            #     value = self.best_hyper_set[key]
-            #     value = float(value)
-            #     if type(value) is float:
-            #         if value.is_integer():
-            #             value = int(value)
-            #     setattr(self, key, value)
-            # self.execute_single_job()
-            # return 0
+        self.execute_single_job(resume=resume)
 
-    def execute_single_job(self, resume=False):
+    def execute_single_job(self, resume: bool = False):
         """Execute single DNN training with given configuration."""
         # Prepare
         jc = self.job_config.job
@@ -109,7 +95,7 @@ class job_executor(object):
                 f"job.job_type must be train or apply, {jc.job_type} is not supported"
             )
 
-        # post procedure
+        # Post procedure
         plt.close("all")
 
     def execute_train_job(self):
@@ -122,7 +108,7 @@ class job_executor(object):
         self.model_wrapper.build()
         self.model_wrapper.train()
 
-    def execute_tune_job(self, resume=False):
+    def execute_tune_job(self, resume: bool = False):
         # Save the final job_config
         ic = self.job_config.input
         uc = self.job_config.tune
@@ -131,25 +117,23 @@ class job_executor(object):
         with open(yaml_path, "w") as yaml_file:
             yaml.dump(self.job_config.get_config_dict(), yaml_file, indent=4)
 
-        # prepare tmp inputs
+        # Prepare tmp inputs
         feedbox = feed_box.Feedbox(self.job_config.clone())
         ## get input
         input_df = feedbox.get_processed_df()
         cols = ic.selected_features
-        # load and save train/test
+        ## load and save train/test
         train_index = (
             input_df["is_train"] == True
         )  # index for train and validation
         x = input_df.loc[train_index, cols].values
         y = input_df.loc[train_index, ["y"]].values
         wt = input_df.loc[train_index, "weight"].values
-
         val_ids = np.random.choice(
             range(len(wt)),
             int(len(wt) * 1.0 * uc.model.val_split),
             replace=False,
         )
-
         train_ids = np.setdiff1d(np.array(range(len(wt))), val_ids)
         x_train = x[train_ids]
         y_train = y[train_ids]
@@ -157,7 +141,7 @@ class job_executor(object):
         x_val = x[val_ids]
         y_val = y[val_ids]
         wt_val = wt[val_ids]
-        # remove negative weight events
+        ## remove negative weight events
         if ic.rm_negative_weight_events == True:
             wt_train = wt_train.clip(min=0)
         tune_input_dir = pathlib.Path(rc.tune_input_cache)
@@ -169,12 +153,12 @@ class job_executor(object):
         np.save(tune_input_dir / "wt_val.npy", wt_val)
         logger.info(f"Temporary tuning input files saved to: {tune_input_dir}")
 
-        # tuning hypers
+        # Tuning hypers
         analysis = train_utils.ray_tune(
             self.model_wrapper, self.job_config, resume=resume
         )
 
-        # save results
+        # Save results
         best_config = analysis.best_config
         save_path = pathlib.Path(rc.save_sub_dir) / "best_hypers.yaml"
         with open(save_path, "w") as best_hypers_file:
@@ -184,30 +168,31 @@ class job_executor(object):
         with open(save_path, "w") as tune_results_file:
             yaml.dump(results, tune_results_file, indent=4)
 
-        # remove temporary tuning inputs
+        # Remove temporary tuning inputs
         shutil.rmtree(tune_input_dir, ignore_errors=True)
-        # remove temporary tuning logs
+        # Remove temporary tuning logs
         if uc.rm_tmp_log:
-            #tmp_log_dir = pathlib.Path(rc.save_sub_dir) / "tmp_log"
+            # tmp_log_dir = pathlib.Path(rc.save_sub_dir) / "tmp_log"
             tmp_log_dir = uc.tmp_dir
             shutil.rmtree(tmp_log_dir, ignore_errors=True)
 
     def execute_apply_job(self):
+        # Set aliases
         jc = self.job_config.job
         rc = self.job_config.run
         ic = self.job_config.input
         tc = self.job_config.train
         ac = self.job_config.apply
-        # setup save parameters if reports need to be saved
+        
+        # Setup save parameters if reports need to be saved
         rc.save_dir = f"{rc.save_sub_dir}/apply/{jc.job_name}"
         pathlib.Path(rc.save_dir).mkdir(parents=True, exist_ok=True)
-
         # Save the final job_config
         yaml_path = pathlib.Path(rc.save_dir) / "apply_config.yaml"
         with open(yaml_path, "w") as yaml_file:
             yaml.dump(self.job_config.get_config_dict(), yaml_file, indent=4)
 
-        # load inputs
+        # Load inputs
         df_raw = self.model_wrapper.get_feedbox().get_raw_df()
         if logger.level == logging.DEBUG:
             logger.warn(
@@ -216,7 +201,6 @@ class job_executor(object):
             time.sleep(3)
             df_raw = df_raw.sample(n=10000)
             df_raw.reset_index(drop=True, inplace=True)
-
         df = self.model_wrapper.get_feedbox().get_processed_df(raw_df=df_raw)
 
         # Studies not depending on models
@@ -345,7 +329,7 @@ class job_executor(object):
 
         return
 
-    def fix_random_seed(self) -> None:
+    def fix_random_seed(self):
         """Fixes random seed
 
         Ref:
@@ -370,7 +354,7 @@ class job_executor(object):
         # https://www.tensorflow.org/api_docs/python/tf/random/set_seed
         tf.random.set_seed(seed)
 
-    def get_config(self, yaml_path):
+    def get_config(self, yaml_path:ht.pathlike):
         """Retrieves configurations from yaml file."""
         cfg_path = job_utils.get_valid_cfg_path(yaml_path)
         if not pathlib.Path(cfg_path).is_file():
@@ -401,62 +385,21 @@ class job_executor(object):
             rc.input_dim = len(ic.selected_features)
         rc.config_collected = True
 
-    def get_scan_space(self):
-        """Get hyperparameter scan space.
-        TODO: need to be refactored
-        """
-        pass
-        # space = {}
-        # valid_cfg_path = job_utils.get_valid_cfg_path(self.para_scan_cfg)
-        # config = config_utils.Hepy_Config(valid_cfg_path)
-        ## get available scan variables:
-        # for para in SCANNED_PARAS:
-        #    para_pdf = self.try_parse_str(
-        #        para + "_pdf", config, "scanned_para", para + "_pdf"
-        #    )
-        #    para_setting = self.try_parse_list(para, config, "scanned_para", para)
-        #    if para_pdf is not None:
-        #        dim_name = para.split("scan_")[1]
-        #        if para_pdf == "choice":
-        #            space[dim_name] = hp.choice(dim_name, para_setting)
-        #        elif para_pdf == "uniform":
-        #            space[dim_name] = hp.uniform(
-        #                dim_name, para_setting[0], para_setting[1]
-        #            )
-        #        elif para_pdf == "quniform":
-        #            space[dim_name] = hp.quniform(
-        #                dim_name, para_setting[0], para_setting[1], para_setting[2]
-        #            )
-        #        elif para_pdf == "loguniform":
-        #            space[dim_name] = hp.loguniform(
-        #                dim_name, np.log(para_setting[0]), np.log(para_setting[1])
-        #            )
-        #        elif para_pdf == "qloguniform":
-        #            space[dim_name] = hp.qloguniform(
-        #                dim_name,
-        #                np.log(para_setting[0]),
-        #                np.log(para_setting[1]),
-        #                para_setting[2],
-        #            )
-        #        else:
-        #            raise ValueError("Unsupported scan parameter pdf type.")
-        # self.space = space
-
-    def set_model(self) -> None:
+    def set_model(self):
         logger.info("Setting up model")
         tc = self.job_config.train
         jc = self.job_config.job
         model_class = train_utils.get_model_class(tc.model_class)
         self.model_wrapper = model_class(self.job_config)
-        # load model for "apply" job
+        # Load model for "apply" job
         if jc.job_type == "apply":
             self.model_wrapper.load_model()
 
-    def set_model_input(self) -> None:
+    def set_model_input(self):
         logger.info("Processing inputs")
         self.model_wrapper.set_inputs(self.job_config)
 
-    def set_save_dir(self, resume=False) -> None:
+    def set_save_dir(self, resume:bool=False):
         """Sets the directory to save the outputs"""
         jc = self.job_config.job
         rc = self.job_config.run
@@ -510,7 +453,7 @@ class job_executor(object):
         logger.info(f"Setup work directory: {rc.save_sub_dir}")
         pathlib.Path(rc.save_sub_dir).mkdir(parents=True, exist_ok=True)
 
-        # set input cache for tune job
+        # Set input cache for tune job
         if jc.job_type == "tune":
             tune_input_cache = pathlib.Path(rc.save_sub_dir) / "tmp"
             tune_input_cache.mkdir(parents=True, exist_ok=True)

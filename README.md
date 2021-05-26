@@ -2,7 +2,7 @@
 
 **H**igh **e**nergy physics, **py**thon-based, neural-**net**work assistant framework
 
-![forthebadge](https://img.shields.io/badge/hepynet-v0.4.1-blue)
+![forthebadge](https://img.shields.io/badge/hepynet-v0.4.2-blue)
 
 ## **Introduction**
 
@@ -30,7 +30,7 @@ pip install hepynet
 
 Please refer to [hepynet_example](https://github.com/Hepynet/hepynet_example) to see how to set up the workspace of hepynet.
 
-## **Release Note - v0.4.1**
+## **Release Note - v0.4.2**
 
-- Use pandas.Dataframe to manage data
-- Better plots styles to meet ATLAS style requirements wit* the help of [atlas-mpl-style](https://pypi.org/project/atlas-mpl-style)
+- Re-implement auto-tuning functions with [Ray](https://docs.ray.io/en/master/index.html) (currently, support three hyperparameter-tuning algorithms: [Ax](https://ax.dev/), [HyperOpt](http://hyperopt.github.io/hyperopt/) and [HEBO](https://github.com/huawei-noah/noah-research/tree/master/HEBO))
+- Minor issues fixes and improvements

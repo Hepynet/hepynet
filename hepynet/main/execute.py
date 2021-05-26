@@ -9,6 +9,7 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"
 
 
 def execute():
+    """Enterpoint function of hepynet"""
     parser = argparse.ArgumentParser()
     parser.add_argument("yaml_configs", nargs="*", action="store")
     parser.add_argument(

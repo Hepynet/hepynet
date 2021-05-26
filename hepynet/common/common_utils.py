@@ -3,27 +3,9 @@ import logging
 import platform
 import re
 import socket
+from typing import Any
 
 logger = logging.getLogger("hepynet")
-
-
-def dict_key_str_to_int(json_data):
-    """Cast string keys to int keys"""
-    correctedDict = {}
-    for key, value in json_data.items():
-        if isinstance(value, list):
-            value = [
-                dict_key_str_to_int(item) if isinstance(item, dict) else item
-                for item in value
-            ]
-        elif isinstance(value, dict):
-            value = dict_key_str_to_int(value)
-        try:
-            key = int(key)
-        except:
-            pass
-        correctedDict[key] = value
-    return correctedDict
 
 
 def get_current_platform_name() -> str:
@@ -44,7 +26,7 @@ def get_current_hostname() -> str:
     return socket.gethostname()
 
 
-def get_default_if_none(input_var, default_value):
+def get_default_if_none(input_var: Any, default_value: Any):
     if input_var is None:
         return default_value
     else:
@@ -52,7 +34,10 @@ def get_default_if_none(input_var, default_value):
 
 
 def get_newest_file_version(
-    path_pattern, n_digit=2, ver_num=None, use_existing=False
+    path_pattern: str,
+    n_digit: int = 2,
+    ver_num: int = None,
+    use_existing: bool = False,
 ):
     """Check existed file and return last available file path with version.
 
@@ -60,13 +45,13 @@ def get_newest_file_version(
     If reach limit, last available version will be used. 99 (or 999)
 
     """
-    # return file path if ver_num is given
+    # Return file path if ver_num is given
     if ver_num is not None:
         return {
             "ver_num": ver_num,
             "path": path_pattern.format(str(ver_num).zfill(n_digit)),
         }
-    # otherwise try to find ver_num
+    # Otherwise try to find ver_num
     path_list = glob.glob(path_pattern.format("*"))
     path_list = sorted(path_list)
     if len(path_list) < 1:
@@ -92,7 +77,7 @@ def get_newest_file_version(
     }
 
 
-def get_significant_digits(number, n_digits):
+def get_significant_digits(number: float, n_digits: int):
     if round(number) == number:
         m = len(str(number)) - 1 - n_digits
         if number / (10 ** m) == 0.0:
@@ -103,19 +88,3 @@ def get_significant_digits(number, n_digits):
         return round(number, n_digits - len(str(int(number))))
     else:
         return number
-
-
-def has_none(list):
-    """Checks whether list's element has "None" value element.
-
-    Args:
-      list: list, input list to be checked.
-
-    Returns:
-      True, if there IS "None" value element.
-      False, if there ISN'T "None" value element.
-    """
-    for ele in list:
-        if ele is None:
-            return True
-    return False

@@ -4,6 +4,11 @@ Note:
   1. Arrays organized by dictionary, each key is corresponding to a sample component
   2. Each sample component is a sub-dictionary, each key is corresponding to a input feature's array 
 
+
+TODO:
+    Numpy input format has been replaced by pandas DataFrame.
+    Should remove numpy_io or add support for different input formats?
+
 """
 import logging
 import pathlib

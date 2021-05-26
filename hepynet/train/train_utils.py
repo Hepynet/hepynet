@@ -129,7 +129,7 @@ def merge_unequal_length_arrays(array_list: List[np.ndarray]):
 
 
 def ray_tune(
-    model_wrapper: ht.model, job_config: ht.config, resume: bool = False
+    model_wrapper, job_config: ht.config, resume: bool = False
 ):
     """Performs automatic hyper-parameters tuning with Ray"""
     # initialize
