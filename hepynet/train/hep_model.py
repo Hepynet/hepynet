@@ -18,6 +18,7 @@ from keras.models import Sequential
 from keras.optimizers import SGD, Adagrad, Adam, RMSprop
 from ray import tune
 from ray.tune.integration.keras import TuneReportCallback
+from sklearn.metrics import roc_auc_score
 
 import hepynet.common.hepy_type as ht
 from hepynet.data_io import feed_box
@@ -553,9 +554,11 @@ def tune_Model_Sequential_Flat(config, checkpoint_dir=None):
     """Trainable function for ray-tune"""
     input_dir = pathlib.Path(config["input_dir"])
     x_train = np.load(input_dir / "x_train.npy")
+    x_train_unreset = np.load(input_dir / "x_train_unreset.npy")
     y_train = np.load(input_dir / "y_train.npy")
     wt_train = np.load(input_dir / "wt_train.npy")
     x_val = np.load(input_dir / "x_val.npy")
+    x_val_unreset = np.load(input_dir / "x_val_unreset.npy")
     y_val = np.load(input_dir / "y_val.npy")
     wt_val = np.load(input_dir / "wt_val.npy")
 
@@ -619,32 +622,70 @@ def tune_Model_Sequential_Flat(config, checkpoint_dir=None):
     for metric in config["tune_metrics"] + config["tune_metrics_weighted"]:
         report_dict[metric] = metric
         report_dict["val_" + metric] = "val_" + metric
-    tune_report_callback = TuneReportCallback(report_dict)
-    callbacks.append(tune_report_callback)
+    #tune_report_callback = TuneReportCallback(report_dict)
+    #callbacks.append(tune_report_callback)
     if config["use_early_stop"]:
         es_config = config["early_stop_paras"]
         early_stop_callback = tf.keras.callbacks.EarlyStopping(**es_config)
         callbacks.append(early_stop_callback)
 
     # train
-    history_obj = model.fit(
-        x_train,
-        y_train,
-        batch_size=config["batch_size"],
-        epochs=config["epochs"],
-        validation_data=(x_val, y_val, wt_val),
-        shuffle=True,
-        class_weight={
-            1: config["sig_class_weight"],
-            0: config["bkg_class_weight"],
-        },
-        sample_weight=wt_train,
-        callbacks=callbacks,
-    )
+    #history_obj = model.fit(
+    #    x_train,
+    #    y_train,
+    #    batch_size=config["batch_size"],
+    #    epochs=config["epochs"],
+    #    validation_data=(x_val, y_val, wt_val),
+    #    shuffle=True,
+    #    class_weight={
+    #        1: config["sig_class_weight"],
+    #        0: config["bkg_class_weight"],
+    #    },
+    #    sample_weight=wt_train,
+    #    callbacks=callbacks,
+    #)
+
+    last_auc_unreset = 0
+    for epoch_id in range(int(config["epochs"])):
+        history_obj = model.fit(
+            x_train,
+            y_train,
+            batch_size=config["batch_size"],
+            epochs=1,
+            validation_data=(x_val, y_val, wt_val),
+            shuffle=True,
+            class_weight={
+                1: config["sig_class_weight"],
+                0: config["bkg_class_weight"],
+            },
+            sample_weight=wt_train,
+            callbacks=callbacks,
+        )
+        epoch_report = dict()
+        for key in report_dict.keys():
+            metric = str(key)
+            epoch_report[metric] = history_obj.history[metric][-1]
+
+        #y_pred = model.predict(x_val)
+        #auc = roc_auc_score(y_val, y_pred, sample_weight=wt_val)
+        #epoch_report["val_auc2"] = auc
+
+        y_pred_unreset = model.predict(x_val_unreset)
+        auc_unreset = roc_auc_score(y_val, y_pred_unreset, sample_weight=wt_val)
+        epoch_report["auc_unreset"] = auc_unreset
+
+        auc_unreset_improvement = auc_unreset - last_auc_unreset
+        epoch_report["auc_unreset_improvement"] = auc_unreset_improvement
+        last_auc_unreset = auc_unreset
+
+        epoch_report["epoch_num"] = epoch_id + 1
+
+        tune.report(**epoch_report)
+
 
     # evaluate metric
-    final_report = dict()
-    for key in report_dict.keys():
-        metric = str(key)
-        final_report[metric] = history_obj.history[metric][-1]
-    tune.report(**final_report)
+    #final_report = dict()
+    #for key in report_dict.keys():
+    #    metric = str(key)
+    #    final_report[metric] = history_obj.history[metric][-1]
+    #tune.report(**final_report)

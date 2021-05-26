@@ -9,7 +9,7 @@ import numpy as np
 import ray
 import yaml
 from ray import tune
-from ray.tune import schedulers
+from ray.tune import schedulers, stopper
 from sklearn.model_selection import StratifiedKFold
 
 import hepynet.common.hepy_type as ht
@@ -171,6 +171,11 @@ def ray_tune(
     else:
         logger.error(f"Unsupported search algorithm: {algo_class}")
         logger.info(f"Using default value None for search algorithm")
+    # set stopper
+    if tuner.stopper_class is None:
+        stop = None
+    else:
+        stop = getattr(stopper, tuner.stopper_class)(**tuner.stopper)
     # run
     run_config = (
         tuner.run.get_config_dict()
@@ -179,6 +184,7 @@ def ray_tune(
     analysis = tune.run(
         tune_func,
         name="ray_tunes",
+        stop=stop,
         search_alg=algo,
         scheduler=sched,
         config=model_wrapper.get_hypers_tune(),

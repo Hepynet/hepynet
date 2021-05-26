@@ -25,6 +25,8 @@ DEFAULT_CFG = {
         "data_sumofweight": 1000,
         "reset_feature": False,
         "reset_feature_name": "RESET_FEATURE_NAME_DEF",
+        "reset_feature_overwrite": False,
+        "reset_feature_overwrite_value": None,
         "rm_negative_weight_events": False,
         "arr_path": "",
         "arr_version": "",
@@ -62,6 +64,8 @@ DEFAULT_CFG = {
             },
             "algo_class": None,
             "algo": {},
+            "stopper_class": None,
+            "stopper": {},
             "run": {
                 "num_samples": 10,
                 "resources_per_trial": {"cpu": 1, "gpu": 0},

@@ -120,7 +120,7 @@ class job_executor(object):
         # Prepare tmp inputs
         feedbox = feed_box.Feedbox(self.job_config.clone())
         ## get input
-        input_df = feedbox.get_processed_df()
+        input_df = feedbox.get_processed_df(keep_unreset=True)
         cols = ic.selected_features
         ## load and save train/test
         train_index = (
@@ -141,14 +141,27 @@ class job_executor(object):
         x_val = x[val_ids]
         y_val = y[val_ids]
         wt_val = wt[val_ids]
+        ## prepare inputs without resetting physic parameter
+        physic_para = ic.reset_feature_name
+        cols_unreset = list()
+        for col in cols:
+            if col == physic_para:
+                cols_unreset.append(physic_para + "_unreset")
+            else:
+                cols_unreset.append(col)
+        x_unreset = input_df.loc[train_index, cols_unreset].values
+        x_train_unreset = x_unreset[train_ids]
+        x_val_unreset = x_unreset[val_ids]
         ## remove negative weight events
         if ic.rm_negative_weight_events == True:
             wt_train = wt_train.clip(min=0)
         tune_input_dir = pathlib.Path(rc.tune_input_cache)
         np.save(tune_input_dir / "x_train.npy", x_train)
+        np.save(tune_input_dir / "x_train_unreset.npy", x_train_unreset)
         np.save(tune_input_dir / "y_train.npy", y_train)
         np.save(tune_input_dir / "wt_train.npy", wt_train)
         np.save(tune_input_dir / "x_val.npy", x_val)
+        np.save(tune_input_dir / "x_val_unreset.npy", x_val_unreset)
         np.save(tune_input_dir / "y_val.npy", y_val)
         np.save(tune_input_dir / "wt_val.npy", wt_val)
         logger.info(f"Temporary tuning input files saved to: {tune_input_dir}")
@@ -167,6 +180,9 @@ class job_executor(object):
         save_path = pathlib.Path(rc.save_sub_dir) / "tune_results.yaml"
         with open(save_path, "w") as tune_results_file:
             yaml.dump(results, tune_results_file, indent=4)
+        save_path = pathlib.Path(rc.save_sub_dir) / "tune_best_trial.yaml"
+        with open(save_path, "w") as best_trial_file:
+            yaml.dump(analysis.best_trial, best_trial_file, indent=4)
 
         # Remove temporary tuning inputs
         shutil.rmtree(tune_input_dir, ignore_errors=True)
