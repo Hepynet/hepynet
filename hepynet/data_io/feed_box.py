@@ -64,7 +64,9 @@ class Feedbox(object):
         logger.info("> Successfully loaded raw input DataFrame...")
         return raw_df
 
-    def get_processed_df(self, raw_df: pd.DataFrame = None):
+    def get_processed_df(
+        self, raw_df: pd.DataFrame = None, keep_unreset: bool = False
+    ):
         logger.info("Loading processed input DataFrame...")
         ic = self._job_config.input.clone()
         if raw_df is None:
@@ -72,6 +74,19 @@ class Feedbox(object):
         else:
             out_df: pd.DataFrame = raw_df.copy()
         feature_include = ic.selected_features + ic.validation_features
+        # overwrite physic parameter
+        if ic.reset_feature_overwrite:
+            physic_para = ic.reset_feature_name
+            physic_para_value = ic.reset_feature_overwrite_value
+            logger.info(f"> Setting physic para to {physic_para_value}")
+            if not isinstance(physic_para_value, (int, float)):
+                logger.error(
+                    f"Invalid physic_para_value type: {type(physic_para_value)}"
+                )
+                exit()
+            out_df.loc[
+                out_df["is_sig"] == False, physic_para
+            ] = physic_para_value
         # reshape inputs
         if ic.reshape_input:
             logger.info("> Reshaping inputs")
@@ -145,24 +160,30 @@ class Feedbox(object):
                 False,
             )
         # reset physic para for pDNN
-        if ic.reset_mass:
-            logger.info("> Resetting physic para distribution for pDNN")
+        physic_para = ic.reset_feature_name
+        if keep_unreset:
+            unreset_physic_para_values = out_df[physic_para].values
+            out_df[physic_para + "_unreset"] = unreset_physic_para_values
+        if ic.reset_feature:
+            logger.info(
+                f"> Resetting physic para {physic_para} distribution for pDNN"
+            )
             ref_df = out_df.loc[
-                out_df["is_sig"] == True, [ic.reset_feature_name, "weight"]
+                out_df["is_sig"] == True, [physic_para, "weight"]
             ]
-            ref_array = ref_df[ic.reset_feature_name]
+            ref_array = ref_df[physic_para]
             ref_weight = ref_df["weight"]
             ref_weight_positive = ref_weight.copy()
             ref_weight_positive[ref_weight_positive < 0] = 0
             sump = ref_weight_positive.sum()
+            reset_size = len(out_df.loc[out_df["is_sig"] == False].index)
             reset_values = np.random.choice(
                 ref_array.to_numpy("float32"),
-                size=len(ref_weight),
+                size=reset_size,
                 p=(1 / sump) * ref_weight_positive.to_numpy("float32"),
             )
-            out_df.loc[
-                out_df["is_sig"] == False, ic.reset_feature_name
-            ].update(reset_values)
+            out_df.loc[out_df["is_sig"] == False, physic_para] = reset_values
+
         # set y
         logger.info("> Setting up y values")
         out_df.loc[:, "y"] = 0
@@ -195,7 +216,10 @@ class Feedbox(object):
         is_sig,
     ):
         total_wt = df.loc[
-            (df["is_mc"] == is_mc) & (df["is_sig"] == is_sig), "weight"
+            (df["is_mc"] == is_mc)
+            & (df["is_sig"] == is_sig)
+            & df["sample_name"].isin(sample_list),
+            "weight",
         ].sum()
         if array_key in sample_list:
             sample_list = [array_key]
@@ -207,7 +231,6 @@ class Feedbox(object):
             # get norm factor
             norm_factor = 1
             if array_key == "all":
-
                 norm_factor = sumofweight / total_wt
             elif array_key == "all_norm":
                 n_samples = len(sample_list)
