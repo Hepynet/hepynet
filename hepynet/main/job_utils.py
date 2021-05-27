@@ -1,15 +1,18 @@
 import csv
 import logging
 import pathlib
+from typing import Iterable
 
 import git
+
+import hepynet.common.hepy_type as ht
 
 logger = logging.getLogger("hepynet")
 
 MAIN_DIR_NAMES = ["pdnn-lfv", "work"]
 
 
-def get_valid_cfg_path(path):
+def get_valid_cfg_path(path: ht.pathlike):
     """Finds valid path for cfg file in /share folder.
 
     If path is already valid:
@@ -41,7 +44,7 @@ def get_valid_cfg_path(path):
         exit()
 
 
-def make_table(data, save_dir, num_para=1):
+def make_table(data: Iterable, save_dir: ht.pathlike):
     """Makes table for scan meta data and so on.
 
     Input example:

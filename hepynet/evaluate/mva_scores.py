@@ -64,11 +64,11 @@ def plot_mva_scores(
             ax = fig.add_subplot(gs[0:3])
             ax.tick_params(labelbottom=False)
             ratio_ax = fig.add_subplot(gs[3], sharex=ax)
-            #ratio_ax.yaxis.set_major_locator(
+            # ratio_ax.yaxis.set_major_locator(
             #    mpl.ticker.MaxNLocator(
             #        symmetric=True, prune="both", min_n_ticks=5, nbins=4
             #    )
-            #)
+            # )
             ratio_ax.autoscale(axis="x", tight=True)
             plt.sca(ax)
         else:
@@ -184,24 +184,26 @@ def plot_mva_scores(
                 )
             ratio_ax.set_ylim(0, 2)
         ax.set_xlim(0, 1)
-        if plot_config.log:
-            ax.set_yscale("log")
-            _, y_max = ax.get_ylim()
-            ax.set_ylim(
-                plot_config.logy_min,
-                y_max
-                * np.power(10, np.log10(y_max / plot_config.logy_min) / 2),
-            )
-        else:
-            _, y_max = ax.get_ylim()
-            ax.set_ylim(0, y_max * 1.4)
         ax.legend(loc="upper right", ncol=2)
         if ac.plot_atlas_label:
             ampl.plot.draw_atlas_label(
                 0.05, 0.95, ax=ax, **(ac.atlas_label.get_config_dict())
             )
+        # Save lin/log plots
+        _, y_max = ax.get_ylim()
+        ## save lin
+        ax.set_ylim(0, y_max * 1.4)
         fig.savefig(
-            f"{save_dir}/{file_name}_node_{node}.{plot_config.save_format}"
+            f"{save_dir}/{file_name}_node_{node}_lin.{plot_config.save_format}"
+        )
+        ## save log
+        ax.set_yscale("log")
+        ax.set_ylim(
+            plot_config.logy_min,
+            y_max * np.power(10, np.log10(y_max / plot_config.logy_min) / 2),
+        )
+        fig.savefig(
+            f"{save_dir}/{file_name}_node_{node}_log.{plot_config.save_format}"
         )
 
     return 0  # success run
@@ -210,7 +212,7 @@ def plot_mva_scores(
 def plot_train_test_compare(
     df: pd.DataFrame, job_config: ht.config, save_dir: ht.pathlike
 ):
-    """Plots train/test scores distribution to check overtrain"""
+    """Plots train/test datasets' cores distribution comparison"""
     # initialize
     logger.info("Plotting train/test scores.")
     tc = job_config.train.clone()
@@ -318,21 +320,21 @@ def plot_train_test_compare(
         )
         # final adjustments
         ax.set_xlim(0, 1)
-        ax.set_xlabel("DNN score")
-        if plot_config.log:
-            ax.set_yscale("log")
-            _, y_max = ax.get_ylim()
-            ax.set_ylim(
-                plot_config.logy_min, y_max * np.power(10, np.log10(y_max) / 2)
-            )
-        else:
-            _, y_max = ax.get_ylim()
-            ax.set_ylim(0, y_max * 1.4)
         ax.legend(loc="upper right")
         if ac.plot_atlas_label:
             ampl.plot.draw_atlas_label(
                 0.05, 0.95, ax=ax, **(ac.atlas_label.get_config_dict())
             )
-        # Make and show plots
+        ax.set_xlabel("DNN score")
+        # Save lin/log plots
         file_name = f"mva_scores_{all_nodes[node_num]}"
-        fig.savefig(save_dir / f"{file_name}.{plot_config.save_format}")
+        _, y_max = ax.get_ylim()
+        ## save lin
+        ax.set_ylim(0, y_max * 1.4)
+        fig.savefig(save_dir / f"{file_name}_lin.{plot_config.save_format}")
+        ## save log
+        ax.set_yscale("log")
+        ax.set_ylim(
+            plot_config.logy_min, y_max * np.power(10, np.log10(y_max) / 2)
+        )
+        fig.savefig(save_dir / f"{file_name}_log.{plot_config.save_format}")

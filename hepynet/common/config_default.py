@@ -1,12 +1,18 @@
 DEFAULT_CFG = {
-    "config": {"include": [],},
+    "config": {
+        "include": [],
+        "best_tune_overwrite": False,  # overwrite with best tuned config
+    },
     "job": {
         "job_name": "JOB_NAME_DEF",
-        "job_type": "JOB_TYPE_DEF",
+        "job_type": "JOB_TYPE_DEF",  # could be train/tune/apply
         "save_dir": ".",
-        "load_job_name": "LOAD_JOB_NAME_DEF",
+        "tune_job_name": "TUNE_JOB_NAME_DEF",
+        "train_job_name": "TRAIN_JOB_NAME_DEF",
         "fix_rdm_seed": True,
         "rdm_seed": 1024,
+        "date_str": None,
+        "fix_date_str": False,
     },
     "input": {
         "input_path": "",
@@ -19,6 +25,8 @@ DEFAULT_CFG = {
         "data_sumofweight": 1000,
         "reset_feature": False,
         "reset_feature_name": "RESET_FEATURE_NAME_DEF",
+        "reset_feature_overwrite": False,
+        "reset_feature_overwrite_value": None,
         "rm_negative_weight_events": False,
         "arr_path": "",
         "arr_version": "",
@@ -40,6 +48,58 @@ DEFAULT_CFG = {
         "cut_types": [],
         "cut_expression": None,
         "test_rate": 0.2,
+    },
+    "tune": {
+        "tuner": {
+            "init": {
+                "num_cpus": None,
+                "num_gpus": None,
+                "log_to_driver": False,
+            },
+            "scheduler_class": "AsyncHyperBandScheduler",
+            "scheduler": {
+                "time_attr": "training_iteration",
+                "max_t": 200,
+                "grace_period": 10,
+            },
+            "algo_class": None,
+            "algo": {},
+            "stopper_class": None,
+            "stopper": {},
+            "run": {
+                "num_samples": 10,
+                "resources_per_trial": {"cpu": 1, "gpu": 0},
+                "log_to_file": True,
+            },
+        },
+        "model_class": "Model_Sequential_Flat",
+        "model": {
+            "output_bkg_node_names": [],
+            "layers": 1,
+            "nodes": 1,
+            "learn_rate": 0.01,
+            "learn_rate_decay": 0.01,
+            "batch_size": 32,
+            "epochs": 1,
+            "momentum": 0,
+            "nesterov": False,
+            "dropout_rate": 0,
+            "sig_class_weight": 1,
+            "bkg_class_weight": 1,
+            "val_split": 0.25,
+            "use_early_stop": False,
+            "early_stop_paras": {
+                "monitor": "val_loss",
+                "min_delta": 0,
+                "patience": 1,
+                "mode": "min",
+                "restore_best_weights": True,
+            },
+            "tune_metrics": [],
+            "tune_metrics_weighted": [],
+        },
+        "tmp_dir": "run/tmp_log",
+        "rm_tmp_log": False,
     },
     "train": {
         "model_name": "MODEL_NAME_DEF",
@@ -130,12 +190,8 @@ DEFAULT_CFG = {
         "book_cor_matrix": False,
         # model dependent studies
         "jump_model_studies": False,
-        "book_fit_npy": False,
-        "cfg_fit_npy": {
-            "fit_npy_region": "",
-            "fit_npy_branches": [],
-            "npy_save_dir": "",
-        },
+        "book_fit_inputs": False,
+        "fit_df": {"region": "", "branches": [], "save_dir": "",},
         "book_confusion_matrix": False,
         "cfg_confusion_matrix": {"dnn_cut": 0.5},
         "book_roc": False,
@@ -194,11 +250,5 @@ DEFAULT_CFG = {
         "book_importance_study": False,
         "cfg_importance_study": {"log": False},
     },
-    "para_scan": {"perform_para_scan": False,},
-    "run": {
-        "datestr": "",
-        "npy_path": "",
-        "config_collected": False,
-        "input_dim": None,
-    },
+    "run": {"datestr": "", "config_collected": False, "input_dim": None,},
 }

@@ -1,64 +1,36 @@
 # -*- coding: utf-8 -*-
-import glob
 import logging
 import math
+import os
+import pathlib
+from typing import List, Optional
 
 import numpy as np
+import ray
+import yaml
+from ray import tune
+from ray.tune import schedulers, stopper
 from sklearn.model_selection import StratifiedKFold
+
+import hepynet.common.hepy_type as ht
 from hepynet.train import hep_model
 
 logger = logging.getLogger("hepynet")
-
-
-def get_mass_range(mass_array, weights, nsig=1):
-    """Gives a range of mean +- sigma
-
-    Note:
-        Only use for single peak distribution
-
-    """
-    average = np.average(mass_array, weights=weights)
-    variance = np.average((mass_array - average) ** 2, weights=weights)
-    lower_limit = average - np.sqrt(variance) * nsig
-    upper_limit = average + np.sqrt(variance) * nsig
-    return lower_limit, upper_limit
 
 
 def get_model_class(model_class: str):
     if model_class == "Model_Sequential_Flat":
         return hep_model.Model_Sequential_Flat
     else:
-        logger.critical(f"Unsupported model class: {model_class}")
+        logger.critical(f"Unknown model class: {model_class}")
         exit(1)
 
 
-def get_model_epoch_path_list(
-    load_dir, model_name, job_name="*", date="*", version="*"
+def get_mean_var(
+    array: np.ndarray,
+    axis: Optional[int] = None,
+    weights: Optional[np.ndarray] = None,
 ):
-    # Search possible files
-    search_pattern = (
-        load_dir + "/" + date + "_" + job_name + "_" + version + "/models"
-    )
-    model_dir_list = glob.glob(search_pattern)
-    # Choose the newest one
-    if len(model_dir_list) < 1:
-        raise FileNotFoundError(
-            "Model file that matched the pattern not found."
-        )
-    model_dir = model_dir_list[-1]
-    if len(model_dir_list) > 1:
-        logger.warning(
-            "More than one valid model file found, try to specify more infomation."
-        )
-        logger.info(f"Loading the last matched model path: {model_dir}")
-    else:
-        logger.info("Loading model at: {model_dir}")
-    search_pattern = model_dir + "/" + model_name + "_epoch*.h5"
-    model_path_list = glob.glob(search_pattern)
-    return model_path_list
-
-
-def get_mean_var(array, axis=None, weights=None):
     """Calculate average and variance of an array."""
     average = np.average(array, axis=axis, weights=weights)
     variance = np.average((array - average) ** 2, axis=axis, weights=weights)
@@ -67,7 +39,29 @@ def get_mean_var(array, axis=None, weights=None):
     return average, variance + 0.000001
 
 
-def get_train_val_indices(x, y, wt, val_split, k_folds=None):
+def get_single_hyper(hyper_config: ht.sub_config):
+    """Determines one hyperparameter
+    
+    Note:
+        If the hyper-parameter is a tuning dimension (with spacer specified), 
+        spacer from ray.tune will be used to set up the dimension.
+        If the hyper-parameter is a normal value, it will be returned directly.
+
+    """
+    if hasattr(hyper_config, "spacer"):
+        paras = hyper_config.paras.get_config_dict()
+        return getattr(tune, hyper_config.spacer)(**paras)
+    else:
+        return hyper_config
+
+
+def get_train_val_indices(
+    x: np.ndarray,
+    y: np.ndarray,
+    wt: np.ndarray,
+    val_split: float,
+    k_folds: Optional[int] = None,
+):
     """Gets indices to separates train datasets to train/validation"""
     train_indices_list = list()
     validation_indices_list = list()
@@ -96,12 +90,12 @@ def get_train_val_indices(x, y, wt, val_split, k_folds=None):
     return train_indices_list, validation_indices_list
 
 
-def merge_unequal_length_arrays(array_list):
-    """Merges arrays with unequal length to average/min/max 
+def merge_unequal_length_arrays(array_list: List[np.ndarray]):
+    """Merges arrays with unequal length to average/min/max
 
     Note:
-        mainly used to deal with k-fold results with early-stopping (which 
-        results in unequal length of results as different folds may stop at 
+        mainly used to deal with k-fold results with early-stopping (which
+        results in unequal length of results as different folds may stop at
         different epochs) enabled
 
     """
@@ -134,27 +128,69 @@ def merge_unequal_length_arrays(array_list):
     return mean, low, high
 
 
-def norm_array(array, average=None, variance=None):
-    """Normalizes input array for each feature.
+def ray_tune(model_wrapper, job_config: ht.config, resume: bool = False):
+    """Performs automatic hyper-parameters tuning with Ray"""
+    # initialize
+    tuner = job_config.tune.clone().tuner
+    log_dir = pathlib.Path(job_config.run.save_sub_dir) / "tmp_log"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    if os.name == "posix":
+        logger.info(f"Ignoring tune.tmp.tmp_dir setting on Unix OS")
+        ray.init(**(tuner.init.get_config_dict()))
+    else:
+        ray.init(
+            _temp_dir=str(job_config.tune.tmp_dir),
+            **(tuner.init.get_config_dict()),
+        )
+    # set up scheduler
+    sched_class = getattr(schedulers, tuner.scheduler_class)
+    logger.info(f"Setting up scheduler: {tuner.scheduler_class}")
+    sched_config = tuner.scheduler.get_config_dict()
+    sched = sched_class(**sched_config)
+    # set up algorithm
+    algo_class = tuner.algo_class
+    logger.info(f"Setting up search algorithm: {tuner.algo_class}")
+    algo_config = tuner.algo.get_config_dict()
+    algo = None
+    if algo_class is None:
+        algo = None
+    elif algo_class == "AxSearch":
+        from ray.tune.suggest.ax import AxSearch
 
-    Note:
-        Do not normalize bkg and sig separately, bkg and sig should be normalized
-        in the same way. (i.e. use same average and variance for normalization.)
+        algo = AxSearch(**algo_config)
+    elif algo_class == "HyperOptSearch":
+        from ray.tune.suggest.hyperopt import HyperOptSearch
 
-    """
-    if len(array) != 0:
-        if (average is None) or (variance is None):
-            logger.error("Unspecified average or variance.")
-            return
-        array[:] = (array - average) / np.sqrt(variance)
+        algo = HyperOptSearch(**algo_config)
+    elif algo_class == "HEBOSearch":
+        from ray.tune.suggest.hebo import HEBOSearch
 
+        algo = HEBOSearch(**algo_config)
+    else:
+        logger.error(f"Unsupported search algorithm: {algo_class}")
+        logger.info(f"Using default value None for search algorithm")
+    # set stopper
+    if tuner.stopper_class is None:
+        stop = None
+    else:
+        stop = getattr(stopper, tuner.stopper_class)(**tuner.stopper)
+    # run
+    run_config = (
+        tuner.run.get_config_dict()
+    )  # important: convert Hepy_Config class to dict
+    tune_func = getattr(hep_model, model_wrapper._tune_fun_name)
+    analysis = tune.run(
+        tune_func,
+        name="ray_tunes",
+        stop=stop,
+        search_alg=algo,
+        scheduler=sched,
+        config=model_wrapper.get_hypers_tune(),
+        local_dir=job_config.run.save_sub_dir,
+        resume=resume,
+        **run_config,
+    )
+    logger.info("Best hyperparameters found were:")
+    print(yaml.dump(analysis.best_config))
 
-def norm_array_min_max(array, min, max, axis=None):
-    """Normalizes input array to (-1, +1)"""
-    middle = (min + max) / 2.0
-    output_array = array.copy() - middle
-    if max < min:
-        logger.error("ERROR: max shouldn't be smaller than min.")
-        return None
-    ratio = (max - min) / 2.0
-    output_array = output_array / ratio
+    return analysis

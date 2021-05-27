@@ -4,6 +4,7 @@ from typing import Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 
 from hepynet.common import config_utils
 from hepynet.data_io import numpy_io
@@ -22,6 +23,56 @@ def create_epoch_subdir(save_dir, epoch, n_digit) -> pathlib.Path:
         sub_dir = pathlib.Path(f"{save_dir}/epoch_final")
     sub_dir.mkdir(parents=True, exist_ok=True)
     return sub_dir
+
+
+def dump_fit_df(
+    model_wrapper: hep_model.Model_Base,
+    df_raw,
+    df_train,
+    job_config,
+    save_dir="./",
+):
+    ic = job_config.input.clone()
+    tc = job_config.train.clone()
+    ac = job_config.apply.clone()
+
+    sample_list = ic.sig_list + ic.bkg_list
+    if ic.apply_data:
+        sample_list += ic.data_list
+
+    platform_meta = config_utils.load_current_platform_meta()
+    data_path = platform_meta["data_path"]
+    if not data_path:
+        save_dir = pathlib.Path(save_dir)
+    else:
+        save_dir = pathlib.Path(data_path) / save_dir
+    pathlib.Path(save_dir).mkdir(parents=True, exist_ok=True)
+    logger.info(f"> Saving dataframes to: {save_dir}")
+
+    for sample in sample_list:
+        logger.info(f"> > processing: {sample}")
+        dump_branches = ac.fit_df.branches + ["weight"]
+        # prepare contents
+        dump_df: pd.DataFrame = df_raw.loc[
+            df_raw["sample_name"] == sample, dump_branches
+        ]
+        input_df = df_train.loc[
+            df_train["sample_name"] == sample, ic.selected_features
+        ]
+        predictions, _, _ = k_folds_predict(
+            model_wrapper.get_model(), input_df.values, silence=True
+        )
+        # dump
+        if len(tc.output_bkg_node_names) == 0:
+            dump_df["dnn_out_sig"] = predictions
+        else:
+            for i, out_node in enumerate(["sig"] + tc.output_bkg_node_names):
+                out_node = out_node.replace("+", "_")
+                branch_name = f"dnn_out_{out_node}"
+                dump_df[branch_name] = predictions[:, i]
+        dump_df.reset_index(inplace=True)
+        save_path = save_dir / f"{sample}.feather"
+        dump_df.to_feather(save_path)
 
 
 def dump_fit_npy(

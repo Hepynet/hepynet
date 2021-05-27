@@ -4,20 +4,24 @@ import copy
 import datetime
 import logging
 import pathlib
-from typing import Iterable, Optional
+from typing import Dict, Iterable, Optional, Tuple
 
 import keras
-from matplotlib.pyplot import axis
 import numpy as np
+import ray
 import tensorflow as tf
 import yaml
 from keras import backend as K
-from keras.callbacks import ModelCheckpoint, TensorBoard, callbacks
+from keras.callbacks import ModelCheckpoint, callbacks
 from keras.layers import Dense, Dropout
 from keras.models import Sequential
 from keras.optimizers import SGD, Adagrad, Adam, RMSprop
+from ray import tune
+from ray.tune.integration.keras import TuneReportCallback
+from sklearn.metrics import roc_auc_score
 
-from hepynet.data_io import array_utils, feed_box
+import hepynet.common.hepy_type as ht
+from hepynet.data_io import feed_box
 from hepynet.train import train_utils
 
 logger = logging.getLogger("hepynet")
@@ -49,14 +53,7 @@ class Model_Base(object):
     """Base model of deep neural network
     """
 
-    def __init__(self, job_config):
-        """Initialize model.
-
-        Args:
-        name: str
-            Name of the model.
-
-        """
+    def __init__(self, job_config: ht.config):
         self._job_config = job_config.clone()
         self._model_create_time = str(datetime.datetime.now())
         self._model_is_compiled = False
@@ -73,15 +70,15 @@ class Model_Base(object):
         else:
             self._num_folds = 1
 
-    def compile(self):
+    def build(self):
         logger.warn(
-            "The virtual function Model_Base.compile() is called, please implement override funcion!"
+            "The virtual function Model_Base.build() is called, please implement override funcion!"
         )
 
     def get_feedbox(self) -> feed_box.Feedbox:
         return self._feedbox
 
-    def get_job_config(self):
+    def get_job_config(self) -> ht.config:
         return self._job_config
 
     def get_model(self, fold_num=None):
@@ -93,26 +90,19 @@ class Model_Base(object):
         else:
             return self._model[fold_num]
 
-    def get_model_meta(self):
+    def get_model_meta(self) -> dict:
         return self._model_meta
 
-    def get_model_save_dir(self, fold_num=None):
+    def get_model_save_dir(
+        self, fold_num: Optional[int] = None
+    ) -> ht.pathlike:
         save_dir = f"{self._job_config.run.save_sub_dir}/models"
         if fold_num is not None:
             save_dir += f"/fold_{fold_num}"
         return save_dir
 
-    def get_train_history(self, fold_num=0):
-        """Returns train history."""
-        fold_train_history = self._train_history[fold_num]
-        if not self._model_is_compiled:
-            logger.warning("Model is not compiled")
-        if len(fold_train_history) == 0:
-            logger.warning("Empty training history found")
-        return fold_train_history
-
-    def set_inputs(self, job_config) -> None:
-        """Prepares array for training."""
+    def set_inputs(self, job_config: ht.config):
+        """Prepare feedbox to generate inputs"""
         rc = self._job_config.run.clone()
         try:
             input_dir = pathlib.Path(rc.save_sub_dir) / "models"
@@ -126,30 +116,8 @@ class Model_Base(object):
         self._feedbox = feedbox
         self._array_prepared = feedbox._array_prepared
 
-    def load_model(self, epoch=None):
+    def load_model(self, epoch: Optional[int] = None):
         """Loads saved model."""
-        # # Search possible files
-        # search_pattern = (
-        #     load_dir + "/" + date + "_" + job_name + "_" + version + "/models"
-        # )
-        # model_dir_list = glob.glob(search_pattern)
-        # if not model_dir_list:
-        #     search_pattern = "/work/" + search_pattern
-        #     logger.debug(f"search pattern:{search_pattern}")
-        #     model_dir_list = glob.glob(search_pattern)
-        # model_dir_list = sorted(model_dir_list)
-        # # Choose the newest one
-        # if len(model_dir_list) < 1:
-        #     raise FileNotFoundError("Model file that matched the pattern not found.")
-        # model_dir = model_dir_list[-1]
-        # if len(model_dir_list) > 1:
-        #     logger.info(
-        #         "More than one valid model file found, maybe you should try to specify # more infomation."
-        #     )
-        #     logger.info(f"Loading the last matched model path: {model_dir}")
-        # else:
-        #     logger.info(f"Loading model at: {model_dir}")
-
         # load model(s)
         self._model = list()
         num_exist_models = 0
@@ -163,7 +131,9 @@ class Model_Base(object):
                 )
             if model_path.exists():
                 fold_model = keras.models.load_model(
-                    model_path, custom_objects={"plain_acc": plain_acc},
+                    model_path,
+                    custom_objects={"plain_acc": plain_acc,},
+                    compile=False,
                 )  # it's important to specify custom_objects
                 self._model.append(fold_model)
                 num_exist_models += 1
@@ -179,24 +149,7 @@ class Model_Base(object):
                 f"{num_exist_models}/{self._num_folds} models loaded for epoch {epoch}"
             )
 
-    # def load_model_with_path(self, model_path, paras_path=None, fold_num=0):
-    #    """Loads model with given path
-    #
-    #    Note:
-    #        Should load model parameters manually.
-    #    """
-    #    self._model[fold_num] = keras.models.load_model(
-    #        model_path, custom_objects={"plain_acc": plain_acc},
-    #    )  # it's important to specify
-    #    if paras_path is not None:
-    #        try:
-    #            self.load_model_parameters(paras_path)
-    #            self.model_paras_is_loaded = True
-    #        except:
-    #            logger.warning("Model parameters not successfully loaded.")
-    #    logger.info("Model loaded.")
-
-    def load_model_parameters(self, model_dir):
+    def load_model_parameters(self, model_dir: ht.pathlike):
         """Retrieves model parameters from yaml file."""
         paras_path = f"{model_dir}/fold_{0}/{self._model_name}_paras.yaml"
         with open(paras_path, "r") as paras_file:
@@ -222,19 +175,13 @@ class Model_Base(object):
                 )
             self._train_history[fold_num] = fold_paras_dict["train_history"]
 
-    def save_model(self, file_name=None, fold_num=None):
-        """Saves trained model.
-
-        Args:
-            save_dir: str
-            Path to save model.
-
-        """
+    def save_model(
+        self, file_name: Optional[str] = None, fold_num: Optional[int] = None
+    ):
+        """Saves trained model."""
         # Define save path
         save_dir = self.get_model_save_dir(fold_num=fold_num)
         if file_name is None:
-            # datestr = datetime.date.today().strftime("%Y-%m-%d")
-            # file_name = self._model_name + "_" + self._model_label + "_" + datestr
             file_name = self._model_name
         # Check path
         save_path = f"{save_dir}/{file_name}.h5"
@@ -250,7 +197,9 @@ class Model_Base(object):
         )
         self._model_is_saved = True
 
-    def save_model_paras(self, file_name=None, fold_num=None):
+    def save_model_paras(
+        self, file_name: Optional[str] = None, fold_num: Optional[int] = None
+    ):
         """Save model parameters to yaml file."""
         rc = self._job_config.run.clone()
         # prepare paras
@@ -268,8 +217,6 @@ class Model_Base(object):
         # save to file
         save_dir = self.get_model_save_dir(fold_num=fold_num)
         if file_name is None:
-            # datestr = datetime.date.today().strftime("%Y-%m-%d")
-            # file_name = self._model_name + "_" + self._model_label + "_" + datestr
             file_name = self._model_name
         save_path = f"{save_dir}/{file_name}_paras.yaml"
         with open(save_path, "w") as write_file:
@@ -290,8 +237,7 @@ class Model_Sequential_Base(Model_Base):
         This class should not be used directly
     """
 
-    def __init__(self, job_config):
-        """Initialize model."""
+    def __init__(self, job_config: ht.config):
         super().__init__(job_config)
         tc = self._job_config.train
         ic = self._job_config.input
@@ -318,9 +264,62 @@ class Model_Sequential_Base(Model_Base):
         self._save_tb_logs = tc.save_tb_logs
         self._tb_logs_path = tc.tb_logs_path
 
+    def get_hypers(self):
+        """Gets a dictionary of hyper-parameters that defines a training"""
+        tc = self._job_config.train.clone()
+        hypers = {
+            # hypers for building model
+            "layers": tc.layers,
+            "nodes": tc.nodes,
+            "dropout_rate": tc.dropout_rate,
+            "output_bkg_node_names": tc.output_bkg_node_names,
+            "train_metrics": tc.train_metrics,
+            "train_metrics_weighted": tc.train_metrics_weighted,
+            "learn_rate": tc.learn_rate,
+            "learn_rate_decay": tc.learn_rate_decay,
+            "momentum": tc.momentum,
+            "nesterov": tc.nesterov,
+            # hypers for training
+            "val_split": tc.val_split,
+            "batch_size": tc.batch_size,
+            "epochs": tc.epochs,
+            "sig_class_weight": tc.sig_class_weight,
+            "bkg_class_weight": tc.bkg_class_weight,
+        }
+        return hypers
+
+    def get_inputs(
+        self,
+    ) -> Dict[str, Tuple[np.ndarray, np.ndarray, np.ndarray]]:
+        """Gets train/test datasets from feedbox"""
+        ic = self._job_config.input.clone()
+        ## get input
+        input_df = self._feedbox.get_processed_df()
+        cols = ic.selected_features
+        # load train/test
+        train_index = input_df["is_train"] == True
+        test_index = input_df["is_train"] == False
+        x_train = input_df.loc[train_index, cols].values
+        x_test = input_df.loc[test_index, cols].values
+        y_train = input_df.loc[train_index, ["y"]].values
+        y_test = input_df.loc[test_index, ["y"]].values
+        wt_train = input_df.loc[train_index, "weight"].values
+        wt_test = input_df.loc[test_index, "weight"].values
+        del input_df
+        # remove negative weight events
+        if ic.rm_negative_weight_events == True:
+            wt_train = wt_train.clip(min=0)
+            wt_test = wt_test.clip(min=0)
+
+        return {
+            "train": (x_train, y_train, wt_train),
+            "test": (x_test, y_test, wt_test),
+        }
+
     def get_train_callbacks(self, fold_num: Optional[int] = None) -> list:
+        """Prepares callbacks of training"""
         train_callbacks = []
-        tc = self._job_config.train
+        tc = self._job_config.train.clone()
         if self._save_tb_logs:  # TODO: add back this function
             pass
             # if self._tb_logs_path is None:
@@ -352,96 +351,41 @@ class Model_Sequential_Base(Model_Base):
             train_callbacks.append(checkpoint)
         return train_callbacks
 
-    def get_train_performance_meta(self):
-        """Returns meta data of training performance
-
-        Note:
-            This function should be called after show_performance and
-        plot_significance_scan being called, otherwise "-" will be used as
-        content.
-
-        """
-        performance_meta_dict = {}
-        # try collect significance scan result
-        try:
-            performance_meta_dict[
-                "original_significance"
-            ] = self.original_significance
-            performance_meta_dict["max_significance"] = self.max_significance
-            performance_meta_dict[
-                "max_significance_threshold"
-            ] = self.max_significance_threshold
-        except:
-            performance_meta_dict["original_significance"] = "-"
-            performance_meta_dict["max_significance"] = "-"
-            performance_meta_dict["max_significance_threshold"] = "-"
-        # try collect auc value
-        try:
-            # performance_meta_dict["auc_train"] = self.auc_train
-            # performance_meta_dict["auc_test"] = self.auc_test
-            # performance_meta_dict["auc_train_original"] = self.auc_train_original
-            # performance_meta_dict["auc_test_original"] = self.auc_test_original
-            pass
-        except:
-            # performance_meta_dict["auc_train"] = "-"
-            # performance_meta_dict["auc_test"] = "-"
-            # performance_meta_dict["auc_train_original"] = "-"
-            # performance_meta_dict["auc_test_original"] = "-"
-            pass
-        return performance_meta_dict
-
     def train(self):
-        """Performs training."""
-
-        # prepare config alias
-        ic = self._job_config.input.clone()
-        tc = self._job_config.train.clone()
-        rc = self._job_config.run.clone()
-
         # Check
         if not self._model_is_compiled:
-            logger.critical("DNN model is not yet compiled, recompiling")
-            self.compile()
+            logger.critical("DNN model is not yet built, rebuilding")
+            self.build()
         if not self._array_prepared:
             logger.critical("Training data is not ready, pleas set up inputs")
             exit(1)
-
+        # Prepare
+        tc = self._job_config.train.clone()
+        input_dict = self.get_inputs()
+        model = self.get_model()
+        hypers = self.get_hypers()
+        n_folds = self._num_folds
+        verbose = tc.verbose
+        # Input
+        x_train, y_train, wt_train = input_dict["train"]
+        x_test, y_test, wt_test = input_dict["test"]
         # Train
         logger.info("-" * 40)
         logger.info("Loading inputs")
-        ## get input
-        input_df = self._feedbox.get_processed_df()
-        cols = ic.selected_features
-
-        train_index = input_df["is_train"] == True
-        test_index = input_df["is_train"] == False
-        x_train = input_df.loc[train_index, cols].values
-        x_test = input_df.loc[test_index, cols].values
-        y_train = input_df.loc[train_index, ["y"]].values
-        y_test = input_df.loc[test_index, ["y"]].values
-        wt_train = input_df.loc[train_index, "weight"].values
-        wt_test = input_df.loc[test_index, "weight"].values
-        del input_df
-
-        if ic.rm_negative_weight_events == True:
-            wt_train = wt_train.clip(min=0)
-            wt_test = wt_test.clip(min=0)
-
-        ## train
         (
             train_index_list,
             validation_index_list,
         ) = train_utils.get_train_val_indices(
-            y_train, y_train, wt_train, tc.val_split, k_folds=tc.k_folds
+            y_train, y_train, wt_train, hypers["val_split"], k_folds=tc.k_folds
         )
-        for fold_num in range(self._num_folds):
+        for fold_num in range(n_folds):
             logger.info(f"Training start. Using model: {self._model_name}")
             logger.info(f"Model info: {self._model_note}")
-            if self._num_folds >= 2:
+            if n_folds >= 2:
                 logger.info(
-                    f"Performing k-fold training {fold_num + 1}/{self._num_folds}"
+                    f"Performing k-fold training {fold_num + 1}/{n_folds}"
                 )
-            fold_model = self.get_model(fold_num=fold_num)
+            fold_model = model[fold_num]
             fold_model.summary()
             train_index = train_index_list[fold_num]
             val_index = validation_index_list[fold_num]
@@ -458,20 +402,23 @@ class Model_Sequential_Base(Model_Base):
             history_obj = fold_model.fit(
                 x_fold,
                 y_fold,
-                batch_size=tc.batch_size,
-                epochs=tc.epochs,
+                batch_size=hypers["batch_size"],
+                epochs=hypers["epochs"],
                 validation_data=val_fold,
                 shuffle=True,
-                class_weight={1: tc.sig_class_weight, 0: tc.bkg_class_weight},
+                class_weight={
+                    1: hypers["sig_class_weight"],
+                    0: hypers["bkg_class_weight"],
+                },
                 sample_weight=wt_fold,
                 callbacks=self.get_train_callbacks(fold_num=fold_num),
-                verbose=tc.verbose,
+                verbose=verbose,
             )
             logger.info("Training finished.")
             # evaluation
             logger.info("Evaluate with test dataset:")
             score = fold_model.evaluate(
-                x_test, y_test, verbose=tc.verbose, sample_weight=wt_test,
+                x_test, y_test, verbose=verbose, sample_weight=wt_test,
             )
             if not isinstance(score, Iterable):
                 logger.info(f"> test loss: {score}")
@@ -482,119 +429,35 @@ class Model_Sequential_Base(Model_Base):
             self._train_history[fold_num] = history_obj.history
             self.save_model(fold_num=fold_num)
             self.save_model_paras(fold_num=fold_num)
-
-        # update status
+        # Update status
         self._model_is_trained = True
-
-    '''
-    def tuning_train(
-        self,
-        sig_key="all",
-        bkg_key="all",
-        batch_size=128,
-        epochs=20,
-        val_split=0.25,
-        sig_class_weight=1.0,
-        bkg_class_weight=1.0,
-        verbose=1,
-    ):
-        """Performs quick training for hyperparameters tuning."""
-        # Check
-        if self._model_is_compiled == False:
-            raise ValueError("DNN model is not yet compiled")
-        if self._array_prepared == False:
-            raise ValueError("Training data is not ready.")
-        # separate validation samples
-        train_test_dict = self._feedbox.get_train_test_df(
-            sig_key=sig_key,
-            bkg_key=bkg_key,
-            multi_class_bkgs=self.model_hypers["output_bkg_node_names"],
-            use_selected=False,
-        )
-        x_train = train_test_dict["x_train"]
-        y_train = train_test_dict["y_train"]
-        x_train_selected = train_test_dict["x_train_selected"]
-        num_val = math.ceil(len(y_train) * val_split)
-        x_tr = x_train_selected[:-num_val, :]
-        x_val = x_train_selected[-num_val:, :]
-        y_tr = y_train[:-num_val]
-        y_val = y_train[-num_val:]
-        wt_tr = x_train[:-num_val, -1]
-        wt_val = x_train[-num_val:, -1]
-        val_tuple = (x_val, y_val, wt_val)
-        self.x_tr = x_tr
-        self.x_val = x_val
-        self.y_tr = y_tr
-        self.y_val = y_val
-        self.wt_tr = wt_tr
-        self.wt_val = wt_val
-        # Train
-        self.class_weight = {1: sig_class_weight, 0: bkg_class_weight}
-        train_callbacks = []
-        if self.model_hypers["use_early_stop"]:
-            early_stop_callback = callbacks.EarlyStopping(
-                monitor=self.model_hypers["early_stop_paras"]["monitor"],
-                min_delta=self.model_hypers["early_stop_paras"]["min_delta"],
-                patience=self.model_hypers["early_stop_paras"]["patience"],
-                mode=self.model_hypers["early_stop_paras"]["mode"],
-                restore_best_weights=self.model_hypers["early_stop_paras"][
-                    "restore_best_weights"
-                ],
-            )
-            train_callbacks.append(early_stop_callback)
-        self._train_history = self.get_model().fit(
-            x_tr,
-            y_tr,
-            batch_size=batch_size,
-            epochs=epochs,
-            validation_data=val_tuple,
-            class_weight=self.class_weight,
-            sample_weight=wt_tr,
-            callbacks=train_callbacks,
-            verbose=verbose,
-        )
-        # Final evaluation
-        score = self.get_model().evaluate(
-            x_val, y_val, verbose=verbose, sample_weight=wt_val
-        )
-        # update status
-        self._model_is_trained = True
-        return score[0]
-    '''
 
 
 class Model_Sequential_Flat(Model_Sequential_Base):
-    """Sequential model optimized with old ntuple at Sep. 9th 2019.
+    """Flat sequential model"""
 
-    Major modification based on 1002 model:
-        1. Change structure to make quantity of nodes decrease with layer num.
-
-    """
-
-    def __init__(
-        self, job_config,
-    ):
+    def __init__(self, job_config):
         super().__init__(job_config)
 
         self._model_label = "mod_seq"
         self._model_note = "Sequential model with flexible layers and nodes."
+        self._tune_fun_name = "tune_Model_Sequential_Flat"
 
-    def compile(self):
+    def build(self):
+        hypers = self.get_hypers()
         for fold_num in range(self._num_folds):
-            self.compile_single(fold_num=fold_num)
+            fold_model = self._model[fold_num]
+            self.build_single(fold_model, hypers)
         self._model_is_compiled = True
 
-    def compile_single(self, fold_num):
-        """ Compile model, function to be changed in the future."""
-        tc = self._job_config.train
-        fold_model = self._model[fold_num]
+    def build_single(self, fold_model, hypers):
         # Add layers
-        for layer in range(tc.layers):
+        for layer in range(int(hypers["layers"])):
             # input layer
             if layer == 0:
                 fold_model.add(
                     Dense(
-                        tc.nodes,
+                        hypers["nodes"],
                         kernel_initializer="glorot_uniform",
                         activation="relu",
                         input_dim=self._model_input_dim,
@@ -604,16 +467,16 @@ class Model_Sequential_Flat(Model_Sequential_Base):
             else:
                 fold_model.add(
                     Dense(
-                        tc.nodes,
+                        hypers["nodes"],
                         kernel_initializer="glorot_uniform",
                         activation="relu",
                     )
                 )
-            if tc.dropout_rate != 0:
-                fold_model.add(Dropout(tc.dropout_rate))
+            if hypers["dropout_rate"] != 0:
+                fold_model.add(Dropout(hypers["dropout_rate"]))
         # output layer
-        if tc.output_bkg_node_names:
-            num_nodes_out = len(tc.output_bkg_node_names) + 1
+        if hypers["output_bkg_node_names"]:
+            num_nodes_out = len(hypers["output_bkg_node_names"]) + 1
         else:
             num_nodes_out = 1
         fold_model.add(
@@ -625,23 +488,205 @@ class Model_Sequential_Flat(Model_Sequential_Base):
         )
         # Compile
         # transfer self-defined metrics into real function
-        metrics = copy.deepcopy(tc.train_metrics)
-        weighted_metrics = copy.deepcopy(tc.train_metrics_weighted)
-        if metrics is not None and "plain_acc" in metrics:
+        metrics = copy.deepcopy(hypers["train_metrics"])
+        weighted_metrics = copy.deepcopy(hypers["train_metrics_weighted"])
+        if "plain_acc" in metrics:
             index = metrics.index("plain_acc")
             metrics[index] = plain_acc
-        if weighted_metrics is not None and "plain_acc" in weighted_metrics:
+        if "plain_acc" in weighted_metrics:
             index = weighted_metrics.index("plain_acc")
             weighted_metrics[index] = plain_acc
+        if "auc" in weighted_metrics:
+            index = weighted_metrics.index("auc")
+            weighted_metrics[index] = tf.keras.metrics.AUC(name="auc")
         # compile model
         fold_model.compile(
             loss="binary_crossentropy",
             optimizer=SGD(
-                lr=tc.learn_rate,
-                decay=tc.learn_rate_decay,
-                momentum=tc.momentum,
-                nesterov=tc.nesterov,
+                lr=hypers["learn_rate"],
+                decay=hypers["learn_rate_decay"],
+                momentum=hypers["momentum"],
+                nesterov=hypers["nesterov"],
             ),
             metrics=metrics,
             weighted_metrics=weighted_metrics,
         )
+
+    def get_hypers_tune(self):
+        """Gets a dict of hyperparameter (space) for auto-tuning"""
+        ic = self._job_config.input.clone()
+        rc = self._job_config.run.clone()
+        model_cfg = self._job_config.tune.clone().model
+        gs = train_utils.get_single_hyper
+        hypers = {
+            # hypers for building model
+            "layers": gs(model_cfg.layers),
+            "nodes": gs(model_cfg.nodes),
+            "dropout_rate": gs(model_cfg.dropout_rate),
+            "output_bkg_node_names": model_cfg.output_bkg_node_names,
+            "tune_metrics": model_cfg.tune_metrics,
+            "tune_metrics_weighted": model_cfg.tune_metrics_weighted,
+            "learn_rate": gs(model_cfg.learn_rate),
+            "learn_rate_decay": gs(model_cfg.learn_rate_decay),
+            "momentum": gs(model_cfg.momentum),
+            "nesterov": gs(model_cfg.nesterov),
+            # hypers for training
+            "batch_size": gs(model_cfg.batch_size),
+            "epochs": gs(model_cfg.epochs),
+            "sig_class_weight": gs(model_cfg.sig_class_weight),
+            "bkg_class_weight": gs(model_cfg.bkg_class_weight),
+            "use_early_stop": model_cfg.use_early_stop,
+            "early_stop_paras": model_cfg.early_stop_paras.get_config_dict(),
+            # job config
+            "input_dim": len(ic.selected_features),
+            # input dir
+            "input_dir": str(pathlib.Path(rc.tune_input_cache).resolve()),
+        }
+        return hypers
+
+
+# tuning functions for ray.tune
+
+## Note: such functions take one config argument and report the score
+
+
+def tune_Model_Sequential_Flat(config, checkpoint_dir=None):
+    """Trainable function for ray-tune"""
+    input_dir = pathlib.Path(config["input_dir"])
+    x_train = np.load(input_dir / "x_train.npy")
+    x_train_unreset = np.load(input_dir / "x_train_unreset.npy")
+    y_train = np.load(input_dir / "y_train.npy")
+    wt_train = np.load(input_dir / "wt_train.npy")
+    x_val = np.load(input_dir / "x_val.npy")
+    x_val_unreset = np.load(input_dir / "x_val_unreset.npy")
+    y_val = np.load(input_dir / "y_val.npy")
+    wt_val = np.load(input_dir / "wt_val.npy")
+
+    # build model
+    import tensorflow as tf  # must import inside function, other wise will get errors of ray tune
+
+    model = tf.keras.models.Sequential()
+    for layer in range(int(config["layers"])):
+        ## input layer
+        if layer == 0:
+            model.add(
+                tf.keras.layers.Dense(
+                    config["nodes"],
+                    kernel_initializer="glorot_uniform",
+                    activation="relu",
+                    input_dim=config["input_dim"],
+                )
+            )
+        ## hidden layers
+        else:
+            model.add(
+                tf.keras.layers.Dense(
+                    config["nodes"],
+                    kernel_initializer="glorot_uniform",
+                    activation="relu",
+                )
+            )
+        if config["dropout_rate"] != 0:
+            model.add(tf.keras.layers.Dropout(config["dropout_rate"]))
+    ## output layer
+    if config["output_bkg_node_names"]:
+        num_nodes_out = len(config["output_bkg_node_names"]) + 1
+    else:
+        num_nodes_out = 1
+    model.add(
+        tf.keras.layers.Dense(
+            num_nodes_out,
+            kernel_initializer="glorot_uniform",
+            activation="sigmoid",
+        )
+    )
+    metric_auc = tf.keras.metrics.AUC()
+    model.compile(
+        loss="binary_crossentropy",
+        optimizer=tf.keras.optimizers.SGD(
+            lr=config["learn_rate"],
+            decay=config["learn_rate_decay"],
+            momentum=config["momentum"],
+            nesterov=config["nesterov"],
+        ),
+        metrics=config["tune_metrics"],
+        weighted_metrics=list(config["tune_metrics_weighted"]) + [metric_auc],
+    )
+
+    # set callbacks
+    callbacks = list()
+    report_dict = {
+        "auc": "auc",
+        "val_auc": "val_auc",
+    }  # default includes AUC of ROC
+    for metric in config["tune_metrics"] + config["tune_metrics_weighted"]:
+        report_dict[metric] = metric
+        report_dict["val_" + metric] = "val_" + metric
+    # tune_report_callback = TuneReportCallback(report_dict)
+    # callbacks.append(tune_report_callback)
+    if config["use_early_stop"]:
+        es_config = config["early_stop_paras"]
+        early_stop_callback = tf.keras.callbacks.EarlyStopping(**es_config)
+        callbacks.append(early_stop_callback)
+
+    # train
+    # history_obj = model.fit(
+    #    x_train,
+    #    y_train,
+    #    batch_size=config["batch_size"],
+    #    epochs=config["epochs"],
+    #    validation_data=(x_val, y_val, wt_val),
+    #    shuffle=True,
+    #    class_weight={
+    #        1: config["sig_class_weight"],
+    #        0: config["bkg_class_weight"],
+    #    },
+    #    sample_weight=wt_train,
+    #    callbacks=callbacks,
+    # )
+
+    last_auc_unreset = 0
+    for epoch_id in range(int(config["epochs"])):
+        history_obj = model.fit(
+            x_train,
+            y_train,
+            batch_size=config["batch_size"],
+            epochs=1,
+            validation_data=(x_val, y_val, wt_val),
+            shuffle=True,
+            class_weight={
+                1: config["sig_class_weight"],
+                0: config["bkg_class_weight"],
+            },
+            sample_weight=wt_train,
+            callbacks=callbacks,
+        )
+        epoch_report = dict()
+        for key in report_dict.keys():
+            metric = str(key)
+            epoch_report[metric] = history_obj.history[metric][-1]
+
+        # y_pred = model.predict(x_val)
+        # auc = roc_auc_score(y_val, y_pred, sample_weight=wt_val)
+        # epoch_report["val_auc2"] = auc
+
+        y_pred_unreset = model.predict(x_val_unreset)
+        auc_unreset = roc_auc_score(
+            y_val, y_pred_unreset, sample_weight=wt_val
+        )
+        epoch_report["auc_unreset"] = auc_unreset
+
+        auc_unreset_improvement = auc_unreset - last_auc_unreset
+        epoch_report["auc_unreset_improvement"] = auc_unreset_improvement
+        last_auc_unreset = auc_unreset
+
+        epoch_report["epoch_num"] = epoch_id + 1
+
+        tune.report(**epoch_report)
+
+    # evaluate metric
+    # final_report = dict()
+    # for key in report_dict.keys():
+    #    metric = str(key)
+    #    final_report[metric] = history_obj.history[metric][-1]
+    # tune.report(**final_report)

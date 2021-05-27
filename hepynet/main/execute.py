@@ -9,6 +9,7 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"
 
 
 def execute():
+    """Enterpoint function of hepynet"""
     parser = argparse.ArgumentParser()
     parser.add_argument("yaml_configs", nargs="*", action="store")
     parser.add_argument(
@@ -16,6 +17,13 @@ def execute():
         "--debug",
         required=False,
         help="run in debug mode",
+        action="store_true",
+    )
+    parser.add_argument(
+        "-r",
+        "--resume",
+        required=False,
+        help="resume (tune) job",
         action="store_true",
     )
     parser.add_argument(
@@ -60,8 +68,8 @@ def execute():
             logger.info("#" * 80)
             logger.info(f"Executing: {yaml_cfg}")
             job_start_time = time.perf_counter()
-            ex_test = job_executor.job_executor(yaml_cfg)
-            ex_test.execute_jobs()
+            executor = job_executor.job_executor(yaml_cfg)
+            executor.execute_jobs(resume=args.resume)
             job_end_time = time.perf_counter()
             time_consumed = job_end_time - job_start_time
             time_consumed_str = time.strftime(
