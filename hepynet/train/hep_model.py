@@ -622,15 +622,15 @@ def tune_Model_Sequential_Flat(config, checkpoint_dir=None):
     for metric in config["tune_metrics"] + config["tune_metrics_weighted"]:
         report_dict[metric] = metric
         report_dict["val_" + metric] = "val_" + metric
-    #tune_report_callback = TuneReportCallback(report_dict)
-    #callbacks.append(tune_report_callback)
+    # tune_report_callback = TuneReportCallback(report_dict)
+    # callbacks.append(tune_report_callback)
     if config["use_early_stop"]:
         es_config = config["early_stop_paras"]
         early_stop_callback = tf.keras.callbacks.EarlyStopping(**es_config)
         callbacks.append(early_stop_callback)
 
     # train
-    #history_obj = model.fit(
+    # history_obj = model.fit(
     #    x_train,
     #    y_train,
     #    batch_size=config["batch_size"],
@@ -643,7 +643,7 @@ def tune_Model_Sequential_Flat(config, checkpoint_dir=None):
     #    },
     #    sample_weight=wt_train,
     #    callbacks=callbacks,
-    #)
+    # )
 
     last_auc_unreset = 0
     for epoch_id in range(int(config["epochs"])):
@@ -666,12 +666,14 @@ def tune_Model_Sequential_Flat(config, checkpoint_dir=None):
             metric = str(key)
             epoch_report[metric] = history_obj.history[metric][-1]
 
-        #y_pred = model.predict(x_val)
-        #auc = roc_auc_score(y_val, y_pred, sample_weight=wt_val)
-        #epoch_report["val_auc2"] = auc
+        # y_pred = model.predict(x_val)
+        # auc = roc_auc_score(y_val, y_pred, sample_weight=wt_val)
+        # epoch_report["val_auc2"] = auc
 
         y_pred_unreset = model.predict(x_val_unreset)
-        auc_unreset = roc_auc_score(y_val, y_pred_unreset, sample_weight=wt_val)
+        auc_unreset = roc_auc_score(
+            y_val, y_pred_unreset, sample_weight=wt_val
+        )
         epoch_report["auc_unreset"] = auc_unreset
 
         auc_unreset_improvement = auc_unreset - last_auc_unreset
@@ -682,10 +684,9 @@ def tune_Model_Sequential_Flat(config, checkpoint_dir=None):
 
         tune.report(**epoch_report)
 
-
     # evaluate metric
-    #final_report = dict()
-    #for key in report_dict.keys():
+    # final_report = dict()
+    # for key in report_dict.keys():
     #    metric = str(key)
     #    final_report[metric] = history_obj.history[metric][-1]
-    #tune.report(**final_report)
+    # tune.report(**final_report)

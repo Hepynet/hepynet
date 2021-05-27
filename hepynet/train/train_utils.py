@@ -128,9 +128,7 @@ def merge_unequal_length_arrays(array_list: List[np.ndarray]):
     return mean, low, high
 
 
-def ray_tune(
-    model_wrapper, job_config: ht.config, resume: bool = False
-):
+def ray_tune(model_wrapper, job_config: ht.config, resume: bool = False):
     """Performs automatic hyper-parameters tuning with Ray"""
     # initialize
     tuner = job_config.tune.clone().tuner

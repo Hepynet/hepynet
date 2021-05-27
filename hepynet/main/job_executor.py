@@ -199,7 +199,7 @@ class job_executor(object):
         ic = self.job_config.input
         tc = self.job_config.train
         ac = self.job_config.apply
-        
+
         # Setup save parameters if reports need to be saved
         rc.save_dir = f"{rc.save_sub_dir}/apply/{jc.job_name}"
         pathlib.Path(rc.save_dir).mkdir(parents=True, exist_ok=True)
@@ -370,7 +370,7 @@ class job_executor(object):
         # https://www.tensorflow.org/api_docs/python/tf/random/set_seed
         tf.random.set_seed(seed)
 
-    def get_config(self, yaml_path:ht.pathlike):
+    def get_config(self, yaml_path: ht.pathlike):
         """Retrieves configurations from yaml file."""
         cfg_path = job_utils.get_valid_cfg_path(yaml_path)
         if not pathlib.Path(cfg_path).is_file():
@@ -415,7 +415,7 @@ class job_executor(object):
         logger.info("Processing inputs")
         self.model_wrapper.set_inputs(self.job_config)
 
-    def set_save_dir(self, resume:bool=False):
+    def set_save_dir(self, resume: bool = False):
         """Sets the directory to save the outputs"""
         jc = self.job_config.job
         rc = self.job_config.run
@@ -474,4 +474,3 @@ class job_executor(object):
             tune_input_cache = pathlib.Path(rc.save_sub_dir) / "tmp"
             tune_input_cache.mkdir(parents=True, exist_ok=True)
             rc.tune_input_cache = str(tune_input_cache)
-

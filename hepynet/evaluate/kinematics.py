@@ -34,7 +34,8 @@ def plot_correlation_matrix(
         )
         bkg_df = bkg_df.sample(n=1000000)
     bkg_matrix = array_utils.corr_matrix(
-        bkg_df[features].to_numpy("float32"), bkg_df["weight"].to_numpy("float32")
+        bkg_df[features].to_numpy("float32"),
+        bkg_df["weight"].to_numpy("float32"),
     )
     paint_correlation_matrix(ax[0], bkg_matrix, features)
     # plot sig
@@ -46,7 +47,8 @@ def plot_correlation_matrix(
         )
         sig_df = sig_df.sample(n=1000000)
     sig_matrix = array_utils.corr_matrix(
-        sig_df[features].to_numpy("float32"), sig_df["weight"].to_numpy("float32")
+        sig_df[features].to_numpy("float32"),
+        sig_df["weight"].to_numpy("float32"),
     )
     paint_correlation_matrix(ax[1], sig_matrix, features)
     fig_save_path = save_dir / "correlation_matrix.png"
@@ -195,8 +197,12 @@ def plot_input_dnn(
     bkg_weights = bkg_df_raw["weight"].to_numpy("float32")
     sig_weights = sig_df_raw["weight"].to_numpy("float32")
     # get predictions
-    bkg_predictions = array_utils.extract_bkg_df(df)[["y_pred"]].to_numpy("float32")
-    sig_predictions = array_utils.extract_sig_df(df)[["y_pred"]].to_numpy("float32")
+    bkg_predictions = array_utils.extract_bkg_df(df)[["y_pred"]].to_numpy(
+        "float32"
+    )
+    sig_predictions = array_utils.extract_sig_df(df)[["y_pred"]].to_numpy(
+        "float32"
+    )
     # normalize
     if plot_cfg.density:
         bkg_weights = bkg_weights / np.sum(bkg_weights)
