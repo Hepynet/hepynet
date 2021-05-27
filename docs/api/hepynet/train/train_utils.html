@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1" />
 <meta name="generator" content="pdoc 0.9.2" />
 <title>hepynet.train.train_utils API documentation</title>
-<meta name="description" content="Functions used for pDNN training …" />
+<meta name="description" content="" />
 <link rel="preload stylesheet" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/11.0.1/sanitize.min.css" integrity="sha256-PK9q560IAAa6WVRRh76LtCaI8pjTJ2z11v0miyNNjrs=" crossorigin>
 <link rel="preload stylesheet" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/11.0.1/typography.min.css" integrity="sha256-7l/o7C8jubJiy74VsKTidCy1yBkRtiUGbVkYBylBqUg=" crossorigin>
 <link rel="stylesheet preload" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.1.1/styles/github.min.css" crossorigin>
@@ -22,164 +22,43 @@
 <h1 class="title">Module <code>hepynet.train.train_utils</code></h1>
 </header>
 <section id="section-intro">
-<p>Functions used for pDNN training.</p>
-<p>This module is a collection of functions used for pDNN training. Include: array
-manipulation, making plots, evaluation functions and so on.</p>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
 <pre><code class="python"># -*- coding: utf-8 -*-
-&#34;&#34;&#34;Functions used for pDNN training.
-
-This module is a collection of functions used for pDNN training. Include: array
-manipulation, making plots, evaluation functions and so on.
-
-&#34;&#34;&#34;
-
-import glob
 import logging
+import math
+import os
 import pathlib
-import sys
-import time
-from math import sqrt
+from typing import List, Optional
 
-import matplotlib.pyplot as plt
 import numpy as np
-from sklearn.metrics import accuracy_score, auc, classification_report
+import ray
+import yaml
+from ray import tune
+from ray.tune import schedulers, stopper
+from sklearn.model_selection import StratifiedKFold
 
-from hepynet.common import array_utils, config_utils
-from hepynet.data_io import numpy_io
+import hepynet.common.hepy_type as ht
+from hepynet.train import hep_model
 
 logger = logging.getLogger(&#34;hepynet&#34;)
 
 
-SEPA_KEYS = [
-    &#34;xs_train&#34;,
-    &#34;xs_test&#34;,
-    &#34;ys_train&#34;,
-    &#34;ys_test&#34;,
-    &#34;wts_train&#34;,
-    &#34;wts_test&#34;,
-    &#34;xb_train&#34;,
-    &#34;xb_test&#34;,
-    &#34;yb_train&#34;,
-    &#34;yb_test&#34;,
-    &#34;wtb_train&#34;,
-    &#34;wtb_test&#34;,
-]
-
-COMB_KEYS = [
-    &#34;x_train&#34;,
-    &#34;x_test&#34;,
-    &#34;y_train&#34;,
-    &#34;y_test&#34;,
-    &#34;wt_train&#34;,
-    &#34;wt_test&#34;,
-]
-
-
-def dump_fit_npy(
-    feedbox, keras_model, fit_ntup_branches, output_bkg_node_names, npy_dir=&#34;./&#34;
-):
-    prefix_map = {&#34;sig&#34;: &#34;xs&#34;, &#34;bkg&#34;: &#34;xb&#34;}
-    if feedbox.get_job_config().input.apply_data:
-        prefix_map[&#34;data&#34;] = &#34;xd&#34;
-
-    for map_key in list(prefix_map.keys()):
-        sample_keys = getattr(feedbox.get_job_config().input, f&#34;{map_key}_list&#34;)
-        for sample_key in sample_keys:
-            dump_branches = fit_ntup_branches + [&#34;weight&#34;]
-            # prepare contents
-            dump_array, dump_array_weight = feedbox.get_raw(
-                prefix_map[map_key], array_key=sample_key, add_validation_features=True,
-            )
-            predict_input, _ = feedbox.get_reweight(
-                prefix_map[map_key], array_key=sample_key, reset_mass=False
-            )
-            predictions = keras_model.predict(predict_input)
-            # dump
-            platform_meta = config_utils.load_current_platform_meta()
-            data_path = platform_meta[&#34;data_path&#34;]
-            save_dir = f&#34;{data_path}/{npy_dir}&#34;
-            pathlib.Path(save_dir).mkdir(parents=True, exist_ok=True)
-            for branch in dump_branches:
-                if branch == &#34;weight&#34;:
-                    branch_content = dump_array_weight
-                else:
-                    fd_val_features = feedbox.get_job_config().input.validation_features
-                    if fd_val_features is None:
-                        validation_features = []
-                    else:
-                        validation_features = fd_val_features
-                    feature_list = (
-                        feedbox.get_job_config().input.selected_features
-                        + validation_features
-                    )
-                    branch_index = feature_list.index(branch)
-                    branch_content = dump_array[:, branch_index]
-                save_path = f&#34;{save_dir}/{sample_key}_{branch}.npy&#34;
-                numpy_io.save_npy_array(branch_content, save_path)
-            if len(output_bkg_node_names) == 0:
-                save_path = f&#34;{save_dir}/{sample_key}_dnn_out.npy&#34;
-                numpy_io.save_npy_array(predictions, save_path)
-            else:
-                for i, out_node in enumerate([&#34;sig&#34;] + output_bkg_node_names):
-                    out_node = out_node.replace(&#34;+&#34;, &#34;_&#34;)
-                    save_path = f&#34;{save_dir}/{sample_key}_dnn_out_{out_node}.npy&#34;
-                    numpy_io.save_npy_array(predictions[:, i], save_path)
-
-
-def get_mass_range(mass_array, weights, nsig=1):
-    &#34;&#34;&#34;Gives a range of mean +- sigma
-
-    Note:
-        Only use for single peak distribution
-
-    &#34;&#34;&#34;
-    average = np.average(mass_array, weights=weights)
-    variance = np.average((mass_array - average) ** 2, weights=weights)
-    lower_limit = average - np.sqrt(variance) * nsig
-    upper_limit = average + np.sqrt(variance) * nsig
-    return lower_limit, upper_limit
-
-
-def get_model_epoch_path_list(
-    load_dir, model_name, job_name=&#34;*&#34;, date=&#34;*&#34;, version=&#34;*&#34;
-):
-    # Search possible files
-    search_pattern = load_dir + &#34;/&#34; + date + &#34;_&#34; + job_name + &#34;_&#34; + version + &#34;/models&#34;
-    model_dir_list = glob.glob(search_pattern)
-    # Choose the newest one
-    if len(model_dir_list) &lt; 1:
-        raise FileNotFoundError(&#34;Model file that matched the pattern not found.&#34;)
-    model_dir = model_dir_list[-1]
-    if len(model_dir_list) &gt; 1:
-        logger.warning(
-            &#34;More than one valid model file found, try to specify more infomation.&#34;
-        )
-        logger.info(f&#34;Loading the last matched model path: {model_dir}&#34;)
+def get_model_class(model_class: str):
+    if model_class == &#34;Model_Sequential_Flat&#34;:
+        return hep_model.Model_Sequential_Flat
     else:
-        logger.info(&#34;Loading model at: {model_dir}&#34;)
-    search_pattern = model_dir + &#34;/&#34; + model_name + &#34;_epoch*.h5&#34;
-    model_path_list = glob.glob(search_pattern)
-    return model_path_list
+        logger.critical(f&#34;Unknown model class: {model_class}&#34;)
+        exit(1)
 
 
-def generate_shuffle_index(array_len, shuffle_seed=None):
-    &#34;&#34;&#34;Generates array shuffle index.
-
-    To use a consist shuffle index to have different arrays shuffle in same way.
-
-    &#34;&#34;&#34;
-    shuffle_index = np.array(range(array_len))
-    if shuffle_seed is not None:
-        np.random.seed(shuffle_seed)
-    np.random.shuffle(shuffle_index)
-    return shuffle_index
-
-
-def get_mean_var(array, axis=None, weights=None):
+def get_mean_var(
+    array: np.ndarray,
+    axis: Optional[int] = None,
+    weights: Optional[np.ndarray] = None,
+):
     &#34;&#34;&#34;Calculate average and variance of an array.&#34;&#34;&#34;
     average = np.average(array, axis=axis, weights=weights)
     variance = np.average((array - average) ** 2, axis=axis, weights=weights)
@@ -188,180 +67,161 @@ def get_mean_var(array, axis=None, weights=None):
     return average, variance + 0.000001
 
 
-def norarray(array, average=None, variance=None, axis=None, weights=None):
-    &#34;&#34;&#34;Normalizes input array for each feature.
+def get_single_hyper(hyper_config: ht.sub_config):
+    &#34;&#34;&#34;Determines one hyperparameter
+    
+    Note:
+        If the hyper-parameter is a tuning dimension (with spacer specified), 
+        spacer from ray.tune will be used to set up the dimension.
+        If the hyper-parameter is a normal value, it will be returned directly.
+
+    &#34;&#34;&#34;
+    if hasattr(hyper_config, &#34;spacer&#34;):
+        paras = hyper_config.paras.get_config_dict()
+        return getattr(tune, hyper_config.spacer)(**paras)
+    else:
+        return hyper_config
+
+
+def get_train_val_indices(
+    x: np.ndarray,
+    y: np.ndarray,
+    wt: np.ndarray,
+    val_split: float,
+    k_folds: Optional[int] = None,
+):
+    &#34;&#34;&#34;Gets indices to separates train datasets to train/validation&#34;&#34;&#34;
+    train_indices_list = list()
+    validation_indices_list = list()
+    if isinstance(k_folds, int) and k_folds &gt;= 2:
+        # skf = KFold(n_splits=k_folds, shuffle=True)
+        skf = StratifiedKFold(n_splits=k_folds, shuffle=True)
+        for train_index, val_index in skf.split(x, y):
+            np.random.shuffle(train_index)
+            np.random.shuffle(val_index)
+            train_indices_list.append(train_index)
+            validation_indices_list.append(val_index)
+    else:
+        if isinstance(k_folds, int) and k_folds &lt;= 2:
+            logger.error(
+                f&#34;Invalid train.k_folds value {k_folds} detected, will not use k-fold validation&#34;
+            )
+        array_len = len(wt)
+        val_index = np.random.choice(
+            range(array_len), int(array_len * 1.0 * val_split), replace=False
+        )
+        train_index = np.setdiff1d(np.array(range(array_len)), val_index)
+        np.random.shuffle(train_index)
+        np.random.shuffle(val_index)
+        train_indices_list.append(train_index)
+        validation_indices_list.append(val_index)
+    return train_indices_list, validation_indices_list
+
+
+def merge_unequal_length_arrays(array_list: List[np.ndarray]):
+    &#34;&#34;&#34;Merges arrays with unequal length to average/min/max
 
     Note:
-        Do not normalize bkg and sig separately, bkg and sig should be normalized
-        in the same way. (i.e. use same average and variance for normalization.)
+        mainly used to deal with k-fold results with early-stopping (which
+        results in unequal length of results as different folds may stop at
+        different epochs) enabled
 
     &#34;&#34;&#34;
-    if len(array) == 0:
-        return array
+    folds_lengths = list()
+    for single_array in array_list:
+        folds_lengths.append(len(single_array))
+    max_len = max(folds_lengths)
+
+    mean = list()
+    low = list()
+    high = list()
+    for i in range(max_len):
+        sum_value = 0
+        min_value = math.inf
+        max_value = -math.inf
+        num_values = 0
+        for fold_num, single_array in enumerate(array_list):
+            if i &lt; folds_lengths[fold_num]:
+                ele = single_array[i]
+                sum_value += ele
+                num_values += 1
+                if ele &lt; min_value:
+                    min_value = ele
+                if ele &gt; max_value:
+                    max_value = ele
+        mean_value = sum_value / num_values
+        mean.append(mean_value)
+        low.append(min_value)
+        high.append(max_value)
+    return mean, low, high
+
+
+def ray_tune(model_wrapper, job_config: ht.config, resume: bool = False):
+    &#34;&#34;&#34;Performs automatic hyper-parameters tuning with Ray&#34;&#34;&#34;
+    # initialize
+    tuner = job_config.tune.clone().tuner
+    log_dir = pathlib.Path(job_config.run.save_sub_dir) / &#34;tmp_log&#34;
+    log_dir.mkdir(parents=True, exist_ok=True)
+    if os.name == &#34;posix&#34;:
+        logger.info(f&#34;Ignoring tune.tmp.tmp_dir setting on Unix OS&#34;)
+        ray.init(**(tuner.init.get_config_dict()))
     else:
-        if (average is None) or (variance is None):
-            logger.warn(&#34;Unspecified average or variance.&#34;)
-            average, variance = get_mean_var(array, axis=axis, weights=weights)
-        output_array = (array.copy() - average) / np.sqrt(variance)
-        return output_array
+        ray.init(
+            _temp_dir=str(job_config.tune.tmp_dir),
+            **(tuner.init.get_config_dict()),
+        )
+    # set up scheduler
+    sched_class = getattr(schedulers, tuner.scheduler_class)
+    logger.info(f&#34;Setting up scheduler: {tuner.scheduler_class}&#34;)
+    sched_config = tuner.scheduler.get_config_dict()
+    sched = sched_class(**sched_config)
+    # set up algorithm
+    algo_class = tuner.algo_class
+    logger.info(f&#34;Setting up search algorithm: {tuner.algo_class}&#34;)
+    algo_config = tuner.algo.get_config_dict()
+    algo = None
+    if algo_class is None:
+        algo = None
+    elif algo_class == &#34;AxSearch&#34;:
+        from ray.tune.suggest.ax import AxSearch
 
+        algo = AxSearch(**algo_config)
+    elif algo_class == &#34;HyperOptSearch&#34;:
+        from ray.tune.suggest.hyperopt import HyperOptSearch
 
-def norarray_min_max(array, min, max, axis=None):
-    &#34;&#34;&#34;Normalizes input array to (-1, +1)&#34;&#34;&#34;
-    middle = (min + max) / 2.0
-    output_array = array.copy() - middle
-    if max &lt; min:
-        logger.error(&#34;ERROR: max shouldn&#39;t be smaller than min.&#34;)
-        return None
-    ratio = (max - min) / 2.0
-    output_array = output_array / ratio
+        algo = HyperOptSearch(**algo_config)
+    elif algo_class == &#34;HEBOSearch&#34;:
+        from ray.tune.suggest.hebo import HEBOSearch
 
-
-def split_and_combine(
-    xs,
-    xs_weight,
-    xb,
-    xb_weight,
-    ys=None,
-    yb=None,
-    output_keys=None,
-    test_rate=0.2,
-    shuffle_combined_array=True,
-    shuffle_seed=None,
-):
-    &#34;&#34;&#34;Prepares array for training &amp; validation
-
-    Args:
-        xs: numpy array
-        Signal array for training.
-        xb: numpy array
-        Background array for training.
-        test_rate: float, optional (default = 0.2)
-        Portion of samples (array rows) to be used as independent test samples.
-        shuffle_combined_array: bool, optional (default=True)
-        Whether to shuffle outputs arrays before return.
-        shuffle_seed: int or None, optional (default=None)
-        Seed for randomization process.
-        Set to None to use current time as seed.
-        Set to a specific value to get an unchanged shuffle result.
-
-    Returns:
-        x_train/x_test/y_train/y_test: numpy array
-        Array for training/testing.
-        Contain mixed signal and background. 
-        xs_test/xb_test: numpy array
-        Array for scores plotting.
-        Signal/background separated.
-
-    &#34;&#34;&#34;
-    # prepare
-    if output_keys is None:
-        output_keys = COMB_KEYS + SEPA_KEYS
-    has_sepa = output_keys_has_sepa(output_keys)
-    has_comb = output_keys_has_comb(output_keys)
-    arr_sepa = DNN_Arrays_Separate()
-    arr_comb = DNN_Arrays_Combined()
-    if ys is None:
-        ys = np.ones(len(xs)).reshape(-1, 1)
-    if yb is None:
-        yb = np.zeros(len(xb)).reshape(-1, 1)
-
-    (
-        arr_sepa.xs_train,
-        arr_sepa.xs_test,
-        arr_sepa.ys_train,
-        arr_sepa.ys_test,
-        arr_sepa.wts_train,
-        arr_sepa.wts_test,
-    ) = array_utils.shuffle_and_split(
-        xs, ys, xs_weight, split_ratio=1 - test_rate, shuffle_seed=shuffle_seed
+        algo = HEBOSearch(**algo_config)
+    else:
+        logger.error(f&#34;Unsupported search algorithm: {algo_class}&#34;)
+        logger.info(f&#34;Using default value None for search algorithm&#34;)
+    # set stopper
+    if tuner.stopper_class is None:
+        stop = None
+    else:
+        stop = getattr(stopper, tuner.stopper_class)(**tuner.stopper)
+    # run
+    run_config = (
+        tuner.run.get_config_dict()
+    )  # important: convert Hepy_Config class to dict
+    tune_func = getattr(hep_model, model_wrapper._tune_fun_name)
+    analysis = tune.run(
+        tune_func,
+        name=&#34;ray_tunes&#34;,
+        stop=stop,
+        search_alg=algo,
+        scheduler=sched,
+        config=model_wrapper.get_hypers_tune(),
+        local_dir=job_config.run.save_sub_dir,
+        resume=resume,
+        **run_config,
     )
-    (
-        arr_sepa.xb_train,
-        arr_sepa.xb_test,
-        arr_sepa.yb_train,
-        arr_sepa.yb_test,
-        arr_sepa.wtb_train,
-        arr_sepa.wtb_test,
-    ) = array_utils.shuffle_and_split(
-        xb, yb, xb_weight, split_ratio=1 - test_rate, shuffle_seed=shuffle_seed
-    )
+    logger.info(&#34;Best hyperparameters found were:&#34;)
+    print(yaml.dump(analysis.best_config))
 
-    if has_comb:
-        arr_comb.x_train = np.concatenate((arr_sepa.xs_train, arr_sepa.xb_train))
-        arr_comb.y_train = np.concatenate((arr_sepa.ys_train, arr_sepa.yb_train))
-        arr_comb.wt_train = np.concatenate((arr_sepa.wts_train, arr_sepa.wtb_train))
-        arr_comb.x_test = np.concatenate((arr_sepa.xs_test, arr_sepa.xb_test))
-        arr_comb.y_test = np.concatenate((arr_sepa.ys_test, arr_sepa.yb_test))
-        arr_comb.wt_test = np.concatenate((arr_sepa.wts_test, arr_sepa.wtb_test))
-        if not has_sepa:
-            arr_sepa = None
-        if shuffle_combined_array:
-            # shuffle train dataset
-            shuffle_index = generate_shuffle_index(
-                len(arr_comb.y_train), shuffle_seed=shuffle_seed
-            )
-            arr_comb.x_train = arr_comb.x_train[shuffle_index]
-            arr_comb.y_train = arr_comb.y_train[shuffle_index]
-            arr_comb.wt_train = arr_comb.wt_train[shuffle_index]
-            # shuffle test dataset
-            shuffle_index = generate_shuffle_index(
-                len(arr_comb.y_test), shuffle_seed=shuffle_seed
-            )
-            arr_comb.x_test = arr_comb.x_test[shuffle_index]
-            arr_comb.y_test = arr_comb.y_test[shuffle_index]
-            arr_comb.wt_test = arr_comb.wt_test[shuffle_index]
-
-    out_arrays = {}
-    for key in output_keys:
-        if key in SEPA_KEYS:
-            out_arrays[key] = getattr(arr_sepa, key)
-        elif key in COMB_KEYS:
-            out_arrays[key] = getattr(arr_comb, key)
-        else:
-            logger.error(f&#34;Unknown output_key: {key}&#34;)
-
-    return out_arrays
-
-
-def output_keys_has_sepa(output_keys):
-    for key in output_keys:
-        if key in SEPA_KEYS:
-            return True
-    return False
-
-
-def output_keys_has_comb(output_keys):
-    for key in output_keys:
-        if key in COMB_KEYS:
-            return True
-    return False
-
-
-class DNN_Arrays_Separate(object):
-    def __init__(self):
-        self.xs_train = None
-        self.xs_test = None
-        self.ys_train = None
-        self.ys_test = None
-        self.wts_train = None
-        self.wts_test = None
-        self.xb_train = None
-        self.xb_test = None
-        self.yb_train = None
-        self.yb_test = None
-        self.wtb_train = None
-        self.wtb_test = None
-
-
-class DNN_Arrays_Combined(object):
-    def __init__(self):
-        self.x_train = None
-        self.x_test = None
-        self.y_train = None
-        self.y_test = None
-        self.wt_train = None
-        self.wt_test = None</code></pre>
+    return analysis</code></pre>
 </details>
 </section>
 <section>
@@ -371,116 +231,8 @@ class DNN_Arrays_Combined(object):
 <section>
 <h2 class="section-title" id="header-functions">Functions</h2>
 <dl>
-<dt id="hepynet.train.train_utils.dump_fit_npy"><code class="name flex">
-<span>def <span class="ident">dump_fit_npy</span></span>(<span>feedbox, keras_model, fit_ntup_branches, output_bkg_node_names, npy_dir='./')</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def dump_fit_npy(
-    feedbox, keras_model, fit_ntup_branches, output_bkg_node_names, npy_dir=&#34;./&#34;
-):
-    prefix_map = {&#34;sig&#34;: &#34;xs&#34;, &#34;bkg&#34;: &#34;xb&#34;}
-    if feedbox.get_job_config().input.apply_data:
-        prefix_map[&#34;data&#34;] = &#34;xd&#34;
-
-    for map_key in list(prefix_map.keys()):
-        sample_keys = getattr(feedbox.get_job_config().input, f&#34;{map_key}_list&#34;)
-        for sample_key in sample_keys:
-            dump_branches = fit_ntup_branches + [&#34;weight&#34;]
-            # prepare contents
-            dump_array, dump_array_weight = feedbox.get_raw(
-                prefix_map[map_key], array_key=sample_key, add_validation_features=True,
-            )
-            predict_input, _ = feedbox.get_reweight(
-                prefix_map[map_key], array_key=sample_key, reset_mass=False
-            )
-            predictions = keras_model.predict(predict_input)
-            # dump
-            platform_meta = config_utils.load_current_platform_meta()
-            data_path = platform_meta[&#34;data_path&#34;]
-            save_dir = f&#34;{data_path}/{npy_dir}&#34;
-            pathlib.Path(save_dir).mkdir(parents=True, exist_ok=True)
-            for branch in dump_branches:
-                if branch == &#34;weight&#34;:
-                    branch_content = dump_array_weight
-                else:
-                    fd_val_features = feedbox.get_job_config().input.validation_features
-                    if fd_val_features is None:
-                        validation_features = []
-                    else:
-                        validation_features = fd_val_features
-                    feature_list = (
-                        feedbox.get_job_config().input.selected_features
-                        + validation_features
-                    )
-                    branch_index = feature_list.index(branch)
-                    branch_content = dump_array[:, branch_index]
-                save_path = f&#34;{save_dir}/{sample_key}_{branch}.npy&#34;
-                numpy_io.save_npy_array(branch_content, save_path)
-            if len(output_bkg_node_names) == 0:
-                save_path = f&#34;{save_dir}/{sample_key}_dnn_out.npy&#34;
-                numpy_io.save_npy_array(predictions, save_path)
-            else:
-                for i, out_node in enumerate([&#34;sig&#34;] + output_bkg_node_names):
-                    out_node = out_node.replace(&#34;+&#34;, &#34;_&#34;)
-                    save_path = f&#34;{save_dir}/{sample_key}_dnn_out_{out_node}.npy&#34;
-                    numpy_io.save_npy_array(predictions[:, i], save_path)</code></pre>
-</details>
-</dd>
-<dt id="hepynet.train.train_utils.generate_shuffle_index"><code class="name flex">
-<span>def <span class="ident">generate_shuffle_index</span></span>(<span>array_len, shuffle_seed=None)</span>
-</code></dt>
-<dd>
-<div class="desc"><p>Generates array shuffle index.</p>
-<p>To use a consist shuffle index to have different arrays shuffle in same way.</p></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def generate_shuffle_index(array_len, shuffle_seed=None):
-    &#34;&#34;&#34;Generates array shuffle index.
-
-    To use a consist shuffle index to have different arrays shuffle in same way.
-
-    &#34;&#34;&#34;
-    shuffle_index = np.array(range(array_len))
-    if shuffle_seed is not None:
-        np.random.seed(shuffle_seed)
-    np.random.shuffle(shuffle_index)
-    return shuffle_index</code></pre>
-</details>
-</dd>
-<dt id="hepynet.train.train_utils.get_mass_range"><code class="name flex">
-<span>def <span class="ident">get_mass_range</span></span>(<span>mass_array, weights, nsig=1)</span>
-</code></dt>
-<dd>
-<div class="desc"><p>Gives a range of mean +- sigma</p>
-<h2 id="note">Note</h2>
-<p>Only use for single peak distribution</p></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def get_mass_range(mass_array, weights, nsig=1):
-    &#34;&#34;&#34;Gives a range of mean +- sigma
-
-    Note:
-        Only use for single peak distribution
-
-    &#34;&#34;&#34;
-    average = np.average(mass_array, weights=weights)
-    variance = np.average((mass_array - average) ** 2, weights=weights)
-    lower_limit = average - np.sqrt(variance) * nsig
-    upper_limit = average + np.sqrt(variance) * nsig
-    return lower_limit, upper_limit</code></pre>
-</details>
-</dd>
 <dt id="hepynet.train.train_utils.get_mean_var"><code class="name flex">
-<span>def <span class="ident">get_mean_var</span></span>(<span>array, axis=None, weights=None)</span>
+<span>def <span class="ident">get_mean_var</span></span>(<span>array: numpy.ndarray, axis: Union[int, NoneType] = None, weights: Union[numpy.ndarray, NoneType] = None)</span>
 </code></dt>
 <dd>
 <div class="desc"><p>Calculate average and variance of an array.</p></div>
@@ -488,7 +240,11 @@ class DNN_Arrays_Combined(object):
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def get_mean_var(array, axis=None, weights=None):
+<pre><code class="python">def get_mean_var(
+    array: np.ndarray,
+    axis: Optional[int] = None,
+    weights: Optional[np.ndarray] = None,
+):
     &#34;&#34;&#34;Calculate average and variance of an array.&#34;&#34;&#34;
     average = np.average(array, axis=axis, weights=weights)
     variance = np.average((array - average) ** 2, axis=axis, weights=weights)
@@ -497,8 +253,8 @@ class DNN_Arrays_Combined(object):
     return average, variance + 0.000001</code></pre>
 </details>
 </dd>
-<dt id="hepynet.train.train_utils.get_model_epoch_path_list"><code class="name flex">
-<span>def <span class="ident">get_model_epoch_path_list</span></span>(<span>load_dir, model_name, job_name='*', date='*', version='*')</span>
+<dt id="hepynet.train.train_utils.get_model_class"><code class="name flex">
+<span>def <span class="ident">get_model_class</span></span>(<span>model_class: str)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -506,303 +262,218 @@ class DNN_Arrays_Combined(object):
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def get_model_epoch_path_list(
-    load_dir, model_name, job_name=&#34;*&#34;, date=&#34;*&#34;, version=&#34;*&#34;
-):
-    # Search possible files
-    search_pattern = load_dir + &#34;/&#34; + date + &#34;_&#34; + job_name + &#34;_&#34; + version + &#34;/models&#34;
-    model_dir_list = glob.glob(search_pattern)
-    # Choose the newest one
-    if len(model_dir_list) &lt; 1:
-        raise FileNotFoundError(&#34;Model file that matched the pattern not found.&#34;)
-    model_dir = model_dir_list[-1]
-    if len(model_dir_list) &gt; 1:
-        logger.warning(
-            &#34;More than one valid model file found, try to specify more infomation.&#34;
-        )
-        logger.info(f&#34;Loading the last matched model path: {model_dir}&#34;)
+<pre><code class="python">def get_model_class(model_class: str):
+    if model_class == &#34;Model_Sequential_Flat&#34;:
+        return hep_model.Model_Sequential_Flat
     else:
-        logger.info(&#34;Loading model at: {model_dir}&#34;)
-    search_pattern = model_dir + &#34;/&#34; + model_name + &#34;_epoch*.h5&#34;
-    model_path_list = glob.glob(search_pattern)
-    return model_path_list</code></pre>
+        logger.critical(f&#34;Unknown model class: {model_class}&#34;)
+        exit(1)</code></pre>
 </details>
 </dd>
-<dt id="hepynet.train.train_utils.norarray"><code class="name flex">
-<span>def <span class="ident">norarray</span></span>(<span>array, average=None, variance=None, axis=None, weights=None)</span>
+<dt id="hepynet.train.train_utils.get_single_hyper"><code class="name flex">
+<span>def <span class="ident">get_single_hyper</span></span>(<span>hyper_config: <a title="hepynet.common.config_utils.Hepy_Config_Section" href="../common/config_utils.html#hepynet.common.config_utils.Hepy_Config_Section">Hepy_Config_Section</a>)</span>
 </code></dt>
 <dd>
-<div class="desc"><p>Normalizes input array for each feature.</p>
+<div class="desc"><p>Determines one hyperparameter</p>
 <h2 id="note">Note</h2>
-<p>Do not normalize bkg and sig separately, bkg and sig should be normalized
-in the same way. (i.e. use same average and variance for normalization.)</p></div>
+<p>If the hyper-parameter is a tuning dimension (with spacer specified),
+spacer from ray.tune will be used to set up the dimension.
+If the hyper-parameter is a normal value, it will be returned directly.</p></div>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def norarray(array, average=None, variance=None, axis=None, weights=None):
-    &#34;&#34;&#34;Normalizes input array for each feature.
+<pre><code class="python">def get_single_hyper(hyper_config: ht.sub_config):
+    &#34;&#34;&#34;Determines one hyperparameter
+    
+    Note:
+        If the hyper-parameter is a tuning dimension (with spacer specified), 
+        spacer from ray.tune will be used to set up the dimension.
+        If the hyper-parameter is a normal value, it will be returned directly.
+
+    &#34;&#34;&#34;
+    if hasattr(hyper_config, &#34;spacer&#34;):
+        paras = hyper_config.paras.get_config_dict()
+        return getattr(tune, hyper_config.spacer)(**paras)
+    else:
+        return hyper_config</code></pre>
+</details>
+</dd>
+<dt id="hepynet.train.train_utils.get_train_val_indices"><code class="name flex">
+<span>def <span class="ident">get_train_val_indices</span></span>(<span>x: numpy.ndarray, y: numpy.ndarray, wt: numpy.ndarray, val_split: float, k_folds: Union[int, NoneType] = None)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Gets indices to separates train datasets to train/validation</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def get_train_val_indices(
+    x: np.ndarray,
+    y: np.ndarray,
+    wt: np.ndarray,
+    val_split: float,
+    k_folds: Optional[int] = None,
+):
+    &#34;&#34;&#34;Gets indices to separates train datasets to train/validation&#34;&#34;&#34;
+    train_indices_list = list()
+    validation_indices_list = list()
+    if isinstance(k_folds, int) and k_folds &gt;= 2:
+        # skf = KFold(n_splits=k_folds, shuffle=True)
+        skf = StratifiedKFold(n_splits=k_folds, shuffle=True)
+        for train_index, val_index in skf.split(x, y):
+            np.random.shuffle(train_index)
+            np.random.shuffle(val_index)
+            train_indices_list.append(train_index)
+            validation_indices_list.append(val_index)
+    else:
+        if isinstance(k_folds, int) and k_folds &lt;= 2:
+            logger.error(
+                f&#34;Invalid train.k_folds value {k_folds} detected, will not use k-fold validation&#34;
+            )
+        array_len = len(wt)
+        val_index = np.random.choice(
+            range(array_len), int(array_len * 1.0 * val_split), replace=False
+        )
+        train_index = np.setdiff1d(np.array(range(array_len)), val_index)
+        np.random.shuffle(train_index)
+        np.random.shuffle(val_index)
+        train_indices_list.append(train_index)
+        validation_indices_list.append(val_index)
+    return train_indices_list, validation_indices_list</code></pre>
+</details>
+</dd>
+<dt id="hepynet.train.train_utils.merge_unequal_length_arrays"><code class="name flex">
+<span>def <span class="ident">merge_unequal_length_arrays</span></span>(<span>array_list: List[numpy.ndarray])</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Merges arrays with unequal length to average/min/max</p>
+<h2 id="note">Note</h2>
+<p>mainly used to deal with k-fold results with early-stopping (which
+results in unequal length of results as different folds may stop at
+different epochs) enabled</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def merge_unequal_length_arrays(array_list: List[np.ndarray]):
+    &#34;&#34;&#34;Merges arrays with unequal length to average/min/max
 
     Note:
-        Do not normalize bkg and sig separately, bkg and sig should be normalized
-        in the same way. (i.e. use same average and variance for normalization.)
+        mainly used to deal with k-fold results with early-stopping (which
+        results in unequal length of results as different folds may stop at
+        different epochs) enabled
 
     &#34;&#34;&#34;
-    if len(array) == 0:
-        return array
+    folds_lengths = list()
+    for single_array in array_list:
+        folds_lengths.append(len(single_array))
+    max_len = max(folds_lengths)
+
+    mean = list()
+    low = list()
+    high = list()
+    for i in range(max_len):
+        sum_value = 0
+        min_value = math.inf
+        max_value = -math.inf
+        num_values = 0
+        for fold_num, single_array in enumerate(array_list):
+            if i &lt; folds_lengths[fold_num]:
+                ele = single_array[i]
+                sum_value += ele
+                num_values += 1
+                if ele &lt; min_value:
+                    min_value = ele
+                if ele &gt; max_value:
+                    max_value = ele
+        mean_value = sum_value / num_values
+        mean.append(mean_value)
+        low.append(min_value)
+        high.append(max_value)
+    return mean, low, high</code></pre>
+</details>
+</dd>
+<dt id="hepynet.train.train_utils.ray_tune"><code class="name flex">
+<span>def <span class="ident">ray_tune</span></span>(<span>model_wrapper, job_config: <a title="hepynet.common.config_utils.Hepy_Config" href="../common/config_utils.html#hepynet.common.config_utils.Hepy_Config">Hepy_Config</a>, resume: bool = False)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Performs automatic hyper-parameters tuning with Ray</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def ray_tune(model_wrapper, job_config: ht.config, resume: bool = False):
+    &#34;&#34;&#34;Performs automatic hyper-parameters tuning with Ray&#34;&#34;&#34;
+    # initialize
+    tuner = job_config.tune.clone().tuner
+    log_dir = pathlib.Path(job_config.run.save_sub_dir) / &#34;tmp_log&#34;
+    log_dir.mkdir(parents=True, exist_ok=True)
+    if os.name == &#34;posix&#34;:
+        logger.info(f&#34;Ignoring tune.tmp.tmp_dir setting on Unix OS&#34;)
+        ray.init(**(tuner.init.get_config_dict()))
     else:
-        if (average is None) or (variance is None):
-            logger.warn(&#34;Unspecified average or variance.&#34;)
-            average, variance = get_mean_var(array, axis=axis, weights=weights)
-        output_array = (array.copy() - average) / np.sqrt(variance)
-        return output_array</code></pre>
-</details>
-</dd>
-<dt id="hepynet.train.train_utils.norarray_min_max"><code class="name flex">
-<span>def <span class="ident">norarray_min_max</span></span>(<span>array, min, max, axis=None)</span>
-</code></dt>
-<dd>
-<div class="desc"><p>Normalizes input array to (-1, +1)</p></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def norarray_min_max(array, min, max, axis=None):
-    &#34;&#34;&#34;Normalizes input array to (-1, +1)&#34;&#34;&#34;
-    middle = (min + max) / 2.0
-    output_array = array.copy() - middle
-    if max &lt; min:
-        logger.error(&#34;ERROR: max shouldn&#39;t be smaller than min.&#34;)
-        return None
-    ratio = (max - min) / 2.0
-    output_array = output_array / ratio</code></pre>
-</details>
-</dd>
-<dt id="hepynet.train.train_utils.output_keys_has_comb"><code class="name flex">
-<span>def <span class="ident">output_keys_has_comb</span></span>(<span>output_keys)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def output_keys_has_comb(output_keys):
-    for key in output_keys:
-        if key in COMB_KEYS:
-            return True
-    return False</code></pre>
-</details>
-</dd>
-<dt id="hepynet.train.train_utils.output_keys_has_sepa"><code class="name flex">
-<span>def <span class="ident">output_keys_has_sepa</span></span>(<span>output_keys)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def output_keys_has_sepa(output_keys):
-    for key in output_keys:
-        if key in SEPA_KEYS:
-            return True
-    return False</code></pre>
-</details>
-</dd>
-<dt id="hepynet.train.train_utils.split_and_combine"><code class="name flex">
-<span>def <span class="ident">split_and_combine</span></span>(<span>xs, xs_weight, xb, xb_weight, ys=None, yb=None, output_keys=None, test_rate=0.2, shuffle_combined_array=True, shuffle_seed=None)</span>
-</code></dt>
-<dd>
-<div class="desc"><p>Prepares array for training &amp; validation</p>
-<h2 id="args">Args</h2>
-<dl>
-<dt><strong><code>xs</code></strong></dt>
-<dd>numpy array</dd>
-<dt>Signal array for training.</dt>
-<dt><strong><code>xb</code></strong></dt>
-<dd>numpy array</dd>
-<dt>Background array for training.</dt>
-<dt><strong><code>test_rate</code></strong></dt>
-<dd>float, optional (default = 0.2)</dd>
-<dt>Portion of samples (array rows) to be used as independent test samples.</dt>
-<dt><strong><code>shuffle_combined_array</code></strong></dt>
-<dd>bool, optional (default=True)</dd>
-<dt>Whether to shuffle outputs arrays before return.</dt>
-<dt><strong><code>shuffle_seed</code></strong></dt>
-<dd>int or None, optional (default=None)</dd>
-</dl>
-<p>Seed for randomization process.
-Set to None to use current time as seed.
-Set to a specific value to get an unchanged shuffle result.</p>
-<h2 id="returns">Returns</h2>
-<p>x_train/x_test/y_train/y_test: numpy array
-Array for training/testing.
-Contain mixed signal and background.
-xs_test/xb_test: numpy array
-Array for scores plotting.
-Signal/background separated.</p></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def split_and_combine(
-    xs,
-    xs_weight,
-    xb,
-    xb_weight,
-    ys=None,
-    yb=None,
-    output_keys=None,
-    test_rate=0.2,
-    shuffle_combined_array=True,
-    shuffle_seed=None,
-):
-    &#34;&#34;&#34;Prepares array for training &amp; validation
+        ray.init(
+            _temp_dir=str(job_config.tune.tmp_dir),
+            **(tuner.init.get_config_dict()),
+        )
+    # set up scheduler
+    sched_class = getattr(schedulers, tuner.scheduler_class)
+    logger.info(f&#34;Setting up scheduler: {tuner.scheduler_class}&#34;)
+    sched_config = tuner.scheduler.get_config_dict()
+    sched = sched_class(**sched_config)
+    # set up algorithm
+    algo_class = tuner.algo_class
+    logger.info(f&#34;Setting up search algorithm: {tuner.algo_class}&#34;)
+    algo_config = tuner.algo.get_config_dict()
+    algo = None
+    if algo_class is None:
+        algo = None
+    elif algo_class == &#34;AxSearch&#34;:
+        from ray.tune.suggest.ax import AxSearch
 
-    Args:
-        xs: numpy array
-        Signal array for training.
-        xb: numpy array
-        Background array for training.
-        test_rate: float, optional (default = 0.2)
-        Portion of samples (array rows) to be used as independent test samples.
-        shuffle_combined_array: bool, optional (default=True)
-        Whether to shuffle outputs arrays before return.
-        shuffle_seed: int or None, optional (default=None)
-        Seed for randomization process.
-        Set to None to use current time as seed.
-        Set to a specific value to get an unchanged shuffle result.
+        algo = AxSearch(**algo_config)
+    elif algo_class == &#34;HyperOptSearch&#34;:
+        from ray.tune.suggest.hyperopt import HyperOptSearch
 
-    Returns:
-        x_train/x_test/y_train/y_test: numpy array
-        Array for training/testing.
-        Contain mixed signal and background. 
-        xs_test/xb_test: numpy array
-        Array for scores plotting.
-        Signal/background separated.
+        algo = HyperOptSearch(**algo_config)
+    elif algo_class == &#34;HEBOSearch&#34;:
+        from ray.tune.suggest.hebo import HEBOSearch
 
-    &#34;&#34;&#34;
-    # prepare
-    if output_keys is None:
-        output_keys = COMB_KEYS + SEPA_KEYS
-    has_sepa = output_keys_has_sepa(output_keys)
-    has_comb = output_keys_has_comb(output_keys)
-    arr_sepa = DNN_Arrays_Separate()
-    arr_comb = DNN_Arrays_Combined()
-    if ys is None:
-        ys = np.ones(len(xs)).reshape(-1, 1)
-    if yb is None:
-        yb = np.zeros(len(xb)).reshape(-1, 1)
-
-    (
-        arr_sepa.xs_train,
-        arr_sepa.xs_test,
-        arr_sepa.ys_train,
-        arr_sepa.ys_test,
-        arr_sepa.wts_train,
-        arr_sepa.wts_test,
-    ) = array_utils.shuffle_and_split(
-        xs, ys, xs_weight, split_ratio=1 - test_rate, shuffle_seed=shuffle_seed
+        algo = HEBOSearch(**algo_config)
+    else:
+        logger.error(f&#34;Unsupported search algorithm: {algo_class}&#34;)
+        logger.info(f&#34;Using default value None for search algorithm&#34;)
+    # set stopper
+    if tuner.stopper_class is None:
+        stop = None
+    else:
+        stop = getattr(stopper, tuner.stopper_class)(**tuner.stopper)
+    # run
+    run_config = (
+        tuner.run.get_config_dict()
+    )  # important: convert Hepy_Config class to dict
+    tune_func = getattr(hep_model, model_wrapper._tune_fun_name)
+    analysis = tune.run(
+        tune_func,
+        name=&#34;ray_tunes&#34;,
+        stop=stop,
+        search_alg=algo,
+        scheduler=sched,
+        config=model_wrapper.get_hypers_tune(),
+        local_dir=job_config.run.save_sub_dir,
+        resume=resume,
+        **run_config,
     )
-    (
-        arr_sepa.xb_train,
-        arr_sepa.xb_test,
-        arr_sepa.yb_train,
-        arr_sepa.yb_test,
-        arr_sepa.wtb_train,
-        arr_sepa.wtb_test,
-    ) = array_utils.shuffle_and_split(
-        xb, yb, xb_weight, split_ratio=1 - test_rate, shuffle_seed=shuffle_seed
-    )
+    logger.info(&#34;Best hyperparameters found were:&#34;)
+    print(yaml.dump(analysis.best_config))
 
-    if has_comb:
-        arr_comb.x_train = np.concatenate((arr_sepa.xs_train, arr_sepa.xb_train))
-        arr_comb.y_train = np.concatenate((arr_sepa.ys_train, arr_sepa.yb_train))
-        arr_comb.wt_train = np.concatenate((arr_sepa.wts_train, arr_sepa.wtb_train))
-        arr_comb.x_test = np.concatenate((arr_sepa.xs_test, arr_sepa.xb_test))
-        arr_comb.y_test = np.concatenate((arr_sepa.ys_test, arr_sepa.yb_test))
-        arr_comb.wt_test = np.concatenate((arr_sepa.wts_test, arr_sepa.wtb_test))
-        if not has_sepa:
-            arr_sepa = None
-        if shuffle_combined_array:
-            # shuffle train dataset
-            shuffle_index = generate_shuffle_index(
-                len(arr_comb.y_train), shuffle_seed=shuffle_seed
-            )
-            arr_comb.x_train = arr_comb.x_train[shuffle_index]
-            arr_comb.y_train = arr_comb.y_train[shuffle_index]
-            arr_comb.wt_train = arr_comb.wt_train[shuffle_index]
-            # shuffle test dataset
-            shuffle_index = generate_shuffle_index(
-                len(arr_comb.y_test), shuffle_seed=shuffle_seed
-            )
-            arr_comb.x_test = arr_comb.x_test[shuffle_index]
-            arr_comb.y_test = arr_comb.y_test[shuffle_index]
-            arr_comb.wt_test = arr_comb.wt_test[shuffle_index]
-
-    out_arrays = {}
-    for key in output_keys:
-        if key in SEPA_KEYS:
-            out_arrays[key] = getattr(arr_sepa, key)
-        elif key in COMB_KEYS:
-            out_arrays[key] = getattr(arr_comb, key)
-        else:
-            logger.error(f&#34;Unknown output_key: {key}&#34;)
-
-    return out_arrays</code></pre>
+    return analysis</code></pre>
 </details>
 </dd>
 </dl>
 </section>
 <section>
-<h2 class="section-title" id="header-classes">Classes</h2>
-<dl>
-<dt id="hepynet.train.train_utils.DNN_Arrays_Combined"><code class="flex name class">
-<span>class <span class="ident">DNN_Arrays_Combined</span></span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">class DNN_Arrays_Combined(object):
-    def __init__(self):
-        self.x_train = None
-        self.x_test = None
-        self.y_train = None
-        self.y_test = None
-        self.wt_train = None
-        self.wt_test = None</code></pre>
-</details>
-</dd>
-<dt id="hepynet.train.train_utils.DNN_Arrays_Separate"><code class="flex name class">
-<span>class <span class="ident">DNN_Arrays_Separate</span></span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">class DNN_Arrays_Separate(object):
-    def __init__(self):
-        self.xs_train = None
-        self.xs_test = None
-        self.ys_train = None
-        self.ys_test = None
-        self.wts_train = None
-        self.wts_test = None
-        self.xb_train = None
-        self.xb_test = None
-        self.yb_train = None
-        self.yb_test = None
-        self.wtb_train = None
-        self.wtb_test = None</code></pre>
-</details>
-</dd>
-</dl>
 </section>
 </article>
 <nav id="sidebar">
@@ -818,26 +489,12 @@ Signal/background separated.</p></div>
 </li>
 <li><h3><a href="#header-functions">Functions</a></h3>
 <ul class="">
-<li><code><a title="hepynet.train.train_utils.dump_fit_npy" href="#hepynet.train.train_utils.dump_fit_npy">dump_fit_npy</a></code></li>
-<li><code><a title="hepynet.train.train_utils.generate_shuffle_index" href="#hepynet.train.train_utils.generate_shuffle_index">generate_shuffle_index</a></code></li>
-<li><code><a title="hepynet.train.train_utils.get_mass_range" href="#hepynet.train.train_utils.get_mass_range">get_mass_range</a></code></li>
 <li><code><a title="hepynet.train.train_utils.get_mean_var" href="#hepynet.train.train_utils.get_mean_var">get_mean_var</a></code></li>
-<li><code><a title="hepynet.train.train_utils.get_model_epoch_path_list" href="#hepynet.train.train_utils.get_model_epoch_path_list">get_model_epoch_path_list</a></code></li>
-<li><code><a title="hepynet.train.train_utils.norarray" href="#hepynet.train.train_utils.norarray">norarray</a></code></li>
-<li><code><a title="hepynet.train.train_utils.norarray_min_max" href="#hepynet.train.train_utils.norarray_min_max">norarray_min_max</a></code></li>
-<li><code><a title="hepynet.train.train_utils.output_keys_has_comb" href="#hepynet.train.train_utils.output_keys_has_comb">output_keys_has_comb</a></code></li>
-<li><code><a title="hepynet.train.train_utils.output_keys_has_sepa" href="#hepynet.train.train_utils.output_keys_has_sepa">output_keys_has_sepa</a></code></li>
-<li><code><a title="hepynet.train.train_utils.split_and_combine" href="#hepynet.train.train_utils.split_and_combine">split_and_combine</a></code></li>
-</ul>
-</li>
-<li><h3><a href="#header-classes">Classes</a></h3>
-<ul>
-<li>
-<h4><code><a title="hepynet.train.train_utils.DNN_Arrays_Combined" href="#hepynet.train.train_utils.DNN_Arrays_Combined">DNN_Arrays_Combined</a></code></h4>
-</li>
-<li>
-<h4><code><a title="hepynet.train.train_utils.DNN_Arrays_Separate" href="#hepynet.train.train_utils.DNN_Arrays_Separate">DNN_Arrays_Separate</a></code></h4>
-</li>
+<li><code><a title="hepynet.train.train_utils.get_model_class" href="#hepynet.train.train_utils.get_model_class">get_model_class</a></code></li>
+<li><code><a title="hepynet.train.train_utils.get_single_hyper" href="#hepynet.train.train_utils.get_single_hyper">get_single_hyper</a></code></li>
+<li><code><a title="hepynet.train.train_utils.get_train_val_indices" href="#hepynet.train.train_utils.get_train_val_indices">get_train_val_indices</a></code></li>
+<li><code><a title="hepynet.train.train_utils.merge_unequal_length_arrays" href="#hepynet.train.train_utils.merge_unequal_length_arrays">merge_unequal_length_arrays</a></code></li>
+<li><code><a title="hepynet.train.train_utils.ray_tune" href="#hepynet.train.train_utils.ray_tune">ray_tune</a></code></li>
 </ul>
 </li>
 </ul>

@@ -29,21 +29,32 @@
 <pre><code class="python">import csv
 import logging
 import math
+import pathlib
 
+import atlas_mpl_style as ampl
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from matplotlib.ticker import NullFormatter
 
+import hepynet.common.hepy_type as ht
 from hepynet.common import common_utils
+from hepynet.data_io import array_utils
 
 logger = logging.getLogger(&#34;hepynet&#34;)
 
 
-def calculate_asimov(sig, bkg):
+def calculate_asimov(sig: float, bkg: float):
     return math.sqrt(2 * ((sig + bkg) * math.log(1 + sig / bkg) - sig))
 
 
-def calculate_significance(sig, bkg, sig_total=None, bkg_total=None, algo=&#34;asimov&#34;):
+def calculate_significance(
+    sig: float,
+    bkg: float,
+    sig_total: float = None,
+    bkg_total: float = None,
+    algo=&#34;asimov&#34;,
+):
     &#34;&#34;&#34;Returns asimov significance&#34;&#34;&#34;
     # check input
     if sig &lt;= 0 or bkg &lt;= 0 or sig_total &lt;= 0 or bkg_total &lt;= 0:
@@ -70,27 +81,32 @@ def calculate_significance(sig, bkg, sig_total=None, bkg_total=None, algo=&#34;a
     elif algo == &#34;s_sqrt_sb&#34;:
         return sig / math.sqrt(sig + bkg)
     elif algo == &#34;asimov_rel&#34;:
-        return calculate_asimov(sig, bkg) / calculate_asimov(sig_total, bkg_total)
+        return calculate_asimov(sig, bkg) / calculate_asimov(
+            sig_total, bkg_total
+        )
     elif algo == &#34;s_b_rel&#34;:
         return (sig / sig_total) / (bkg / bkg_total)
     elif algo == &#34;s_sqrt_b_rel&#34;:
         return (sig / sig_total) / math.sqrt(bkg / bkg_total)
     elif algo == &#34;s_sqrt_sb_rel&#34;:
-        return (sig / sig_total) / math.sqrt((bkg + sig) / (sig_total + bkg_total))
+        return (sig / sig_total) / math.sqrt(
+            (bkg + sig) / (sig_total + bkg_total)
+        )
     else:
-        logger.warning(&#34;Unrecognized significance algorithm, will use default &#39;asimov&#39;&#34;)
+        logger.warning(
+            &#34;Unrecognized significance algorithm, will use default &#39;asimov&#39;&#34;
+        )
         return calculate_asimov(sig, bkg)
 
 
 def get_significances(
-    model_wrapper,
-    sig_key,
-    bkg_key,
-    significance_algo=&#34;asimov&#34;,
-    multi_class_cut_branch=0,
+    df: pd.DataFrame,
+    job_config: ht.config,
+    significance_algo: str = &#34;asimov&#34;,
+    multi_class_cut_branch: int = 0,
 ):
     &#34;&#34;&#34;Gets significances scan arrays.
-    
+
     Return:
         Tuple of 4 arrays: (
             threshold array,
@@ -98,19 +114,17 @@ def get_significances(
             sig_total_weight_above_threshold,
             bkg_total_weight_above_threshold,
             )
-    
+
     &#34;&#34;&#34;
-    feedbox = model_wrapper.feedbox
+    ic = job_config.input.clone()
     # prepare signal
-    sig_arr, sig_weights = feedbox.get_reshape(&#34;xs&#34;, array_key=sig_key)
-    sig_predictions = model_wrapper.get_model().predict(sig_arr)
-    if sig_predictions.ndim == 2:
-        sig_predictions = sig_predictions[:, multi_class_cut_branch]
+    sig_df = array_utils.extract_sig_df(df)
+    sig_predictions = sig_df[[&#34;y_pred&#34;]].values
+    sig_predictions = sig_predictions[:, multi_class_cut_branch]
     # prepare background
-    bkg_arr, bkg_weights = feedbox.get_reshape(&#34;xb&#34;, array_key=bkg_key)
-    bkg_predictions = model_wrapper.get_model().predict(bkg_arr)
-    if bkg_predictions.ndim == 2:
-        bkg_predictions = bkg_predictions[:, multi_class_cut_branch]
+    bkg_df = array_utils.extract_bkg_df(df)
+    bkg_predictions = bkg_df[[&#34;y_pred&#34;]].values
+    bkg_predictions = bkg_predictions[:, multi_class_cut_branch]
     # prepare thresholds
     bin_array = np.array(range(-1000, 1000))
     thresholds = 1.0 / (1.0 + 1.0 / np.exp(bin_array * 0.02))
@@ -120,6 +134,8 @@ def get_significances(
     plot_thresholds = []
     sig_above_threshold = []
     bkg_above_threshold = []
+    sig_weights = sig_df[&#34;weight&#34;]
+    bkg_weights = bkg_df[&#34;weight&#34;]
     total_sig_weight = np.sum(sig_weights)
     total_bkg_weight = np.sum(bkg_weights)
     for dnn_cut in thresholds:
@@ -142,32 +158,31 @@ def get_significances(
             bkg_above_threshold.append(total_bkg_weights_passed)
     total_sig_weight = np.sum(sig_weights)
     total_bkg_weight = np.sum(bkg_weights)
-    return (plot_thresholds, significances, sig_above_threshold, bkg_above_threshold)
+    return (
+        plot_thresholds,
+        significances,
+        sig_above_threshold,
+        bkg_above_threshold,
+    )
 
 
 def plot_significance_scan(
-    ax,
-    model_wrapper,
-    sig_key,
-    bkg_key,
-    save_dir=&#34;.&#34;,
-    significance_algo=&#34;asimov&#34;,
-    suffix=&#34;&#34;,
+    df: pd.DataFrame, job_config: ht.config, save_dir: ht.pathlike
 ) -&gt; None:
     &#34;&#34;&#34;Shows significance change with threshold.
 
     Note:
         significance is calculated by s/sqrt(b)
     &#34;&#34;&#34;
+    ac = job_config.apply.clone()
+    significance_algo = ac.cfg_significance_scan.significance_algo
     logger.info(&#34;Plotting significance scan.&#34;)
     (
         plot_thresholds,
         significances,
         sig_above_threshold,
         bkg_above_threshold,
-    ) = get_significances(
-        model_wrapper, sig_key, bkg_key, significance_algo=significance_algo
-    )
+    ) = get_significances(df, job_config, significance_algo=significance_algo)
 
     significances_no_nan = np.nan_to_num(significances)
     max_significance = np.amax(significances_no_nan)
@@ -186,61 +201,94 @@ def plot_significance_scan(
         bkg_total=total_bkg_weight,
         algo=significance_algo,
     )
+    fig, ax = plt.subplots()
+    ax.set_title(&#34;significance scan&#34;)
     ax.axhline(y=original_significance, color=&#34;grey&#34;, linestyle=&#34;--&#34;)
     # significance scan curve
-    ax.plot(plot_thresholds, significances_no_nan, color=&#34;r&#34;, label=significance_algo)
+    ax.plot(
+        plot_thresholds,
+        significances_no_nan,
+        color=&#34;r&#34;,
+        label=significance_algo,
+    )
     # signal/background events scan curve
     ax2 = ax.twinx()
     max_sig_events = sig_above_threshold[0]
     max_bkg_events = bkg_above_threshold[0]
     sig_eff_above_threshold = np.array(sig_above_threshold) / max_sig_events
     bkg_eff_above_threshold = np.array(bkg_above_threshold) / max_bkg_events
-    ax2.plot(plot_thresholds, sig_eff_above_threshold, color=&#34;orange&#34;, label=&#34;sig&#34;)
-    ax2.plot(plot_thresholds, bkg_eff_above_threshold, color=&#34;blue&#34;, label=&#34;bkg&#34;)
+    ax2.plot(
+        plot_thresholds, sig_eff_above_threshold, color=&#34;orange&#34;, label=&#34;sig&#34;
+    )
+    ax2.plot(
+        plot_thresholds, bkg_eff_above_threshold, color=&#34;blue&#34;, label=&#34;bkg&#34;
+    )
     ax2.set_ylabel(&#34;sig(bkg) ratio after cut&#34;)
     # reference threshold
     ax.axvline(x=max_significance_threshold, color=&#34;green&#34;, linestyle=&#34;-.&#34;)
     # more infomation
     content = (
         &#34;best threshold:&#34;
-        + str(common_utils.get_significant_digits(max_significance_threshold, 6))
+        + str(
+            common_utils.get_significant_digits(max_significance_threshold, 6)
+        )
         + &#34;\nmax significance:&#34;
         + str(common_utils.get_significant_digits(max_significance, 6))
         + &#34;\nbase significance:&#34;
         + str(common_utils.get_significant_digits(original_significance, 6))
         + &#34;\nsig events above threshold:&#34;
-        + str(common_utils.get_significant_digits(max_significance_sig_total, 6))
+        + str(
+            common_utils.get_significant_digits(max_significance_sig_total, 6)
+        )
         + &#34;\nbkg events above threshold:&#34;
-        + str(common_utils.get_significant_digits(max_significance_bkg_total, 6))
+        + str(
+            common_utils.get_significant_digits(max_significance_bkg_total, 6)
+        )
     )
     ax.text(
         0.05,
-        0.9,
+        0.05,
         content,
-        verticalalignment=&#34;top&#34;,
+        verticalalignment=&#34;bottom&#34;,
         horizontalalignment=&#34;left&#34;,
         transform=ax.transAxes,
-        color=&#34;green&#34;,
-        fontsize=12,
+        # color=&#34;green&#34;,
+        # fontsize=12,
     )
     # set up plot
     ax.set_title(&#34;significance scan&#34;)
     ax.set_xscale(&#34;logit&#34;)
     ax.set_xlabel(&#34;DNN score threshold&#34;)
-    ax.set_ylabel(&#34;significance&#34;)
+    if &#34;rel&#34; in significance_algo:
+        ax.set_ylabel(&#34;significance ratio&#34;)
+    else:
+        ax.set_ylabel(&#34;significance&#34;)
     ax.set_ylim(bottom=0)
     ax.locator_params(nbins=10, axis=&#34;x&#34;)
     ax.yaxis.set_minor_formatter(NullFormatter())
     ax.legend(loc=&#34;center left&#34;)
     ax2.legend(loc=&#34;center right&#34;)
     # ax2.set_yscale(&#34;log&#34;)
+    _, y_max = ax.get_ylim()
+    ax.set_xlim(1e-3, 1 - 1e-3)
+    ax.set_ylim(0, y_max * 1.4)
+    _, y_max = ax2.get_ylim()
+    ax2.set_ylim(0, y_max * 1.4)
+    if ac.plot_atlas_label:
+        ampl.plot.draw_atlas_label(
+            0.05, 0.95, ax=ax, **(ac.atlas_label.get_config_dict())
+        )
+    fig_save_path = save_dir / &#34;significance_scan_.png&#34;
+    fig.savefig(fig_save_path)
+
     # collect meta data
-    model_wrapper.original_significance = original_significance
-    model_wrapper.max_significance = max_significance
-    model_wrapper.max_significance_threshold = max_significance_threshold
+    # model_wrapper.original_significance = original_significance
+    # model_wrapper.max_significance = max_significance
+    # model_wrapper.max_significance_threshold = max_significance_threshold
+
     # make extra cut table 0.1, 0.2 ... 0.8, 0.9
     # make table for different DNN cut scores
-    save_path = save_dir + &#34;/scan_DNN_cut&#34; + suffix + &#34;.csv&#34;
+    save_path = save_dir / &#34;scan_DNN_cut.csv&#34;
     with open(save_path, &#34;w&#34;, newline=&#34;&#34;) as file:
         writer = csv.writer(file)
         row_list = [
@@ -255,13 +303,22 @@ def plot_significance_scan(
         ]
         for index in range(1, 100):
             dnn_cut = (100 - index) / 100.0
-            threshold_id = (np.abs(np.array(plot_thresholds) - dnn_cut)).argmin()
+            threshold_id = (
+                np.abs(np.array(plot_thresholds) - dnn_cut)
+            ).argmin()
             sig_events = sig_above_threshold[threshold_id]
             sig_eff = sig_eff_above_threshold[threshold_id]
             bkg_events = bkg_above_threshold[threshold_id]
             bkg_eff = bkg_eff_above_threshold[threshold_id]
             significance = significances[threshold_id]
-            new_row = [dnn_cut, sig_events, sig_eff, bkg_events, bkg_eff, significance]
+            new_row = [
+                dnn_cut,
+                sig_events,
+                sig_eff,
+                bkg_events,
+                bkg_eff,
+                significance,
+            ]
             row_list.append(new_row)
         row_list.append([&#34;&#34;])
         row_list.append(
@@ -276,7 +333,7 @@ def plot_significance_scan(
         )
         writer.writerows(row_list)
     # make table for different sig efficiency
-    save_path = save_dir + &#34;/scan_sig_eff&#34; + suffix + &#34;.csv&#34;
+    save_path = save_dir / &#34;scan_sig_eff.csv&#34;
     with open(save_path, &#34;w&#34;, newline=&#34;&#34;) as file:
         writer = csv.writer(file)
         row_list = [
@@ -300,7 +357,14 @@ def plot_significance_scan(
             bkg_events = bkg_above_threshold[threshold_id]
             bkg_eff = bkg_eff_above_threshold[threshold_id]
             significance = significances[threshold_id]
-            new_row = [dnn_cut, sig_events, sig_eff, bkg_events, bkg_eff, significance]
+            new_row = [
+                dnn_cut,
+                sig_events,
+                sig_eff,
+                bkg_events,
+                bkg_eff,
+                significance,
+            ]
             row_list.append(new_row)
         row_list.append([&#34;&#34;])
         row_list.append(
@@ -315,7 +379,7 @@ def plot_significance_scan(
         )
         writer.writerows(row_list)
     # make table for different bkg efficiency
-    save_path = save_dir + &#34;/scan_bkg_eff&#34; + suffix + &#34;.csv&#34;
+    save_path = save_dir / &#34;scan_bkg_eff.csv&#34;
     with open(save_path, &#34;w&#34;, newline=&#34;&#34;) as file:
         writer = csv.writer(file)
         row_list = [
@@ -339,7 +403,14 @@ def plot_significance_scan(
             bkg_events = bkg_above_threshold[threshold_id]
             bkg_eff = bkg_eff_cut
             significance = significances[threshold_id]
-            new_row = [dnn_cut, sig_events, sig_eff, bkg_events, bkg_eff, significance]
+            new_row = [
+                dnn_cut,
+                sig_events,
+                sig_eff,
+                bkg_events,
+                bkg_eff,
+                significance,
+            ]
             row_list.append(new_row)
         row_list.append([&#34;&#34;])
         row_list.append(
@@ -363,7 +434,7 @@ def plot_significance_scan(
 <h2 class="section-title" id="header-functions">Functions</h2>
 <dl>
 <dt id="hepynet.evaluate.significance.calculate_asimov"><code class="name flex">
-<span>def <span class="ident">calculate_asimov</span></span>(<span>sig, bkg)</span>
+<span>def <span class="ident">calculate_asimov</span></span>(<span>sig: float, bkg: float)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -371,12 +442,12 @@ def plot_significance_scan(
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def calculate_asimov(sig, bkg):
+<pre><code class="python">def calculate_asimov(sig: float, bkg: float):
     return math.sqrt(2 * ((sig + bkg) * math.log(1 + sig / bkg) - sig))</code></pre>
 </details>
 </dd>
 <dt id="hepynet.evaluate.significance.calculate_significance"><code class="name flex">
-<span>def <span class="ident">calculate_significance</span></span>(<span>sig, bkg, sig_total=None, bkg_total=None, algo='asimov')</span>
+<span>def <span class="ident">calculate_significance</span></span>(<span>sig: float, bkg: float, sig_total: float = None, bkg_total: float = None, algo='asimov')</span>
 </code></dt>
 <dd>
 <div class="desc"><p>Returns asimov significance</p></div>
@@ -384,7 +455,13 @@ def plot_significance_scan(
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def calculate_significance(sig, bkg, sig_total=None, bkg_total=None, algo=&#34;asimov&#34;):
+<pre><code class="python">def calculate_significance(
+    sig: float,
+    bkg: float,
+    sig_total: float = None,
+    bkg_total: float = None,
+    algo=&#34;asimov&#34;,
+):
     &#34;&#34;&#34;Returns asimov significance&#34;&#34;&#34;
     # check input
     if sig &lt;= 0 or bkg &lt;= 0 or sig_total &lt;= 0 or bkg_total &lt;= 0:
@@ -411,20 +488,26 @@ def plot_significance_scan(
     elif algo == &#34;s_sqrt_sb&#34;:
         return sig / math.sqrt(sig + bkg)
     elif algo == &#34;asimov_rel&#34;:
-        return calculate_asimov(sig, bkg) / calculate_asimov(sig_total, bkg_total)
+        return calculate_asimov(sig, bkg) / calculate_asimov(
+            sig_total, bkg_total
+        )
     elif algo == &#34;s_b_rel&#34;:
         return (sig / sig_total) / (bkg / bkg_total)
     elif algo == &#34;s_sqrt_b_rel&#34;:
         return (sig / sig_total) / math.sqrt(bkg / bkg_total)
     elif algo == &#34;s_sqrt_sb_rel&#34;:
-        return (sig / sig_total) / math.sqrt((bkg + sig) / (sig_total + bkg_total))
+        return (sig / sig_total) / math.sqrt(
+            (bkg + sig) / (sig_total + bkg_total)
+        )
     else:
-        logger.warning(&#34;Unrecognized significance algorithm, will use default &#39;asimov&#39;&#34;)
+        logger.warning(
+            &#34;Unrecognized significance algorithm, will use default &#39;asimov&#39;&#34;
+        )
         return calculate_asimov(sig, bkg)</code></pre>
 </details>
 </dd>
 <dt id="hepynet.evaluate.significance.get_significances"><code class="name flex">
-<span>def <span class="ident">get_significances</span></span>(<span>model_wrapper, sig_key, bkg_key, significance_algo='asimov', multi_class_cut_branch=0)</span>
+<span>def <span class="ident">get_significances</span></span>(<span>df: pandas.core.frame.DataFrame, job_config: <a title="hepynet.common.config_utils.Hepy_Config" href="../common/config_utils.html#hepynet.common.config_utils.Hepy_Config">Hepy_Config</a>, significance_algo: str = 'asimov', multi_class_cut_branch: int = 0)</span>
 </code></dt>
 <dd>
 <div class="desc"><p>Gets significances scan arrays.</p>
@@ -440,14 +523,13 @@ bkg_total_weight_above_threshold,
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">def get_significances(
-    model_wrapper,
-    sig_key,
-    bkg_key,
-    significance_algo=&#34;asimov&#34;,
-    multi_class_cut_branch=0,
+    df: pd.DataFrame,
+    job_config: ht.config,
+    significance_algo: str = &#34;asimov&#34;,
+    multi_class_cut_branch: int = 0,
 ):
     &#34;&#34;&#34;Gets significances scan arrays.
-    
+
     Return:
         Tuple of 4 arrays: (
             threshold array,
@@ -455,19 +537,17 @@ bkg_total_weight_above_threshold,
             sig_total_weight_above_threshold,
             bkg_total_weight_above_threshold,
             )
-    
+
     &#34;&#34;&#34;
-    feedbox = model_wrapper.feedbox
+    ic = job_config.input.clone()
     # prepare signal
-    sig_arr, sig_weights = feedbox.get_reshape(&#34;xs&#34;, array_key=sig_key)
-    sig_predictions = model_wrapper.get_model().predict(sig_arr)
-    if sig_predictions.ndim == 2:
-        sig_predictions = sig_predictions[:, multi_class_cut_branch]
+    sig_df = array_utils.extract_sig_df(df)
+    sig_predictions = sig_df[[&#34;y_pred&#34;]].values
+    sig_predictions = sig_predictions[:, multi_class_cut_branch]
     # prepare background
-    bkg_arr, bkg_weights = feedbox.get_reshape(&#34;xb&#34;, array_key=bkg_key)
-    bkg_predictions = model_wrapper.get_model().predict(bkg_arr)
-    if bkg_predictions.ndim == 2:
-        bkg_predictions = bkg_predictions[:, multi_class_cut_branch]
+    bkg_df = array_utils.extract_bkg_df(df)
+    bkg_predictions = bkg_df[[&#34;y_pred&#34;]].values
+    bkg_predictions = bkg_predictions[:, multi_class_cut_branch]
     # prepare thresholds
     bin_array = np.array(range(-1000, 1000))
     thresholds = 1.0 / (1.0 + 1.0 / np.exp(bin_array * 0.02))
@@ -477,6 +557,8 @@ bkg_total_weight_above_threshold,
     plot_thresholds = []
     sig_above_threshold = []
     bkg_above_threshold = []
+    sig_weights = sig_df[&#34;weight&#34;]
+    bkg_weights = bkg_df[&#34;weight&#34;]
     total_sig_weight = np.sum(sig_weights)
     total_bkg_weight = np.sum(bkg_weights)
     for dnn_cut in thresholds:
@@ -499,11 +581,16 @@ bkg_total_weight_above_threshold,
             bkg_above_threshold.append(total_bkg_weights_passed)
     total_sig_weight = np.sum(sig_weights)
     total_bkg_weight = np.sum(bkg_weights)
-    return (plot_thresholds, significances, sig_above_threshold, bkg_above_threshold)</code></pre>
+    return (
+        plot_thresholds,
+        significances,
+        sig_above_threshold,
+        bkg_above_threshold,
+    )</code></pre>
 </details>
 </dd>
 <dt id="hepynet.evaluate.significance.plot_significance_scan"><code class="name flex">
-<span>def <span class="ident">plot_significance_scan</span></span>(<span>ax, model_wrapper, sig_key, bkg_key, save_dir='.', significance_algo='asimov', suffix='') ‑> NoneType</span>
+<span>def <span class="ident">plot_significance_scan</span></span>(<span>df: pandas.core.frame.DataFrame, job_config: <a title="hepynet.common.config_utils.Hepy_Config" href="../common/config_utils.html#hepynet.common.config_utils.Hepy_Config">Hepy_Config</a>, save_dir: Union[str, os.PathLike]) ‑> NoneType</span>
 </code></dt>
 <dd>
 <div class="desc"><p>Shows significance change with threshold.</p>
@@ -514,28 +601,22 @@ bkg_total_weight_above_threshold,
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">def plot_significance_scan(
-    ax,
-    model_wrapper,
-    sig_key,
-    bkg_key,
-    save_dir=&#34;.&#34;,
-    significance_algo=&#34;asimov&#34;,
-    suffix=&#34;&#34;,
+    df: pd.DataFrame, job_config: ht.config, save_dir: ht.pathlike
 ) -&gt; None:
     &#34;&#34;&#34;Shows significance change with threshold.
 
     Note:
         significance is calculated by s/sqrt(b)
     &#34;&#34;&#34;
+    ac = job_config.apply.clone()
+    significance_algo = ac.cfg_significance_scan.significance_algo
     logger.info(&#34;Plotting significance scan.&#34;)
     (
         plot_thresholds,
         significances,
         sig_above_threshold,
         bkg_above_threshold,
-    ) = get_significances(
-        model_wrapper, sig_key, bkg_key, significance_algo=significance_algo
-    )
+    ) = get_significances(df, job_config, significance_algo=significance_algo)
 
     significances_no_nan = np.nan_to_num(significances)
     max_significance = np.amax(significances_no_nan)
@@ -554,61 +635,94 @@ bkg_total_weight_above_threshold,
         bkg_total=total_bkg_weight,
         algo=significance_algo,
     )
+    fig, ax = plt.subplots()
+    ax.set_title(&#34;significance scan&#34;)
     ax.axhline(y=original_significance, color=&#34;grey&#34;, linestyle=&#34;--&#34;)
     # significance scan curve
-    ax.plot(plot_thresholds, significances_no_nan, color=&#34;r&#34;, label=significance_algo)
+    ax.plot(
+        plot_thresholds,
+        significances_no_nan,
+        color=&#34;r&#34;,
+        label=significance_algo,
+    )
     # signal/background events scan curve
     ax2 = ax.twinx()
     max_sig_events = sig_above_threshold[0]
     max_bkg_events = bkg_above_threshold[0]
     sig_eff_above_threshold = np.array(sig_above_threshold) / max_sig_events
     bkg_eff_above_threshold = np.array(bkg_above_threshold) / max_bkg_events
-    ax2.plot(plot_thresholds, sig_eff_above_threshold, color=&#34;orange&#34;, label=&#34;sig&#34;)
-    ax2.plot(plot_thresholds, bkg_eff_above_threshold, color=&#34;blue&#34;, label=&#34;bkg&#34;)
+    ax2.plot(
+        plot_thresholds, sig_eff_above_threshold, color=&#34;orange&#34;, label=&#34;sig&#34;
+    )
+    ax2.plot(
+        plot_thresholds, bkg_eff_above_threshold, color=&#34;blue&#34;, label=&#34;bkg&#34;
+    )
     ax2.set_ylabel(&#34;sig(bkg) ratio after cut&#34;)
     # reference threshold
     ax.axvline(x=max_significance_threshold, color=&#34;green&#34;, linestyle=&#34;-.&#34;)
     # more infomation
     content = (
         &#34;best threshold:&#34;
-        + str(common_utils.get_significant_digits(max_significance_threshold, 6))
+        + str(
+            common_utils.get_significant_digits(max_significance_threshold, 6)
+        )
         + &#34;\nmax significance:&#34;
         + str(common_utils.get_significant_digits(max_significance, 6))
         + &#34;\nbase significance:&#34;
         + str(common_utils.get_significant_digits(original_significance, 6))
         + &#34;\nsig events above threshold:&#34;
-        + str(common_utils.get_significant_digits(max_significance_sig_total, 6))
+        + str(
+            common_utils.get_significant_digits(max_significance_sig_total, 6)
+        )
         + &#34;\nbkg events above threshold:&#34;
-        + str(common_utils.get_significant_digits(max_significance_bkg_total, 6))
+        + str(
+            common_utils.get_significant_digits(max_significance_bkg_total, 6)
+        )
     )
     ax.text(
         0.05,
-        0.9,
+        0.05,
         content,
-        verticalalignment=&#34;top&#34;,
+        verticalalignment=&#34;bottom&#34;,
         horizontalalignment=&#34;left&#34;,
         transform=ax.transAxes,
-        color=&#34;green&#34;,
-        fontsize=12,
+        # color=&#34;green&#34;,
+        # fontsize=12,
     )
     # set up plot
     ax.set_title(&#34;significance scan&#34;)
     ax.set_xscale(&#34;logit&#34;)
     ax.set_xlabel(&#34;DNN score threshold&#34;)
-    ax.set_ylabel(&#34;significance&#34;)
+    if &#34;rel&#34; in significance_algo:
+        ax.set_ylabel(&#34;significance ratio&#34;)
+    else:
+        ax.set_ylabel(&#34;significance&#34;)
     ax.set_ylim(bottom=0)
     ax.locator_params(nbins=10, axis=&#34;x&#34;)
     ax.yaxis.set_minor_formatter(NullFormatter())
     ax.legend(loc=&#34;center left&#34;)
     ax2.legend(loc=&#34;center right&#34;)
     # ax2.set_yscale(&#34;log&#34;)
+    _, y_max = ax.get_ylim()
+    ax.set_xlim(1e-3, 1 - 1e-3)
+    ax.set_ylim(0, y_max * 1.4)
+    _, y_max = ax2.get_ylim()
+    ax2.set_ylim(0, y_max * 1.4)
+    if ac.plot_atlas_label:
+        ampl.plot.draw_atlas_label(
+            0.05, 0.95, ax=ax, **(ac.atlas_label.get_config_dict())
+        )
+    fig_save_path = save_dir / &#34;significance_scan_.png&#34;
+    fig.savefig(fig_save_path)
+
     # collect meta data
-    model_wrapper.original_significance = original_significance
-    model_wrapper.max_significance = max_significance
-    model_wrapper.max_significance_threshold = max_significance_threshold
+    # model_wrapper.original_significance = original_significance
+    # model_wrapper.max_significance = max_significance
+    # model_wrapper.max_significance_threshold = max_significance_threshold
+
     # make extra cut table 0.1, 0.2 ... 0.8, 0.9
     # make table for different DNN cut scores
-    save_path = save_dir + &#34;/scan_DNN_cut&#34; + suffix + &#34;.csv&#34;
+    save_path = save_dir / &#34;scan_DNN_cut.csv&#34;
     with open(save_path, &#34;w&#34;, newline=&#34;&#34;) as file:
         writer = csv.writer(file)
         row_list = [
@@ -623,13 +737,22 @@ bkg_total_weight_above_threshold,
         ]
         for index in range(1, 100):
             dnn_cut = (100 - index) / 100.0
-            threshold_id = (np.abs(np.array(plot_thresholds) - dnn_cut)).argmin()
+            threshold_id = (
+                np.abs(np.array(plot_thresholds) - dnn_cut)
+            ).argmin()
             sig_events = sig_above_threshold[threshold_id]
             sig_eff = sig_eff_above_threshold[threshold_id]
             bkg_events = bkg_above_threshold[threshold_id]
             bkg_eff = bkg_eff_above_threshold[threshold_id]
             significance = significances[threshold_id]
-            new_row = [dnn_cut, sig_events, sig_eff, bkg_events, bkg_eff, significance]
+            new_row = [
+                dnn_cut,
+                sig_events,
+                sig_eff,
+                bkg_events,
+                bkg_eff,
+                significance,
+            ]
             row_list.append(new_row)
         row_list.append([&#34;&#34;])
         row_list.append(
@@ -644,7 +767,7 @@ bkg_total_weight_above_threshold,
         )
         writer.writerows(row_list)
     # make table for different sig efficiency
-    save_path = save_dir + &#34;/scan_sig_eff&#34; + suffix + &#34;.csv&#34;
+    save_path = save_dir / &#34;scan_sig_eff.csv&#34;
     with open(save_path, &#34;w&#34;, newline=&#34;&#34;) as file:
         writer = csv.writer(file)
         row_list = [
@@ -668,7 +791,14 @@ bkg_total_weight_above_threshold,
             bkg_events = bkg_above_threshold[threshold_id]
             bkg_eff = bkg_eff_above_threshold[threshold_id]
             significance = significances[threshold_id]
-            new_row = [dnn_cut, sig_events, sig_eff, bkg_events, bkg_eff, significance]
+            new_row = [
+                dnn_cut,
+                sig_events,
+                sig_eff,
+                bkg_events,
+                bkg_eff,
+                significance,
+            ]
             row_list.append(new_row)
         row_list.append([&#34;&#34;])
         row_list.append(
@@ -683,7 +813,7 @@ bkg_total_weight_above_threshold,
         )
         writer.writerows(row_list)
     # make table for different bkg efficiency
-    save_path = save_dir + &#34;/scan_bkg_eff&#34; + suffix + &#34;.csv&#34;
+    save_path = save_dir / &#34;scan_bkg_eff.csv&#34;
     with open(save_path, &#34;w&#34;, newline=&#34;&#34;) as file:
         writer = csv.writer(file)
         row_list = [
@@ -707,7 +837,14 @@ bkg_total_weight_above_threshold,
             bkg_events = bkg_above_threshold[threshold_id]
             bkg_eff = bkg_eff_cut
             significance = significances[threshold_id]
-            new_row = [dnn_cut, sig_events, sig_eff, bkg_events, bkg_eff, significance]
+            new_row = [
+                dnn_cut,
+                sig_events,
+                sig_eff,
+                bkg_events,
+                bkg_eff,
+                significance,
+            ]
             row_list.append(new_row)
         row_list.append([&#34;&#34;])
         row_list.append(

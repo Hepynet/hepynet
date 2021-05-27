@@ -26,8 +26,150 @@
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">import matplotlib.pyplot as plt
+<pre><code class="python">import logging
+import pathlib
+from typing import Tuple
+
+import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
+
+from hepynet.common import config_utils
+from hepynet.data_io import numpy_io
+from hepynet.train import hep_model
+
+logger = logging.getLogger(&#34;hepynet&#34;)
+
+
+def create_epoch_subdir(save_dir, epoch, n_digit) -&gt; pathlib.Path:
+    if save_dir is None:
+        logger.error(f&#34;Invalid save_dir: {save_dir}&#34;)
+        return None
+    if epoch is not None:
+        sub_dir = pathlib.Path(f&#34;{save_dir}/epoch_{str(epoch).zfill(n_digit)}&#34;)
+    else:
+        sub_dir = pathlib.Path(f&#34;{save_dir}/epoch_final&#34;)
+    sub_dir.mkdir(parents=True, exist_ok=True)
+    return sub_dir
+
+
+def dump_fit_df(
+    model_wrapper: hep_model.Model_Base,
+    df_raw,
+    df_train,
+    job_config,
+    save_dir=&#34;./&#34;,
+):
+    ic = job_config.input.clone()
+    tc = job_config.train.clone()
+    ac = job_config.apply.clone()
+
+    sample_list = ic.sig_list + ic.bkg_list
+    if ic.apply_data:
+        sample_list += ic.data_list
+
+    platform_meta = config_utils.load_current_platform_meta()
+    data_path = platform_meta[&#34;data_path&#34;]
+    if not data_path:
+        save_dir = pathlib.Path(save_dir)
+    else:
+        save_dir = pathlib.Path(data_path) / save_dir
+    pathlib.Path(save_dir).mkdir(parents=True, exist_ok=True)
+    logger.info(f&#34;&gt; Saving dataframes to: {save_dir}&#34;)
+
+    for sample in sample_list:
+        logger.info(f&#34;&gt; &gt; processing: {sample}&#34;)
+        dump_branches = ac.fit_df.branches + [&#34;weight&#34;]
+        # prepare contents
+        dump_df: pd.DataFrame = df_raw.loc[
+            df_raw[&#34;sample_name&#34;] == sample, dump_branches
+        ]
+        input_df = df_train.loc[
+            df_train[&#34;sample_name&#34;] == sample, ic.selected_features
+        ]
+        predictions, _, _ = k_folds_predict(
+            model_wrapper.get_model(), input_df.values, silence=True
+        )
+        # dump
+        if len(tc.output_bkg_node_names) == 0:
+            dump_df[&#34;dnn_out_sig&#34;] = predictions
+        else:
+            for i, out_node in enumerate([&#34;sig&#34;] + tc.output_bkg_node_names):
+                out_node = out_node.replace(&#34;+&#34;, &#34;_&#34;)
+                branch_name = f&#34;dnn_out_{out_node}&#34;
+                dump_df[branch_name] = predictions[:, i]
+        dump_df.reset_index(inplace=True)
+        save_path = save_dir / f&#34;{sample}.feather&#34;
+        dump_df.to_feather(save_path)
+
+
+def dump_fit_npy(
+    model_wrapper: hep_model.Model_Base,
+    df_raw,
+    df_train,
+    job_config,
+    npy_dir=&#34;./&#34;,
+):
+    ic = job_config.input.clone()
+    tc = job_config.train.clone()
+    ac = job_config.apply.clone()
+
+    sample_list = ic.sig_list + ic.bkg_list
+    if ic.apply_data:
+        sample_list += ic.data_list
+
+    platform_meta = config_utils.load_current_platform_meta()
+    data_path = platform_meta[&#34;data_path&#34;]
+    if not data_path:
+        save_dir = pathlib.Path(npy_dir)
+    else:
+        save_dir = pathlib.Path(data_path) / npy_dir
+    pathlib.Path(save_dir).mkdir(parents=True, exist_ok=True)
+    logger.info(f&#34;&gt; Arrays to be saved to {save_dir}&#34;)
+
+    for sample in sample_list:
+        dump_branches = ac.cfg_fit_npy.fit_npy_branches + [&#34;weight&#34;]
+        # prepare contents
+        dump_df = df_raw.loc[df_raw[&#34;sample_name&#34;] == sample, dump_branches]
+        input_df = df_train.loc[
+            df_train[&#34;sample_name&#34;] == sample, ic.selected_features
+        ]
+        predictions, _, _ = k_folds_predict(
+            model_wrapper.get_model(), input_df.values
+        )
+        # dump
+        for branch in dump_branches:
+            branch_content = dump_df[branch].values
+            save_path = f&#34;{save_dir}/{sample}_{branch}.npy&#34;
+            numpy_io.save_npy_array(branch_content, save_path)
+        if len(tc.output_bkg_node_names) == 0:
+            save_path = f&#34;{save_dir}/{sample}_dnn_out.npy&#34;
+            numpy_io.save_npy_array(predictions, save_path)
+        else:
+            for i, out_node in enumerate([&#34;sig&#34;] + tc.output_bkg_node_names):
+                out_node = out_node.replace(&#34;+&#34;, &#34;_&#34;)
+                save_path = f&#34;{save_dir}/{sample}_dnn_out_{out_node}.npy&#34;
+                numpy_io.save_npy_array(predictions[:, i], save_path)
+
+
+def k_folds_predict(
+    k_fold_models, x, silence=False
+) -&gt; Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    y_pred_k_folds = list()
+    if not silence:
+        logger.info(&#34;Predicting y scores&#34;)
+    num_folds = len(k_fold_models)
+    for fold_num, fold_model in enumerate(k_fold_models):
+        if not silence:
+            logger.info(
+                f&#34;&gt; Predicting with model in fold {fold_num + 1}/{num_folds}&#34;
+            )
+        y_fold_pred = fold_model.predict(x)
+        y_pred_k_folds.append(y_fold_pred)
+    y_pred_mean = np.mean(y_pred_k_folds, axis=0)
+    y_pred_max = np.maximum.reduce(y_pred_k_folds)
+    y_pred_min = np.minimum.reduce(y_pred_k_folds)
+    return y_pred_mean, y_pred_min, y_pred_max
 
 
 def paint_bars(
@@ -44,7 +186,7 @@ def paint_bars(
     x_scale: float = None,
     density: bool = False,
     use_error: bool = False,
-    color: str = &#34;black&#34;,
+    color: str = None,
     fmt: str = &#34;.k&#34;,
 ) -&gt; None:
     &#34;&#34;&#34;Plot with vertical bar, can be used for data display.
@@ -62,8 +204,12 @@ def paint_bars(
         data = [data]
         weights = [weights]
     for datum, weight in zip(data, weights):
-        assert isinstance(datum, np.ndarray), &#34;data element should be numpy array.&#34;
-        assert isinstance(weight, np.ndarray), &#34;weights element should be numpy array.&#34;
+        assert isinstance(
+            datum, np.ndarray
+        ), &#34;data element should be numpy array.&#34;
+        assert isinstance(
+            weight, np.ndarray
+        ), &#34;weights element should be numpy array.&#34;
         assert (
             datum.shape == weight.shape
         ), &#34;Input weights should be None or have same type as arrays.&#34;
@@ -153,8 +299,175 @@ def paint_bars(
 <section>
 <h2 class="section-title" id="header-functions">Functions</h2>
 <dl>
+<dt id="hepynet.evaluate.evaluate_utils.create_epoch_subdir"><code class="name flex">
+<span>def <span class="ident">create_epoch_subdir</span></span>(<span>save_dir, epoch, n_digit) ‑> pathlib.Path</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def create_epoch_subdir(save_dir, epoch, n_digit) -&gt; pathlib.Path:
+    if save_dir is None:
+        logger.error(f&#34;Invalid save_dir: {save_dir}&#34;)
+        return None
+    if epoch is not None:
+        sub_dir = pathlib.Path(f&#34;{save_dir}/epoch_{str(epoch).zfill(n_digit)}&#34;)
+    else:
+        sub_dir = pathlib.Path(f&#34;{save_dir}/epoch_final&#34;)
+    sub_dir.mkdir(parents=True, exist_ok=True)
+    return sub_dir</code></pre>
+</details>
+</dd>
+<dt id="hepynet.evaluate.evaluate_utils.dump_fit_df"><code class="name flex">
+<span>def <span class="ident">dump_fit_df</span></span>(<span>model_wrapper: <a title="hepynet.train.hep_model.Model_Base" href="../train/hep_model.html#hepynet.train.hep_model.Model_Base">Model_Base</a>, df_raw, df_train, job_config, save_dir='./')</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def dump_fit_df(
+    model_wrapper: hep_model.Model_Base,
+    df_raw,
+    df_train,
+    job_config,
+    save_dir=&#34;./&#34;,
+):
+    ic = job_config.input.clone()
+    tc = job_config.train.clone()
+    ac = job_config.apply.clone()
+
+    sample_list = ic.sig_list + ic.bkg_list
+    if ic.apply_data:
+        sample_list += ic.data_list
+
+    platform_meta = config_utils.load_current_platform_meta()
+    data_path = platform_meta[&#34;data_path&#34;]
+    if not data_path:
+        save_dir = pathlib.Path(save_dir)
+    else:
+        save_dir = pathlib.Path(data_path) / save_dir
+    pathlib.Path(save_dir).mkdir(parents=True, exist_ok=True)
+    logger.info(f&#34;&gt; Saving dataframes to: {save_dir}&#34;)
+
+    for sample in sample_list:
+        logger.info(f&#34;&gt; &gt; processing: {sample}&#34;)
+        dump_branches = ac.fit_df.branches + [&#34;weight&#34;]
+        # prepare contents
+        dump_df: pd.DataFrame = df_raw.loc[
+            df_raw[&#34;sample_name&#34;] == sample, dump_branches
+        ]
+        input_df = df_train.loc[
+            df_train[&#34;sample_name&#34;] == sample, ic.selected_features
+        ]
+        predictions, _, _ = k_folds_predict(
+            model_wrapper.get_model(), input_df.values, silence=True
+        )
+        # dump
+        if len(tc.output_bkg_node_names) == 0:
+            dump_df[&#34;dnn_out_sig&#34;] = predictions
+        else:
+            for i, out_node in enumerate([&#34;sig&#34;] + tc.output_bkg_node_names):
+                out_node = out_node.replace(&#34;+&#34;, &#34;_&#34;)
+                branch_name = f&#34;dnn_out_{out_node}&#34;
+                dump_df[branch_name] = predictions[:, i]
+        dump_df.reset_index(inplace=True)
+        save_path = save_dir / f&#34;{sample}.feather&#34;
+        dump_df.to_feather(save_path)</code></pre>
+</details>
+</dd>
+<dt id="hepynet.evaluate.evaluate_utils.dump_fit_npy"><code class="name flex">
+<span>def <span class="ident">dump_fit_npy</span></span>(<span>model_wrapper: <a title="hepynet.train.hep_model.Model_Base" href="../train/hep_model.html#hepynet.train.hep_model.Model_Base">Model_Base</a>, df_raw, df_train, job_config, npy_dir='./')</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def dump_fit_npy(
+    model_wrapper: hep_model.Model_Base,
+    df_raw,
+    df_train,
+    job_config,
+    npy_dir=&#34;./&#34;,
+):
+    ic = job_config.input.clone()
+    tc = job_config.train.clone()
+    ac = job_config.apply.clone()
+
+    sample_list = ic.sig_list + ic.bkg_list
+    if ic.apply_data:
+        sample_list += ic.data_list
+
+    platform_meta = config_utils.load_current_platform_meta()
+    data_path = platform_meta[&#34;data_path&#34;]
+    if not data_path:
+        save_dir = pathlib.Path(npy_dir)
+    else:
+        save_dir = pathlib.Path(data_path) / npy_dir
+    pathlib.Path(save_dir).mkdir(parents=True, exist_ok=True)
+    logger.info(f&#34;&gt; Arrays to be saved to {save_dir}&#34;)
+
+    for sample in sample_list:
+        dump_branches = ac.cfg_fit_npy.fit_npy_branches + [&#34;weight&#34;]
+        # prepare contents
+        dump_df = df_raw.loc[df_raw[&#34;sample_name&#34;] == sample, dump_branches]
+        input_df = df_train.loc[
+            df_train[&#34;sample_name&#34;] == sample, ic.selected_features
+        ]
+        predictions, _, _ = k_folds_predict(
+            model_wrapper.get_model(), input_df.values
+        )
+        # dump
+        for branch in dump_branches:
+            branch_content = dump_df[branch].values
+            save_path = f&#34;{save_dir}/{sample}_{branch}.npy&#34;
+            numpy_io.save_npy_array(branch_content, save_path)
+        if len(tc.output_bkg_node_names) == 0:
+            save_path = f&#34;{save_dir}/{sample}_dnn_out.npy&#34;
+            numpy_io.save_npy_array(predictions, save_path)
+        else:
+            for i, out_node in enumerate([&#34;sig&#34;] + tc.output_bkg_node_names):
+                out_node = out_node.replace(&#34;+&#34;, &#34;_&#34;)
+                save_path = f&#34;{save_dir}/{sample}_dnn_out_{out_node}.npy&#34;
+                numpy_io.save_npy_array(predictions[:, i], save_path)</code></pre>
+</details>
+</dd>
+<dt id="hepynet.evaluate.evaluate_utils.k_folds_predict"><code class="name flex">
+<span>def <span class="ident">k_folds_predict</span></span>(<span>k_fold_models, x, silence=False) ‑> Tuple[numpy.ndarray, numpy.ndarray, numpy.ndarray]</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def k_folds_predict(
+    k_fold_models, x, silence=False
+) -&gt; Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    y_pred_k_folds = list()
+    if not silence:
+        logger.info(&#34;Predicting y scores&#34;)
+    num_folds = len(k_fold_models)
+    for fold_num, fold_model in enumerate(k_fold_models):
+        if not silence:
+            logger.info(
+                f&#34;&gt; Predicting with model in fold {fold_num + 1}/{num_folds}&#34;
+            )
+        y_fold_pred = fold_model.predict(x)
+        y_pred_k_folds.append(y_fold_pred)
+    y_pred_mean = np.mean(y_pred_k_folds, axis=0)
+    y_pred_max = np.maximum.reduce(y_pred_k_folds)
+    y_pred_min = np.minimum.reduce(y_pred_k_folds)
+    return y_pred_mean, y_pred_min, y_pred_max</code></pre>
+</details>
+</dd>
 <dt id="hepynet.evaluate.evaluate_utils.paint_bars"><code class="name flex">
-<span>def <span class="ident">paint_bars</span></span>(<span>ax, data, labels: list, weights, bins: int, range: tuple, title: str = None, x_label: str = None, y_label: str = None, x_unit: str = None, x_scale: float = None, density: bool = False, use_error: bool = False, color: str = 'black', fmt: str = '.k') ‑> NoneType</span>
+<span>def <span class="ident">paint_bars</span></span>(<span>ax, data, labels: list, weights, bins: int, range: tuple, title: str = None, x_label: str = None, y_label: str = None, x_unit: str = None, x_scale: float = None, density: bool = False, use_error: bool = False, color: str = None, fmt: str = '.k') ‑> NoneType</span>
 </code></dt>
 <dd>
 <div class="desc"><p>Plot with vertical bar, can be used for data display.</p>
@@ -179,7 +492,7 @@ According to ROOT:
     x_scale: float = None,
     density: bool = False,
     use_error: bool = False,
-    color: str = &#34;black&#34;,
+    color: str = None,
     fmt: str = &#34;.k&#34;,
 ) -&gt; None:
     &#34;&#34;&#34;Plot with vertical bar, can be used for data display.
@@ -197,8 +510,12 @@ According to ROOT:
         data = [data]
         weights = [weights]
     for datum, weight in zip(data, weights):
-        assert isinstance(datum, np.ndarray), &#34;data element should be numpy array.&#34;
-        assert isinstance(weight, np.ndarray), &#34;weights element should be numpy array.&#34;
+        assert isinstance(
+            datum, np.ndarray
+        ), &#34;data element should be numpy array.&#34;
+        assert isinstance(
+            weight, np.ndarray
+        ), &#34;weights element should be numpy array.&#34;
         assert (
             datum.shape == weight.shape
         ), &#34;Input weights should be None or have same type as arrays.&#34;
@@ -299,6 +616,10 @@ According to ROOT:
 </li>
 <li><h3><a href="#header-functions">Functions</a></h3>
 <ul class="">
+<li><code><a title="hepynet.evaluate.evaluate_utils.create_epoch_subdir" href="#hepynet.evaluate.evaluate_utils.create_epoch_subdir">create_epoch_subdir</a></code></li>
+<li><code><a title="hepynet.evaluate.evaluate_utils.dump_fit_df" href="#hepynet.evaluate.evaluate_utils.dump_fit_df">dump_fit_df</a></code></li>
+<li><code><a title="hepynet.evaluate.evaluate_utils.dump_fit_npy" href="#hepynet.evaluate.evaluate_utils.dump_fit_npy">dump_fit_npy</a></code></li>
+<li><code><a title="hepynet.evaluate.evaluate_utils.k_folds_predict" href="#hepynet.evaluate.evaluate_utils.k_folds_predict">k_folds_predict</a></code></li>
 <li><code><a title="hepynet.evaluate.evaluate_utils.paint_bars" href="#hepynet.evaluate.evaluate_utils.paint_bars">paint_bars</a></code></li>
 </ul>
 </li>

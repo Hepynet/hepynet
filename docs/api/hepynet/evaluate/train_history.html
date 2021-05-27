@@ -31,13 +31,47 @@
 import matplotlib.pyplot as plt
 
 from hepynet.common.common_utils import get_default_if_none
+from hepynet.train import train_utils
 
 logger = logging.getLogger(&#34;hepynet&#34;)
 
 
-def plot_history(
-    model_wrapper, job_config, save_dir=None,
-):
+def get_metrics_band(train_history, metric_name, num_folds):
+    # different folds can have different length of metrics
+    folds_lengths = list()
+    train_folds = list()
+    val_folds = list()
+    for fold_num in range(num_folds):
+        train_fold = train_history[fold_num][metric_name]
+        folds_lengths.append(len(train_fold))
+        train_folds.append(train_fold)
+        val_fold = train_history[fold_num][&#34;val_&#34; + metric_name]
+        val_folds.append(val_fold)
+
+    max_len = max(folds_lengths)
+
+    # process train metrics
+    (
+        train_mean,
+        train_low,
+        train_high,
+    ) = train_utils.merge_unequal_length_arrays(train_folds)
+    val_mean, val_low, val_high = train_utils.merge_unequal_length_arrays(
+        val_folds
+    )
+
+    return {
+        &#34;epoch&#34;: range(max_len),
+        &#34;mean&#34;: train_mean,
+        &#34;low&#34;: train_low,
+        &#34;high&#34;: train_high,
+        &#34;val_mean&#34;: val_mean,
+        &#34;val_low&#34;: val_low,
+        &#34;val_high&#34;: val_high,
+    }
+
+
+def plot_history(model_wrapper, job_config, save_dir=None):
     &#34;&#34;&#34;Evaluates training result.
 
         Args:
@@ -48,25 +82,53 @@ def plot_history(
     logger.info(&#34;Plotting training history&#34;)
     plot_config = job_config.apply.cfg_history
     train_history = model_wrapper._train_history
-    for metric_key in train_history.keys():
+    num_folds = model_wrapper._num_folds
+    for metric_key in train_history[0].keys():
         if not metric_key.startswith(&#34;val_&#34;):
-            plot_metrics(metric_key, train_history, plot_config, save_dir=save_dir)
+            plot_metrics(
+                metric_key,
+                train_history,
+                plot_config,
+                num_folds=num_folds,
+                save_dir=save_dir,
+            )
 
 
-def plot_metrics(metric_name, train_history, plot_config, save_dir: str = &#34;.&#34;,) -&gt; None:
-    logger.info(f&#34;Plotting {metric_name}&#34;)
-    metric_entries = train_history[metric_name]
-    val_metric_entries = train_history[&#34;val_&#34; + metric_name]
+def plot_metrics(
+    metric_name,
+    train_history,
+    plot_config,
+    num_folds: int = 1,
+    save_dir: str = &#34;.&#34;,
+) -&gt; None:
+    logger.info(f&#34;&gt; Plotting {metric_name}&#34;)
+    plot_dict = get_metrics_band(train_history, metric_name, num_folds)
     # plot
-    fig, ax = plt.subplots(figsize=(8, 6))
-    ax.plot(metric_entries)
-    ax.plot(val_metric_entries)
+    fig, ax = plt.subplots()
+    ax.plot(plot_dict[&#34;epoch&#34;], plot_dict[&#34;mean&#34;], label=&#34;train&#34;)
+    if num_folds &gt; 1:
+        ax.fill_between(
+            plot_dict[&#34;epoch&#34;],
+            plot_dict[&#34;low&#34;],
+            plot_dict[&#34;high&#34;],
+            alpha=0.2,
+            label=&#34;k-folds train&#34;,
+        )
+    ax.plot(plot_dict[&#34;epoch&#34;], plot_dict[&#34;val_mean&#34;], label=&#34;val&#34;)
+    if num_folds &gt; 1:
+        ax.fill_between(
+            plot_dict[&#34;epoch&#34;],
+            plot_dict[&#34;val_low&#34;],
+            plot_dict[&#34;val_high&#34;],
+            alpha=0.2,
+            label=&#34;k-folds val&#34;,
+        )
     # config
     plot_title = get_default_if_none(plot_config.plot_title, metric_name)
     ax.set_title(plot_title)
     ax.set_ylabel(metric_name)
     ax.set_xlabel(&#34;epoch&#34;)
-    ax.legend([&#34;train&#34;, &#34;val&#34;])
+    ax.legend()
     ax.grid()
     save_format = get_default_if_none(plot_config.save_format, &#34;png&#34;)
     fig.savefig(f&#34;{save_dir}/history_{metric_name}.{save_format}&#34;)</code></pre>
@@ -79,6 +141,50 @@ def plot_metrics(metric_name, train_history, plot_config, save_dir: str = &#34;.
 <section>
 <h2 class="section-title" id="header-functions">Functions</h2>
 <dl>
+<dt id="hepynet.evaluate.train_history.get_metrics_band"><code class="name flex">
+<span>def <span class="ident">get_metrics_band</span></span>(<span>train_history, metric_name, num_folds)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def get_metrics_band(train_history, metric_name, num_folds):
+    # different folds can have different length of metrics
+    folds_lengths = list()
+    train_folds = list()
+    val_folds = list()
+    for fold_num in range(num_folds):
+        train_fold = train_history[fold_num][metric_name]
+        folds_lengths.append(len(train_fold))
+        train_folds.append(train_fold)
+        val_fold = train_history[fold_num][&#34;val_&#34; + metric_name]
+        val_folds.append(val_fold)
+
+    max_len = max(folds_lengths)
+
+    # process train metrics
+    (
+        train_mean,
+        train_low,
+        train_high,
+    ) = train_utils.merge_unequal_length_arrays(train_folds)
+    val_mean, val_low, val_high = train_utils.merge_unequal_length_arrays(
+        val_folds
+    )
+
+    return {
+        &#34;epoch&#34;: range(max_len),
+        &#34;mean&#34;: train_mean,
+        &#34;low&#34;: train_low,
+        &#34;high&#34;: train_high,
+        &#34;val_mean&#34;: val_mean,
+        &#34;val_low&#34;: val_low,
+        &#34;val_high&#34;: val_high,
+    }</code></pre>
+</details>
+</dd>
 <dt id="hepynet.evaluate.train_history.plot_history"><code class="name flex">
 <span>def <span class="ident">plot_history</span></span>(<span>model_wrapper, job_config, save_dir=None)</span>
 </code></dt>
@@ -94,9 +200,7 @@ Defines plot size.</dd>
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def plot_history(
-    model_wrapper, job_config, save_dir=None,
-):
+<pre><code class="python">def plot_history(model_wrapper, job_config, save_dir=None):
     &#34;&#34;&#34;Evaluates training result.
 
         Args:
@@ -107,13 +211,20 @@ Defines plot size.</dd>
     logger.info(&#34;Plotting training history&#34;)
     plot_config = job_config.apply.cfg_history
     train_history = model_wrapper._train_history
-    for metric_key in train_history.keys():
+    num_folds = model_wrapper._num_folds
+    for metric_key in train_history[0].keys():
         if not metric_key.startswith(&#34;val_&#34;):
-            plot_metrics(metric_key, train_history, plot_config, save_dir=save_dir)</code></pre>
+            plot_metrics(
+                metric_key,
+                train_history,
+                plot_config,
+                num_folds=num_folds,
+                save_dir=save_dir,
+            )</code></pre>
 </details>
 </dd>
 <dt id="hepynet.evaluate.train_history.plot_metrics"><code class="name flex">
-<span>def <span class="ident">plot_metrics</span></span>(<span>metric_name, train_history, plot_config, save_dir: str = '.') ‑> NoneType</span>
+<span>def <span class="ident">plot_metrics</span></span>(<span>metric_name, train_history, plot_config, num_folds: int = 1, save_dir: str = '.') ‑> NoneType</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -121,20 +232,41 @@ Defines plot size.</dd>
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def plot_metrics(metric_name, train_history, plot_config, save_dir: str = &#34;.&#34;,) -&gt; None:
-    logger.info(f&#34;Plotting {metric_name}&#34;)
-    metric_entries = train_history[metric_name]
-    val_metric_entries = train_history[&#34;val_&#34; + metric_name]
+<pre><code class="python">def plot_metrics(
+    metric_name,
+    train_history,
+    plot_config,
+    num_folds: int = 1,
+    save_dir: str = &#34;.&#34;,
+) -&gt; None:
+    logger.info(f&#34;&gt; Plotting {metric_name}&#34;)
+    plot_dict = get_metrics_band(train_history, metric_name, num_folds)
     # plot
-    fig, ax = plt.subplots(figsize=(8, 6))
-    ax.plot(metric_entries)
-    ax.plot(val_metric_entries)
+    fig, ax = plt.subplots()
+    ax.plot(plot_dict[&#34;epoch&#34;], plot_dict[&#34;mean&#34;], label=&#34;train&#34;)
+    if num_folds &gt; 1:
+        ax.fill_between(
+            plot_dict[&#34;epoch&#34;],
+            plot_dict[&#34;low&#34;],
+            plot_dict[&#34;high&#34;],
+            alpha=0.2,
+            label=&#34;k-folds train&#34;,
+        )
+    ax.plot(plot_dict[&#34;epoch&#34;], plot_dict[&#34;val_mean&#34;], label=&#34;val&#34;)
+    if num_folds &gt; 1:
+        ax.fill_between(
+            plot_dict[&#34;epoch&#34;],
+            plot_dict[&#34;val_low&#34;],
+            plot_dict[&#34;val_high&#34;],
+            alpha=0.2,
+            label=&#34;k-folds val&#34;,
+        )
     # config
     plot_title = get_default_if_none(plot_config.plot_title, metric_name)
     ax.set_title(plot_title)
     ax.set_ylabel(metric_name)
     ax.set_xlabel(&#34;epoch&#34;)
-    ax.legend([&#34;train&#34;, &#34;val&#34;])
+    ax.legend()
     ax.grid()
     save_format = get_default_if_none(plot_config.save_format, &#34;png&#34;)
     fig.savefig(f&#34;{save_dir}/history_{metric_name}.{save_format}&#34;)</code></pre>
@@ -158,6 +290,7 @@ Defines plot size.</dd>
 </li>
 <li><h3><a href="#header-functions">Functions</a></h3>
 <ul class="">
+<li><code><a title="hepynet.evaluate.train_history.get_metrics_band" href="#hepynet.evaluate.train_history.get_metrics_band">get_metrics_band</a></code></li>
 <li><code><a title="hepynet.evaluate.train_history.plot_history" href="#hepynet.evaluate.train_history.plot_history">plot_history</a></code></li>
 <li><code><a title="hepynet.evaluate.train_history.plot_metrics" href="#hepynet.evaluate.train_history.plot_metrics">plot_metrics</a></code></li>
 </ul>

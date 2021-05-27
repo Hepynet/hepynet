@@ -28,26 +28,22 @@
 <span>Expand source code</span>
 </summary>
 <pre><code class="python"># -*- coding: utf-8 -*-
+
+# TODO: evaluate.py is disables and should be remove once equivalent functions developed
+
 &#34;&#34;&#34;Functions for making plots&#34;&#34;&#34;
 
-import copy
-import json
 import logging
 import math
-import warnings
 
-import matplotlib.pyplot as plt
 import numpy as np
-import seaborn as sns
-from scipy.special import softmax
-from sklearn.metrics import auc, roc_auc_score, roc_curve
 
-from hepynet.common import array_utils, common_utils
-from hepynet.data_io import feed_box, numpy_io
+from hepynet.data_io import array_utils, feed_box, numpy_io
 from hepynet.train import train_utils
 
 try:
     import ROOT
+
     root_available = True
     from easy_atlas_plot.plot_utils import plot_utils_root, th1_tools
 except ImportError:
@@ -91,7 +87,9 @@ def plot_2d_density(
         ylow=min(y),
         yup=max(y),
     )
-    hist_sig.fill_hist(fill_array_x=x, fill_array_y=y, weight_array=sig_weights)
+    hist_sig.fill_hist(
+        fill_array_x=x, fill_array_y=y, weight_array=sig_weights
+    )
     hist_sig.set_canvas(plot_canvas)
     hist_sig.set_palette(&#34;kBird&#34;)
     hist_sig.update_config(&#34;hist&#34;, &#34;SetStats&#34;, 0)
@@ -121,7 +119,9 @@ def plot_2d_density(
         ylow=min(y),
         yup=max(y),
     )
-    hist_bkg.fill_hist(fill_array_x=x, fill_array_y=y, weight_array=bkg_weights)
+    hist_bkg.fill_hist(
+        fill_array_x=x, fill_array_y=y, weight_array=bkg_weights
+    )
     hist_bkg.set_canvas(plot_canvas)
     hist_bkg.set_palette(&#34;kBird&#34;)
     hist_bkg.update_config(&#34;hist&#34;, &#34;SetStats&#34;, 0)
@@ -209,7 +209,6 @@ def plot_2d_significance_scan(
             bkg_weight=ic.bkg_sumofweight,
             data_weight=ic.data_sumofweight,
             test_rate=ic.test_rate,
-            rdm_seed=None,
             model_meta=job_wrapper.model_wrapper.model_meta,
             verbose=tc.verbose,
         )
@@ -223,7 +222,9 @@ def plot_2d_significance_scan(
         )
         plot_significances = []
         for dnn_cut in dnn_cut_list:
-            threshold_id = (np.abs(np.array(plot_thresholds) - dnn_cut)).argmin()
+            threshold_id = (
+                np.abs(np.array(plot_thresholds) - dnn_cut)
+            ).argmin()
             plot_significances.append(significances[threshold_id])
         w_inputs.append(plot_significances)
     x = []
@@ -245,7 +246,9 @@ def plot_2d_significance_scan(
             y += new_y
             w += new_w
     # make plot
-    plot_canvas = ROOT.TCanvas(&#34;2d_significance_c&#34;, &#34;2d_significance_c&#34;, 800, 600)
+    plot_canvas = ROOT.TCanvas(
+        &#34;2d_significance_c&#34;, &#34;2d_significance_c&#34;, 800, 600
+    )
     hist_sig = th1_tools.TH2FTool(
         &#34;2d_significance&#34;,
         &#34;2d_significance&#34;,
@@ -275,7 +278,9 @@ def plot_2d_significance_scan(
     hist_sig.update_config(&#34;y_axis&#34;, &#34;SetLabelOffset&#34;, 0.003)
     hist_sig.draw(&#34;colz&#34;)
     hist_sig_text.fill_hist(
-        fill_array_x=x, fill_array_y=y, weight_array=np.array(w).round(decimals=2)
+        fill_array_x=x,
+        fill_array_y=y,
+        weight_array=np.array(w).round(decimals=2),
     )
     hist_sig_text.set_canvas(plot_canvas)
     hist_sig_text.update_config(&#34;hist&#34;, &#34;SetMarkerSize&#34;, 1.8)
@@ -337,7 +342,9 @@ weight shown by color</p></div>
         ylow=min(y),
         yup=max(y),
     )
-    hist_sig.fill_hist(fill_array_x=x, fill_array_y=y, weight_array=sig_weights)
+    hist_sig.fill_hist(
+        fill_array_x=x, fill_array_y=y, weight_array=sig_weights
+    )
     hist_sig.set_canvas(plot_canvas)
     hist_sig.set_palette(&#34;kBird&#34;)
     hist_sig.update_config(&#34;hist&#34;, &#34;SetStats&#34;, 0)
@@ -367,7 +374,9 @@ weight shown by color</p></div>
         ylow=min(y),
         yup=max(y),
     )
-    hist_bkg.fill_hist(fill_array_x=x, fill_array_y=y, weight_array=bkg_weights)
+    hist_bkg.fill_hist(
+        fill_array_x=x, fill_array_y=y, weight_array=bkg_weights
+    )
     hist_bkg.set_canvas(plot_canvas)
     hist_bkg.set_palette(&#34;kBird&#34;)
     hist_bkg.update_config(&#34;hist&#34;, &#34;SetStats&#34;, 0)
@@ -464,7 +473,6 @@ weight shown by color</p></div>
             bkg_weight=ic.bkg_sumofweight,
             data_weight=ic.data_sumofweight,
             test_rate=ic.test_rate,
-            rdm_seed=None,
             model_meta=job_wrapper.model_wrapper.model_meta,
             verbose=tc.verbose,
         )
@@ -478,7 +486,9 @@ weight shown by color</p></div>
         )
         plot_significances = []
         for dnn_cut in dnn_cut_list:
-            threshold_id = (np.abs(np.array(plot_thresholds) - dnn_cut)).argmin()
+            threshold_id = (
+                np.abs(np.array(plot_thresholds) - dnn_cut)
+            ).argmin()
             plot_significances.append(significances[threshold_id])
         w_inputs.append(plot_significances)
     x = []
@@ -500,7 +510,9 @@ weight shown by color</p></div>
             y += new_y
             w += new_w
     # make plot
-    plot_canvas = ROOT.TCanvas(&#34;2d_significance_c&#34;, &#34;2d_significance_c&#34;, 800, 600)
+    plot_canvas = ROOT.TCanvas(
+        &#34;2d_significance_c&#34;, &#34;2d_significance_c&#34;, 800, 600
+    )
     hist_sig = th1_tools.TH2FTool(
         &#34;2d_significance&#34;,
         &#34;2d_significance&#34;,
@@ -530,7 +542,9 @@ weight shown by color</p></div>
     hist_sig.update_config(&#34;y_axis&#34;, &#34;SetLabelOffset&#34;, 0.003)
     hist_sig.draw(&#34;colz&#34;)
     hist_sig_text.fill_hist(
-        fill_array_x=x, fill_array_y=y, weight_array=np.array(w).round(decimals=2)
+        fill_array_x=x,
+        fill_array_y=y,
+        weight_array=np.array(w).round(decimals=2),
     )
     hist_sig_text.set_canvas(plot_canvas)
     hist_sig_text.update_config(&#34;hist&#34;, &#34;SetMarkerSize&#34;, 1.8)

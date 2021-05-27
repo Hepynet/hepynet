@@ -1,0 +1,2148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1" />
+<meta name="generator" content="pdoc 0.9.2" />
+<title>hepynet.train.hep_model API documentation</title>
+<meta name="description" content="Model wrapper class for DNN training" />
+<link rel="preload stylesheet" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/11.0.1/sanitize.min.css" integrity="sha256-PK9q560IAAa6WVRRh76LtCaI8pjTJ2z11v0miyNNjrs=" crossorigin>
+<link rel="preload stylesheet" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/11.0.1/typography.min.css" integrity="sha256-7l/o7C8jubJiy74VsKTidCy1yBkRtiUGbVkYBylBqUg=" crossorigin>
+<link rel="stylesheet preload" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.1.1/styles/github.min.css" crossorigin>
+<style>:root{--highlight-color:#fe9}.flex{display:flex !important}body{line-height:1.5em}#content{padding:20px}#sidebar{padding:30px;overflow:hidden}#sidebar > *:last-child{margin-bottom:2cm}.http-server-breadcrumbs{font-size:130%;margin:0 0 15px 0}#footer{font-size:.75em;padding:5px 30px;border-top:1px solid #ddd;text-align:right}#footer p{margin:0 0 0 1em;display:inline-block}#footer p:last-child{margin-right:30px}h1,h2,h3,h4,h5{font-weight:300}h1{font-size:2.5em;line-height:1.1em}h2{font-size:1.75em;margin:1em 0 .50em 0}h3{font-size:1.4em;margin:25px 0 10px 0}h4{margin:0;font-size:105%}h1:target,h2:target,h3:target,h4:target,h5:target,h6:target{background:var(--highlight-color);padding:.2em 0}a{color:#058;text-decoration:none;transition:color .3s ease-in-out}a:hover{color:#e82}.title code{font-weight:bold}h2[id^="header-"]{margin-top:2em}.ident{color:#900}pre code{background:#f8f8f8;font-size:.8em;line-height:1.4em}code{background:#f2f2f1;padding:1px 4px;overflow-wrap:break-word}h1 code{background:transparent}pre{background:#f8f8f8;border:0;border-top:1px solid #ccc;border-bottom:1px solid #ccc;margin:1em 0;padding:1ex}#http-server-module-list{display:flex;flex-flow:column}#http-server-module-list div{display:flex}#http-server-module-list dt{min-width:10%}#http-server-module-list p{margin-top:0}.toc ul,#index{list-style-type:none;margin:0;padding:0}#index code{background:transparent}#index h3{border-bottom:1px solid #ddd}#index ul{padding:0}#index h4{margin-top:.6em;font-weight:bold}@media (min-width:200ex){#index .two-column{column-count:2}}@media (min-width:300ex){#index .two-column{column-count:3}}dl{margin-bottom:2em}dl dl:last-child{margin-bottom:4em}dd{margin:0 0 1em 3em}#header-classes + dl > dd{margin-bottom:3em}dd dd{margin-left:2em}dd p{margin:10px 0}.name{background:#eee;font-weight:bold;font-size:.85em;padding:5px 10px;display:inline-block;min-width:40%}.name:hover{background:#e0e0e0}dt:target .name{background:var(--highlight-color)}.name > span:first-child{white-space:nowrap}.name.class > span:nth-child(2){margin-left:.4em}.inherited{color:#999;border-left:5px solid #eee;padding-left:1em}.inheritance em{font-style:normal;font-weight:bold}.desc h2{font-weight:400;font-size:1.25em}.desc h3{font-size:1em}.desc dt code{background:inherit}.source summary,.git-link-div{color:#666;text-align:right;font-weight:400;font-size:.8em;text-transform:uppercase}.source summary > *{white-space:nowrap;cursor:pointer}.git-link{color:inherit;margin-left:1em}.source pre{max-height:500px;overflow:auto;margin:0}.source pre code{font-size:12px;overflow:visible}.hlist{list-style:none}.hlist li{display:inline}.hlist li:after{content:',\2002'}.hlist li:last-child:after{content:none}.hlist .hlist{display:inline;padding-left:1em}img{max-width:100%}td{padding:0 .5em}.admonition{padding:.1em .5em;margin-bottom:1em}.admonition-title{font-weight:bold}.admonition.note,.admonition.info,.admonition.important{background:#aef}.admonition.todo,.admonition.versionadded,.admonition.tip,.admonition.hint{background:#dfd}.admonition.warning,.admonition.versionchanged,.admonition.deprecated{background:#fd4}.admonition.error,.admonition.danger,.admonition.caution{background:lightpink}</style>
+<style media="screen and (min-width: 700px)">@media screen and (min-width:700px){#sidebar{width:30%;height:100vh;overflow:auto;position:sticky;top:0}#content{width:70%;max-width:100ch;padding:3em 4em;border-left:1px solid #ddd}pre code{font-size:1em}.item .name{font-size:1em}main{display:flex;flex-direction:row-reverse;justify-content:flex-end}.toc ul ul,#index ul{padding-left:1.5em}.toc > ul > li{margin-top:.5em}}</style>
+<style media="print">@media print{#sidebar h1{page-break-before:always}.source{display:none}}@media print{*{background:transparent !important;color:#000 !important;box-shadow:none !important;text-shadow:none !important}a[href]:after{content:" (" attr(href) ")";font-size:90%}a[href][title]:after{content:none}abbr[title]:after{content:" (" attr(title) ")"}.ir a:after,a[href^="javascript:"]:after,a[href^="#"]:after{content:""}pre,blockquote{border:1px solid #999;page-break-inside:avoid}thead{display:table-header-group}tr,img{page-break-inside:avoid}img{max-width:100% !important}@page{margin:0.5cm}p,h2,h3{orphans:3;widows:3}h1,h2,h3,h4,h5,h6{page-break-after:avoid}}</style>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.1.1/highlight.min.js" integrity="sha256-Uv3H6lx7dJmRfRvH8TH6kJD1TSK1aFcwgx+mdg3epi8=" crossorigin></script>
+<script>window.addEventListener('DOMContentLoaded', () => hljs.initHighlighting())</script>
+</head>
+<body>
+<main>
+<article id="content">
+<header>
+<h1 class="title">Module <code>hepynet.train.hep_model</code></h1>
+</header>
+<section id="section-intro">
+<p>Model wrapper class for DNN training</p>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python"># -*- coding: utf-8 -*-
+&#34;&#34;&#34;Model wrapper class for DNN training&#34;&#34;&#34;
+import copy
+import datetime
+import logging
+import pathlib
+from typing import Dict, Iterable, Optional, Tuple
+
+import keras
+import numpy as np
+import ray
+import tensorflow as tf
+import yaml
+from keras import backend as K
+from keras.callbacks import ModelCheckpoint, callbacks
+from keras.layers import Dense, Dropout
+from keras.models import Sequential
+from keras.optimizers import SGD, Adagrad, Adam, RMSprop
+from ray import tune
+from ray.tune.integration.keras import TuneReportCallback
+from sklearn.metrics import roc_auc_score
+
+import hepynet.common.hepy_type as ht
+from hepynet.data_io import feed_box
+from hepynet.train import train_utils
+
+logger = logging.getLogger(&#34;hepynet&#34;)
+
+# fix tensorflow 2.2 issue
+gpus = tf.config.experimental.list_physical_devices(&#34;GPU&#34;)
+if gpus:
+    try:
+        # Currently, memory growth needs to be the same across GPUs
+        for gpu in gpus:
+            tf.config.experimental.set_memory_growth(gpu, True)
+        logical_gpus = tf.config.experimental.list_logical_devices(&#34;GPU&#34;)
+        logger.info(
+            f&#34;GPU availability: {len(gpus)} Physical GPUs, {len(logical_gpus)} Logical GPUs&#34;
+        )
+    except RuntimeError as e:
+        # Memory growth must be set before GPUs have been initialized
+        logger.error(e)
+# Set up mixed float16 training for TF &gt;= 2.4 TODO: need to upgrade TF
+# mixed_precision.set_global_policy(&#39;mixed_float16&#39;)
+
+# self-defined metrics functions
+def plain_acc(y_true, y_pred):
+    return K.mean(K.less(K.abs(y_pred * 1.0 - y_true * 1.0), 0.5))
+    # return 1-K.mean(K.abs(y_pred-y_true))
+
+
+class Model_Base(object):
+    &#34;&#34;&#34;Base model of deep neural network
+    &#34;&#34;&#34;
+
+    def __init__(self, job_config: ht.config):
+        self._job_config = job_config.clone()
+        self._model_create_time = str(datetime.datetime.now())
+        self._model_is_compiled = False
+        self._model_is_loaded = False
+        self._model_is_saved = False
+        self._model_is_trained = False
+        self._model_name = self._job_config.train.model_name
+        self._model_save_path = None
+        self._train_history = list()
+
+        num_folds = self._job_config.train.k_folds
+        if isinstance(num_folds, int) and num_folds &gt;= 2:
+            self._num_folds = num_folds
+        else:
+            self._num_folds = 1
+
+    def build(self):
+        logger.warn(
+            &#34;The virtual function Model_Base.build() is called, please implement override funcion!&#34;
+        )
+
+    def get_feedbox(self) -&gt; feed_box.Feedbox:
+        return self._feedbox
+
+    def get_job_config(self) -&gt; ht.config:
+        return self._job_config
+
+    def get_model(self, fold_num=None):
+        &#34;&#34;&#34;Returns model.&#34;&#34;&#34;
+        if not self._model_is_compiled:
+            logger.warning(&#34;Model is not compiled&#34;)
+        if fold_num is None:
+            return self._model
+        else:
+            return self._model[fold_num]
+
+    def get_model_meta(self) -&gt; dict:
+        return self._model_meta
+
+    def get_model_save_dir(
+        self, fold_num: Optional[int] = None
+    ) -&gt; ht.pathlike:
+        save_dir = f&#34;{self._job_config.run.save_sub_dir}/models&#34;
+        if fold_num is not None:
+            save_dir += f&#34;/fold_{fold_num}&#34;
+        return save_dir
+
+    def set_inputs(self, job_config: ht.config):
+        &#34;&#34;&#34;Prepare feedbox to generate inputs&#34;&#34;&#34;
+        rc = self._job_config.run.clone()
+        try:
+            input_dir = pathlib.Path(rc.save_sub_dir) / &#34;models&#34;
+            with open(input_dir / &#34;norm_dict.yaml&#34;, &#34;r&#34;) as norm_file:
+                norm_dict = yaml.load(norm_file, Loader=yaml.UnsafeLoader)
+            logger.info(f&#34;Successfully loaded norm_dict in {input_dir}&#34;)
+        except:
+            norm_dict = None
+        feedbox = feed_box.Feedbox(job_config, norm_dict=norm_dict)
+        self._model_meta[&#34;norm_dict&#34;] = copy.deepcopy(feedbox.get_norm_dict())
+        self._feedbox = feedbox
+        self._array_prepared = feedbox._array_prepared
+
+    def load_model(self, epoch: Optional[int] = None):
+        &#34;&#34;&#34;Loads saved model.&#34;&#34;&#34;
+        # load model(s)
+        self._model = list()
+        num_exist_models = 0
+        for fold_num in range(self._num_folds):
+            model_dir = self.get_model_save_dir(fold_num=fold_num)
+            if epoch is None:
+                model_path = pathlib.Path(f&#34;{model_dir}/{self._model_name}.h5&#34;)
+            else:
+                model_path = pathlib.Path(
+                    f&#34;{model_dir}/{self._model_name}_epoch{epoch}.h5&#34;
+                )
+            if model_path.exists():
+                fold_model = keras.models.load_model(
+                    model_path,
+                    custom_objects={&#34;plain_acc&#34;: plain_acc,},
+                    compile=False,
+                )  # it&#39;s important to specify custom_objects
+                self._model.append(fold_model)
+                num_exist_models += 1
+        self._model_is_loaded = True
+        # Load parameters
+        model_dir = self.get_model_save_dir()
+        self.load_model_parameters(model_dir)
+        self.model_paras_is_loaded = True
+        if epoch is None:
+            logger.info(f&#34;{num_exist_models}/{self._num_folds} models loaded&#34;)
+        else:
+            logger.info(
+                f&#34;{num_exist_models}/{self._num_folds} models loaded for epoch {epoch}&#34;
+            )
+
+    def load_model_parameters(self, model_dir: ht.pathlike):
+        &#34;&#34;&#34;Retrieves model parameters from yaml file.&#34;&#34;&#34;
+        paras_path = f&#34;{model_dir}/fold_{0}/{self._model_name}_paras.yaml&#34;
+        with open(paras_path, &#34;r&#34;) as paras_file:
+            paras_dict = yaml.load(paras_file, Loader=yaml.UnsafeLoader)
+        # update meta data
+        model_meta_save = paras_dict[&#34;model_meta&#34;]
+        self._model_meta = model_meta_save
+        self._model_name = model_meta_save[&#34;model_name&#34;]
+        self._model_label = model_meta_save[&#34;model_label&#34;]
+        self._model_note = model_meta_save[&#34;model_note&#34;]
+        self._model_create_time = model_meta_save[&#34;model_create_time&#34;]
+        self._model_is_compiled = model_meta_save[&#34;model_is_compiled&#34;]
+        self._model_is_saved = model_meta_save[&#34;model_is_saved&#34;]
+        self._model_is_trained = model_meta_save[&#34;model_is_trained&#34;]
+        # load train history
+        for fold_num in range(self._num_folds):
+            paras_path = (
+                f&#34;{model_dir}/fold_{fold_num}/{self._model_name}_paras.yaml&#34;
+            )
+            with open(paras_path, &#34;r&#34;) as paras_file:
+                fold_paras_dict = yaml.load(
+                    paras_file, Loader=yaml.UnsafeLoader
+                )
+            self._train_history[fold_num] = fold_paras_dict[&#34;train_history&#34;]
+
+    def save_model(
+        self, file_name: Optional[str] = None, fold_num: Optional[int] = None
+    ):
+        &#34;&#34;&#34;Saves trained model.&#34;&#34;&#34;
+        # Define save path
+        save_dir = self.get_model_save_dir(fold_num=fold_num)
+        if file_name is None:
+            file_name = self._model_name
+        # Check path
+        save_path = f&#34;{save_dir}/{file_name}.h5&#34;
+        pathlib.Path(save_dir).mkdir(parents=True, exist_ok=True)
+        # Save
+        if fold_num is not None:
+            self._model[fold_num].save(save_path)
+        else:
+            self._model[0].save(save_path)
+        self._model_save_path = save_path
+        logger.debug(
+            f&#34;model: {self._model_name} has been saved to: {save_path}&#34;
+        )
+        self._model_is_saved = True
+
+    def save_model_paras(
+        self, file_name: Optional[str] = None, fold_num: Optional[int] = None
+    ):
+        &#34;&#34;&#34;Save model parameters to yaml file.&#34;&#34;&#34;
+        rc = self._job_config.run.clone()
+        # prepare paras
+        paras_dict = dict()
+        model_meta_save = copy.deepcopy(self._model_meta)
+        model_meta_save[&#34;model_name&#34;] = self._model_name
+        model_meta_save[&#34;model_label&#34;] = self._model_label
+        model_meta_save[&#34;model_note&#34;] = self._model_note
+        model_meta_save[&#34;model_create_time&#34;] = self._model_create_time
+        model_meta_save[&#34;model_is_compiled&#34;] = self._model_is_compiled
+        model_meta_save[&#34;model_is_saved&#34;] = self._model_is_saved
+        model_meta_save[&#34;model_is_trained&#34;] = self._model_is_trained
+        paras_dict[&#34;model_meta&#34;] = model_meta_save
+        paras_dict[&#34;train_history&#34;] = self._train_history[fold_num]
+        # save to file
+        save_dir = self.get_model_save_dir(fold_num=fold_num)
+        if file_name is None:
+            file_name = self._model_name
+        save_path = f&#34;{save_dir}/{file_name}_paras.yaml&#34;
+        with open(save_path, &#34;w&#34;) as write_file:
+            yaml.dump(paras_dict, write_file, indent=2)
+        logger.debug(f&#34;model parameters has been saved to: {save_path}&#34;)
+
+        norm_dict_path = (
+            pathlib.Path(rc.save_sub_dir) / &#34;models&#34; / &#34;norm_dict.yaml&#34;
+        )
+        with open(norm_dict_path, &#34;w&#34;) as norm_file:
+            yaml.dump(self._feedbox.get_norm_dict(), norm_file, indent=2)
+
+
+class Model_Sequential_Base(Model_Base):
+    &#34;&#34;&#34;Sequential model base.
+
+    Note:
+        This class should not be used directly
+    &#34;&#34;&#34;
+
+    def __init__(self, job_config: ht.config):
+        super().__init__(job_config)
+        tc = self._job_config.train
+        ic = self._job_config.input
+        # Model parameters
+        self._model_label = &#34;mod_seq_base&#34;
+        self._model_note = &#34;Basic sequential model.&#34;
+        self._model_input_dim = len(ic.selected_features)
+        if isinstance(tc.k_folds, int) and tc.k_folds &gt;= 2:
+            self._num_folds = tc.k_folds
+            models = list()
+            for _ in range(tc.k_folds):
+                models.append(Sequential())
+            self._model = models
+        else:
+            self._num_folds = 1
+            self._model = [Sequential()]
+        self._train_history = [None] * self._num_folds
+        # Arrays
+        self._array_prepared = False
+        self._model_meta = {
+            &#34;norm_dict&#34;: None,
+        }
+        # Report
+        self._save_tb_logs = tc.save_tb_logs
+        self._tb_logs_path = tc.tb_logs_path
+
+    def get_hypers(self):
+        &#34;&#34;&#34;Gets a dictionary of hyper-parameters that defines a training&#34;&#34;&#34;
+        tc = self._job_config.train.clone()
+        hypers = {
+            # hypers for building model
+            &#34;layers&#34;: tc.layers,
+            &#34;nodes&#34;: tc.nodes,
+            &#34;dropout_rate&#34;: tc.dropout_rate,
+            &#34;output_bkg_node_names&#34;: tc.output_bkg_node_names,
+            &#34;train_metrics&#34;: tc.train_metrics,
+            &#34;train_metrics_weighted&#34;: tc.train_metrics_weighted,
+            &#34;learn_rate&#34;: tc.learn_rate,
+            &#34;learn_rate_decay&#34;: tc.learn_rate_decay,
+            &#34;momentum&#34;: tc.momentum,
+            &#34;nesterov&#34;: tc.nesterov,
+            # hypers for training
+            &#34;val_split&#34;: tc.val_split,
+            &#34;batch_size&#34;: tc.batch_size,
+            &#34;epochs&#34;: tc.epochs,
+            &#34;sig_class_weight&#34;: tc.sig_class_weight,
+            &#34;bkg_class_weight&#34;: tc.bkg_class_weight,
+        }
+        return hypers
+
+    def get_inputs(
+        self,
+    ) -&gt; Dict[str, Tuple[np.ndarray, np.ndarray, np.ndarray]]:
+        &#34;&#34;&#34;Gets train/test datasets from feedbox&#34;&#34;&#34;
+        ic = self._job_config.input.clone()
+        ## get input
+        input_df = self._feedbox.get_processed_df()
+        cols = ic.selected_features
+        # load train/test
+        train_index = input_df[&#34;is_train&#34;] == True
+        test_index = input_df[&#34;is_train&#34;] == False
+        x_train = input_df.loc[train_index, cols].values
+        x_test = input_df.loc[test_index, cols].values
+        y_train = input_df.loc[train_index, [&#34;y&#34;]].values
+        y_test = input_df.loc[test_index, [&#34;y&#34;]].values
+        wt_train = input_df.loc[train_index, &#34;weight&#34;].values
+        wt_test = input_df.loc[test_index, &#34;weight&#34;].values
+        del input_df
+        # remove negative weight events
+        if ic.rm_negative_weight_events == True:
+            wt_train = wt_train.clip(min=0)
+            wt_test = wt_test.clip(min=0)
+
+        return {
+            &#34;train&#34;: (x_train, y_train, wt_train),
+            &#34;test&#34;: (x_test, y_test, wt_test),
+        }
+
+    def get_train_callbacks(self, fold_num: Optional[int] = None) -&gt; list:
+        &#34;&#34;&#34;Prepares callbacks of training&#34;&#34;&#34;
+        train_callbacks = []
+        tc = self._job_config.train.clone()
+        if self._save_tb_logs:  # TODO: add back this function
+            pass
+            # if self._tb_logs_path is None:
+            #    self._tb_logs_path = &#34;temp_logs/{}&#34;.format(self._model_label)
+            #    logger.warning(
+            #        &#34;TensorBoard logs path not specified, set path to: {}&#34;.format(
+            #            self._tb_logs_path
+            #        )
+            #    )
+            # tb_callback = TensorBoard(log_dir=self._tb_logs_path, histogram_freq=1)
+            # train_callbacks.append(tb_callback)
+        if tc.use_early_stop:
+            early_stop_callback = callbacks.EarlyStopping(
+                monitor=tc.early_stop_paras.monitor,
+                min_delta=tc.early_stop_paras.min_delta,
+                patience=tc.early_stop_paras.patience,
+                mode=tc.early_stop_paras.mode,
+                restore_best_weights=tc.early_stop_paras.restore_best_weights,
+            )
+            train_callbacks.append(early_stop_callback)
+        ## set up check point to save model in each epoch
+        if tc.save_model:
+            model_save_dir = self.get_model_save_dir(fold_num=fold_num)
+            pathlib.Path(model_save_dir).mkdir(parents=True, exist_ok=True)
+            path_pattern = (
+                f&#34;{model_save_dir}/{self._model_name}_epoch{{epoch}}.h5&#34;
+            )
+            checkpoint = ModelCheckpoint(path_pattern, monitor=&#34;val_loss&#34;)
+            train_callbacks.append(checkpoint)
+        return train_callbacks
+
+    def train(self):
+        # Check
+        if not self._model_is_compiled:
+            logger.critical(&#34;DNN model is not yet built, rebuilding&#34;)
+            self.build()
+        if not self._array_prepared:
+            logger.critical(&#34;Training data is not ready, pleas set up inputs&#34;)
+            exit(1)
+        # Prepare
+        tc = self._job_config.train.clone()
+        input_dict = self.get_inputs()
+        model = self.get_model()
+        hypers = self.get_hypers()
+        n_folds = self._num_folds
+        verbose = tc.verbose
+        # Input
+        x_train, y_train, wt_train = input_dict[&#34;train&#34;]
+        x_test, y_test, wt_test = input_dict[&#34;test&#34;]
+        # Train
+        logger.info(&#34;-&#34; * 40)
+        logger.info(&#34;Loading inputs&#34;)
+        (
+            train_index_list,
+            validation_index_list,
+        ) = train_utils.get_train_val_indices(
+            y_train, y_train, wt_train, hypers[&#34;val_split&#34;], k_folds=tc.k_folds
+        )
+        for fold_num in range(n_folds):
+            logger.info(f&#34;Training start. Using model: {self._model_name}&#34;)
+            logger.info(f&#34;Model info: {self._model_note}&#34;)
+            if n_folds &gt;= 2:
+                logger.info(
+                    f&#34;Performing k-fold training {fold_num + 1}/{n_folds}&#34;
+                )
+            fold_model = model[fold_num]
+            fold_model.summary()
+            train_index = train_index_list[fold_num]
+            val_index = validation_index_list[fold_num]
+            x_fold = x_train[train_index]
+            y_fold = y_train[train_index]
+            wt_fold = wt_train[train_index]
+            val_x_fold = x_train[val_index]
+            val_y_fold = y_train[val_index]
+            val_wt_fold = wt_train[val_index]
+            val_fold = (val_x_fold, val_y_fold, val_wt_fold)
+            logger.info(
+                f&#34;&gt; Training on {len(y_fold)}, validating on {len(val_y_fold)} events.&#34;
+            )
+            history_obj = fold_model.fit(
+                x_fold,
+                y_fold,
+                batch_size=hypers[&#34;batch_size&#34;],
+                epochs=hypers[&#34;epochs&#34;],
+                validation_data=val_fold,
+                shuffle=True,
+                class_weight={
+                    1: hypers[&#34;sig_class_weight&#34;],
+                    0: hypers[&#34;bkg_class_weight&#34;],
+                },
+                sample_weight=wt_fold,
+                callbacks=self.get_train_callbacks(fold_num=fold_num),
+                verbose=verbose,
+            )
+            logger.info(&#34;Training finished.&#34;)
+            # evaluation
+            logger.info(&#34;Evaluate with test dataset:&#34;)
+            score = fold_model.evaluate(
+                x_test, y_test, verbose=verbose, sample_weight=wt_test,
+            )
+            if not isinstance(score, Iterable):
+                logger.info(f&#34;&gt; test loss: {score}&#34;)
+            else:
+                for i, metric in enumerate(fold_model.metrics_names):
+                    logger.info(f&#34;&gt; test - {metric}: {score[i]}&#34;)
+            # save training details
+            self._train_history[fold_num] = history_obj.history
+            self.save_model(fold_num=fold_num)
+            self.save_model_paras(fold_num=fold_num)
+        # Update status
+        self._model_is_trained = True
+
+
+class Model_Sequential_Flat(Model_Sequential_Base):
+    &#34;&#34;&#34;Flat sequential model&#34;&#34;&#34;
+
+    def __init__(self, job_config):
+        super().__init__(job_config)
+
+        self._model_label = &#34;mod_seq&#34;
+        self._model_note = &#34;Sequential model with flexible layers and nodes.&#34;
+        self._tune_fun_name = &#34;tune_Model_Sequential_Flat&#34;
+
+    def build(self):
+        hypers = self.get_hypers()
+        for fold_num in range(self._num_folds):
+            fold_model = self._model[fold_num]
+            self.build_single(fold_model, hypers)
+        self._model_is_compiled = True
+
+    def build_single(self, fold_model, hypers):
+        # Add layers
+        for layer in range(int(hypers[&#34;layers&#34;])):
+            # input layer
+            if layer == 0:
+                fold_model.add(
+                    Dense(
+                        hypers[&#34;nodes&#34;],
+                        kernel_initializer=&#34;glorot_uniform&#34;,
+                        activation=&#34;relu&#34;,
+                        input_dim=self._model_input_dim,
+                    )
+                )
+            # hidden layers
+            else:
+                fold_model.add(
+                    Dense(
+                        hypers[&#34;nodes&#34;],
+                        kernel_initializer=&#34;glorot_uniform&#34;,
+                        activation=&#34;relu&#34;,
+                    )
+                )
+            if hypers[&#34;dropout_rate&#34;] != 0:
+                fold_model.add(Dropout(hypers[&#34;dropout_rate&#34;]))
+        # output layer
+        if hypers[&#34;output_bkg_node_names&#34;]:
+            num_nodes_out = len(hypers[&#34;output_bkg_node_names&#34;]) + 1
+        else:
+            num_nodes_out = 1
+        fold_model.add(
+            Dense(
+                num_nodes_out,
+                kernel_initializer=&#34;glorot_uniform&#34;,
+                activation=&#34;sigmoid&#34;,
+            )
+        )
+        # Compile
+        # transfer self-defined metrics into real function
+        metrics = copy.deepcopy(hypers[&#34;train_metrics&#34;])
+        weighted_metrics = copy.deepcopy(hypers[&#34;train_metrics_weighted&#34;])
+        if &#34;plain_acc&#34; in metrics:
+            index = metrics.index(&#34;plain_acc&#34;)
+            metrics[index] = plain_acc
+        if &#34;plain_acc&#34; in weighted_metrics:
+            index = weighted_metrics.index(&#34;plain_acc&#34;)
+            weighted_metrics[index] = plain_acc
+        if &#34;auc&#34; in weighted_metrics:
+            index = weighted_metrics.index(&#34;auc&#34;)
+            weighted_metrics[index] = tf.keras.metrics.AUC(name=&#34;auc&#34;)
+        # compile model
+        fold_model.compile(
+            loss=&#34;binary_crossentropy&#34;,
+            optimizer=SGD(
+                lr=hypers[&#34;learn_rate&#34;],
+                decay=hypers[&#34;learn_rate_decay&#34;],
+                momentum=hypers[&#34;momentum&#34;],
+                nesterov=hypers[&#34;nesterov&#34;],
+            ),
+            metrics=metrics,
+            weighted_metrics=weighted_metrics,
+        )
+
+    def get_hypers_tune(self):
+        &#34;&#34;&#34;Gets a dict of hyperparameter (space) for auto-tuning&#34;&#34;&#34;
+        ic = self._job_config.input.clone()
+        rc = self._job_config.run.clone()
+        model_cfg = self._job_config.tune.clone().model
+        gs = train_utils.get_single_hyper
+        hypers = {
+            # hypers for building model
+            &#34;layers&#34;: gs(model_cfg.layers),
+            &#34;nodes&#34;: gs(model_cfg.nodes),
+            &#34;dropout_rate&#34;: gs(model_cfg.dropout_rate),
+            &#34;output_bkg_node_names&#34;: model_cfg.output_bkg_node_names,
+            &#34;tune_metrics&#34;: model_cfg.tune_metrics,
+            &#34;tune_metrics_weighted&#34;: model_cfg.tune_metrics_weighted,
+            &#34;learn_rate&#34;: gs(model_cfg.learn_rate),
+            &#34;learn_rate_decay&#34;: gs(model_cfg.learn_rate_decay),
+            &#34;momentum&#34;: gs(model_cfg.momentum),
+            &#34;nesterov&#34;: gs(model_cfg.nesterov),
+            # hypers for training
+            &#34;batch_size&#34;: gs(model_cfg.batch_size),
+            &#34;epochs&#34;: gs(model_cfg.epochs),
+            &#34;sig_class_weight&#34;: gs(model_cfg.sig_class_weight),
+            &#34;bkg_class_weight&#34;: gs(model_cfg.bkg_class_weight),
+            &#34;use_early_stop&#34;: model_cfg.use_early_stop,
+            &#34;early_stop_paras&#34;: model_cfg.early_stop_paras.get_config_dict(),
+            # job config
+            &#34;input_dim&#34;: len(ic.selected_features),
+            # input dir
+            &#34;input_dir&#34;: str(pathlib.Path(rc.tune_input_cache).resolve()),
+        }
+        return hypers
+
+
+# tuning functions for ray.tune
+
+## Note: such functions take one config argument and report the score
+
+
+def tune_Model_Sequential_Flat(config, checkpoint_dir=None):
+    &#34;&#34;&#34;Trainable function for ray-tune&#34;&#34;&#34;
+    input_dir = pathlib.Path(config[&#34;input_dir&#34;])
+    x_train = np.load(input_dir / &#34;x_train.npy&#34;)
+    x_train_unreset = np.load(input_dir / &#34;x_train_unreset.npy&#34;)
+    y_train = np.load(input_dir / &#34;y_train.npy&#34;)
+    wt_train = np.load(input_dir / &#34;wt_train.npy&#34;)
+    x_val = np.load(input_dir / &#34;x_val.npy&#34;)
+    x_val_unreset = np.load(input_dir / &#34;x_val_unreset.npy&#34;)
+    y_val = np.load(input_dir / &#34;y_val.npy&#34;)
+    wt_val = np.load(input_dir / &#34;wt_val.npy&#34;)
+
+    # build model
+    import tensorflow as tf  # must import inside function, other wise will get errors of ray tune
+
+    model = tf.keras.models.Sequential()
+    for layer in range(int(config[&#34;layers&#34;])):
+        ## input layer
+        if layer == 0:
+            model.add(
+                tf.keras.layers.Dense(
+                    config[&#34;nodes&#34;],
+                    kernel_initializer=&#34;glorot_uniform&#34;,
+                    activation=&#34;relu&#34;,
+                    input_dim=config[&#34;input_dim&#34;],
+                )
+            )
+        ## hidden layers
+        else:
+            model.add(
+                tf.keras.layers.Dense(
+                    config[&#34;nodes&#34;],
+                    kernel_initializer=&#34;glorot_uniform&#34;,
+                    activation=&#34;relu&#34;,
+                )
+            )
+        if config[&#34;dropout_rate&#34;] != 0:
+            model.add(tf.keras.layers.Dropout(config[&#34;dropout_rate&#34;]))
+    ## output layer
+    if config[&#34;output_bkg_node_names&#34;]:
+        num_nodes_out = len(config[&#34;output_bkg_node_names&#34;]) + 1
+    else:
+        num_nodes_out = 1
+    model.add(
+        tf.keras.layers.Dense(
+            num_nodes_out,
+            kernel_initializer=&#34;glorot_uniform&#34;,
+            activation=&#34;sigmoid&#34;,
+        )
+    )
+    metric_auc = tf.keras.metrics.AUC()
+    model.compile(
+        loss=&#34;binary_crossentropy&#34;,
+        optimizer=tf.keras.optimizers.SGD(
+            lr=config[&#34;learn_rate&#34;],
+            decay=config[&#34;learn_rate_decay&#34;],
+            momentum=config[&#34;momentum&#34;],
+            nesterov=config[&#34;nesterov&#34;],
+        ),
+        metrics=config[&#34;tune_metrics&#34;],
+        weighted_metrics=list(config[&#34;tune_metrics_weighted&#34;]) + [metric_auc],
+    )
+
+    # set callbacks
+    callbacks = list()
+    report_dict = {
+        &#34;auc&#34;: &#34;auc&#34;,
+        &#34;val_auc&#34;: &#34;val_auc&#34;,
+    }  # default includes AUC of ROC
+    for metric in config[&#34;tune_metrics&#34;] + config[&#34;tune_metrics_weighted&#34;]:
+        report_dict[metric] = metric
+        report_dict[&#34;val_&#34; + metric] = &#34;val_&#34; + metric
+    # tune_report_callback = TuneReportCallback(report_dict)
+    # callbacks.append(tune_report_callback)
+    if config[&#34;use_early_stop&#34;]:
+        es_config = config[&#34;early_stop_paras&#34;]
+        early_stop_callback = tf.keras.callbacks.EarlyStopping(**es_config)
+        callbacks.append(early_stop_callback)
+
+    # train
+    # history_obj = model.fit(
+    #    x_train,
+    #    y_train,
+    #    batch_size=config[&#34;batch_size&#34;],
+    #    epochs=config[&#34;epochs&#34;],
+    #    validation_data=(x_val, y_val, wt_val),
+    #    shuffle=True,
+    #    class_weight={
+    #        1: config[&#34;sig_class_weight&#34;],
+    #        0: config[&#34;bkg_class_weight&#34;],
+    #    },
+    #    sample_weight=wt_train,
+    #    callbacks=callbacks,
+    # )
+
+    last_auc_unreset = 0
+    for epoch_id in range(int(config[&#34;epochs&#34;])):
+        history_obj = model.fit(
+            x_train,
+            y_train,
+            batch_size=config[&#34;batch_size&#34;],
+            epochs=1,
+            validation_data=(x_val, y_val, wt_val),
+            shuffle=True,
+            class_weight={
+                1: config[&#34;sig_class_weight&#34;],
+                0: config[&#34;bkg_class_weight&#34;],
+            },
+            sample_weight=wt_train,
+            callbacks=callbacks,
+        )
+        epoch_report = dict()
+        for key in report_dict.keys():
+            metric = str(key)
+            epoch_report[metric] = history_obj.history[metric][-1]
+
+        # y_pred = model.predict(x_val)
+        # auc = roc_auc_score(y_val, y_pred, sample_weight=wt_val)
+        # epoch_report[&#34;val_auc2&#34;] = auc
+
+        y_pred_unreset = model.predict(x_val_unreset)
+        auc_unreset = roc_auc_score(
+            y_val, y_pred_unreset, sample_weight=wt_val
+        )
+        epoch_report[&#34;auc_unreset&#34;] = auc_unreset
+
+        auc_unreset_improvement = auc_unreset - last_auc_unreset
+        epoch_report[&#34;auc_unreset_improvement&#34;] = auc_unreset_improvement
+        last_auc_unreset = auc_unreset
+
+        epoch_report[&#34;epoch_num&#34;] = epoch_id + 1
+
+        tune.report(**epoch_report)
+
+    # evaluate metric
+    # final_report = dict()
+    # for key in report_dict.keys():
+    #    metric = str(key)
+    #    final_report[metric] = history_obj.history[metric][-1]
+    # tune.report(**final_report)</code></pre>
+</details>
+</section>
+<section>
+</section>
+<section>
+</section>
+<section>
+<h2 class="section-title" id="header-functions">Functions</h2>
+<dl>
+<dt id="hepynet.train.hep_model.plain_acc"><code class="name flex">
+<span>def <span class="ident">plain_acc</span></span>(<span>y_true, y_pred)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def plain_acc(y_true, y_pred):
+    return K.mean(K.less(K.abs(y_pred * 1.0 - y_true * 1.0), 0.5))</code></pre>
+</details>
+</dd>
+<dt id="hepynet.train.hep_model.tune_Model_Sequential_Flat"><code class="name flex">
+<span>def <span class="ident">tune_Model_Sequential_Flat</span></span>(<span>config, checkpoint_dir=None)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Trainable function for ray-tune</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def tune_Model_Sequential_Flat(config, checkpoint_dir=None):
+    &#34;&#34;&#34;Trainable function for ray-tune&#34;&#34;&#34;
+    input_dir = pathlib.Path(config[&#34;input_dir&#34;])
+    x_train = np.load(input_dir / &#34;x_train.npy&#34;)
+    x_train_unreset = np.load(input_dir / &#34;x_train_unreset.npy&#34;)
+    y_train = np.load(input_dir / &#34;y_train.npy&#34;)
+    wt_train = np.load(input_dir / &#34;wt_train.npy&#34;)
+    x_val = np.load(input_dir / &#34;x_val.npy&#34;)
+    x_val_unreset = np.load(input_dir / &#34;x_val_unreset.npy&#34;)
+    y_val = np.load(input_dir / &#34;y_val.npy&#34;)
+    wt_val = np.load(input_dir / &#34;wt_val.npy&#34;)
+
+    # build model
+    import tensorflow as tf  # must import inside function, other wise will get errors of ray tune
+
+    model = tf.keras.models.Sequential()
+    for layer in range(int(config[&#34;layers&#34;])):
+        ## input layer
+        if layer == 0:
+            model.add(
+                tf.keras.layers.Dense(
+                    config[&#34;nodes&#34;],
+                    kernel_initializer=&#34;glorot_uniform&#34;,
+                    activation=&#34;relu&#34;,
+                    input_dim=config[&#34;input_dim&#34;],
+                )
+            )
+        ## hidden layers
+        else:
+            model.add(
+                tf.keras.layers.Dense(
+                    config[&#34;nodes&#34;],
+                    kernel_initializer=&#34;glorot_uniform&#34;,
+                    activation=&#34;relu&#34;,
+                )
+            )
+        if config[&#34;dropout_rate&#34;] != 0:
+            model.add(tf.keras.layers.Dropout(config[&#34;dropout_rate&#34;]))
+    ## output layer
+    if config[&#34;output_bkg_node_names&#34;]:
+        num_nodes_out = len(config[&#34;output_bkg_node_names&#34;]) + 1
+    else:
+        num_nodes_out = 1
+    model.add(
+        tf.keras.layers.Dense(
+            num_nodes_out,
+            kernel_initializer=&#34;glorot_uniform&#34;,
+            activation=&#34;sigmoid&#34;,
+        )
+    )
+    metric_auc = tf.keras.metrics.AUC()
+    model.compile(
+        loss=&#34;binary_crossentropy&#34;,
+        optimizer=tf.keras.optimizers.SGD(
+            lr=config[&#34;learn_rate&#34;],
+            decay=config[&#34;learn_rate_decay&#34;],
+            momentum=config[&#34;momentum&#34;],
+            nesterov=config[&#34;nesterov&#34;],
+        ),
+        metrics=config[&#34;tune_metrics&#34;],
+        weighted_metrics=list(config[&#34;tune_metrics_weighted&#34;]) + [metric_auc],
+    )
+
+    # set callbacks
+    callbacks = list()
+    report_dict = {
+        &#34;auc&#34;: &#34;auc&#34;,
+        &#34;val_auc&#34;: &#34;val_auc&#34;,
+    }  # default includes AUC of ROC
+    for metric in config[&#34;tune_metrics&#34;] + config[&#34;tune_metrics_weighted&#34;]:
+        report_dict[metric] = metric
+        report_dict[&#34;val_&#34; + metric] = &#34;val_&#34; + metric
+    # tune_report_callback = TuneReportCallback(report_dict)
+    # callbacks.append(tune_report_callback)
+    if config[&#34;use_early_stop&#34;]:
+        es_config = config[&#34;early_stop_paras&#34;]
+        early_stop_callback = tf.keras.callbacks.EarlyStopping(**es_config)
+        callbacks.append(early_stop_callback)
+
+    # train
+    # history_obj = model.fit(
+    #    x_train,
+    #    y_train,
+    #    batch_size=config[&#34;batch_size&#34;],
+    #    epochs=config[&#34;epochs&#34;],
+    #    validation_data=(x_val, y_val, wt_val),
+    #    shuffle=True,
+    #    class_weight={
+    #        1: config[&#34;sig_class_weight&#34;],
+    #        0: config[&#34;bkg_class_weight&#34;],
+    #    },
+    #    sample_weight=wt_train,
+    #    callbacks=callbacks,
+    # )
+
+    last_auc_unreset = 0
+    for epoch_id in range(int(config[&#34;epochs&#34;])):
+        history_obj = model.fit(
+            x_train,
+            y_train,
+            batch_size=config[&#34;batch_size&#34;],
+            epochs=1,
+            validation_data=(x_val, y_val, wt_val),
+            shuffle=True,
+            class_weight={
+                1: config[&#34;sig_class_weight&#34;],
+                0: config[&#34;bkg_class_weight&#34;],
+            },
+            sample_weight=wt_train,
+            callbacks=callbacks,
+        )
+        epoch_report = dict()
+        for key in report_dict.keys():
+            metric = str(key)
+            epoch_report[metric] = history_obj.history[metric][-1]
+
+        # y_pred = model.predict(x_val)
+        # auc = roc_auc_score(y_val, y_pred, sample_weight=wt_val)
+        # epoch_report[&#34;val_auc2&#34;] = auc
+
+        y_pred_unreset = model.predict(x_val_unreset)
+        auc_unreset = roc_auc_score(
+            y_val, y_pred_unreset, sample_weight=wt_val
+        )
+        epoch_report[&#34;auc_unreset&#34;] = auc_unreset
+
+        auc_unreset_improvement = auc_unreset - last_auc_unreset
+        epoch_report[&#34;auc_unreset_improvement&#34;] = auc_unreset_improvement
+        last_auc_unreset = auc_unreset
+
+        epoch_report[&#34;epoch_num&#34;] = epoch_id + 1
+
+        tune.report(**epoch_report)</code></pre>
+</details>
+</dd>
+</dl>
+</section>
+<section>
+<h2 class="section-title" id="header-classes">Classes</h2>
+<dl>
+<dt id="hepynet.train.hep_model.Model_Base"><code class="flex name class">
+<span>class <span class="ident">Model_Base</span></span>
+<span>(</span><span>job_config: <a title="hepynet.common.config_utils.Hepy_Config" href="../common/config_utils.html#hepynet.common.config_utils.Hepy_Config">Hepy_Config</a>)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Base model of deep neural network</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class Model_Base(object):
+    &#34;&#34;&#34;Base model of deep neural network
+    &#34;&#34;&#34;
+
+    def __init__(self, job_config: ht.config):
+        self._job_config = job_config.clone()
+        self._model_create_time = str(datetime.datetime.now())
+        self._model_is_compiled = False
+        self._model_is_loaded = False
+        self._model_is_saved = False
+        self._model_is_trained = False
+        self._model_name = self._job_config.train.model_name
+        self._model_save_path = None
+        self._train_history = list()
+
+        num_folds = self._job_config.train.k_folds
+        if isinstance(num_folds, int) and num_folds &gt;= 2:
+            self._num_folds = num_folds
+        else:
+            self._num_folds = 1
+
+    def build(self):
+        logger.warn(
+            &#34;The virtual function Model_Base.build() is called, please implement override funcion!&#34;
+        )
+
+    def get_feedbox(self) -&gt; feed_box.Feedbox:
+        return self._feedbox
+
+    def get_job_config(self) -&gt; ht.config:
+        return self._job_config
+
+    def get_model(self, fold_num=None):
+        &#34;&#34;&#34;Returns model.&#34;&#34;&#34;
+        if not self._model_is_compiled:
+            logger.warning(&#34;Model is not compiled&#34;)
+        if fold_num is None:
+            return self._model
+        else:
+            return self._model[fold_num]
+
+    def get_model_meta(self) -&gt; dict:
+        return self._model_meta
+
+    def get_model_save_dir(
+        self, fold_num: Optional[int] = None
+    ) -&gt; ht.pathlike:
+        save_dir = f&#34;{self._job_config.run.save_sub_dir}/models&#34;
+        if fold_num is not None:
+            save_dir += f&#34;/fold_{fold_num}&#34;
+        return save_dir
+
+    def set_inputs(self, job_config: ht.config):
+        &#34;&#34;&#34;Prepare feedbox to generate inputs&#34;&#34;&#34;
+        rc = self._job_config.run.clone()
+        try:
+            input_dir = pathlib.Path(rc.save_sub_dir) / &#34;models&#34;
+            with open(input_dir / &#34;norm_dict.yaml&#34;, &#34;r&#34;) as norm_file:
+                norm_dict = yaml.load(norm_file, Loader=yaml.UnsafeLoader)
+            logger.info(f&#34;Successfully loaded norm_dict in {input_dir}&#34;)
+        except:
+            norm_dict = None
+        feedbox = feed_box.Feedbox(job_config, norm_dict=norm_dict)
+        self._model_meta[&#34;norm_dict&#34;] = copy.deepcopy(feedbox.get_norm_dict())
+        self._feedbox = feedbox
+        self._array_prepared = feedbox._array_prepared
+
+    def load_model(self, epoch: Optional[int] = None):
+        &#34;&#34;&#34;Loads saved model.&#34;&#34;&#34;
+        # load model(s)
+        self._model = list()
+        num_exist_models = 0
+        for fold_num in range(self._num_folds):
+            model_dir = self.get_model_save_dir(fold_num=fold_num)
+            if epoch is None:
+                model_path = pathlib.Path(f&#34;{model_dir}/{self._model_name}.h5&#34;)
+            else:
+                model_path = pathlib.Path(
+                    f&#34;{model_dir}/{self._model_name}_epoch{epoch}.h5&#34;
+                )
+            if model_path.exists():
+                fold_model = keras.models.load_model(
+                    model_path,
+                    custom_objects={&#34;plain_acc&#34;: plain_acc,},
+                    compile=False,
+                )  # it&#39;s important to specify custom_objects
+                self._model.append(fold_model)
+                num_exist_models += 1
+        self._model_is_loaded = True
+        # Load parameters
+        model_dir = self.get_model_save_dir()
+        self.load_model_parameters(model_dir)
+        self.model_paras_is_loaded = True
+        if epoch is None:
+            logger.info(f&#34;{num_exist_models}/{self._num_folds} models loaded&#34;)
+        else:
+            logger.info(
+                f&#34;{num_exist_models}/{self._num_folds} models loaded for epoch {epoch}&#34;
+            )
+
+    def load_model_parameters(self, model_dir: ht.pathlike):
+        &#34;&#34;&#34;Retrieves model parameters from yaml file.&#34;&#34;&#34;
+        paras_path = f&#34;{model_dir}/fold_{0}/{self._model_name}_paras.yaml&#34;
+        with open(paras_path, &#34;r&#34;) as paras_file:
+            paras_dict = yaml.load(paras_file, Loader=yaml.UnsafeLoader)
+        # update meta data
+        model_meta_save = paras_dict[&#34;model_meta&#34;]
+        self._model_meta = model_meta_save
+        self._model_name = model_meta_save[&#34;model_name&#34;]
+        self._model_label = model_meta_save[&#34;model_label&#34;]
+        self._model_note = model_meta_save[&#34;model_note&#34;]
+        self._model_create_time = model_meta_save[&#34;model_create_time&#34;]
+        self._model_is_compiled = model_meta_save[&#34;model_is_compiled&#34;]
+        self._model_is_saved = model_meta_save[&#34;model_is_saved&#34;]
+        self._model_is_trained = model_meta_save[&#34;model_is_trained&#34;]
+        # load train history
+        for fold_num in range(self._num_folds):
+            paras_path = (
+                f&#34;{model_dir}/fold_{fold_num}/{self._model_name}_paras.yaml&#34;
+            )
+            with open(paras_path, &#34;r&#34;) as paras_file:
+                fold_paras_dict = yaml.load(
+                    paras_file, Loader=yaml.UnsafeLoader
+                )
+            self._train_history[fold_num] = fold_paras_dict[&#34;train_history&#34;]
+
+    def save_model(
+        self, file_name: Optional[str] = None, fold_num: Optional[int] = None
+    ):
+        &#34;&#34;&#34;Saves trained model.&#34;&#34;&#34;
+        # Define save path
+        save_dir = self.get_model_save_dir(fold_num=fold_num)
+        if file_name is None:
+            file_name = self._model_name
+        # Check path
+        save_path = f&#34;{save_dir}/{file_name}.h5&#34;
+        pathlib.Path(save_dir).mkdir(parents=True, exist_ok=True)
+        # Save
+        if fold_num is not None:
+            self._model[fold_num].save(save_path)
+        else:
+            self._model[0].save(save_path)
+        self._model_save_path = save_path
+        logger.debug(
+            f&#34;model: {self._model_name} has been saved to: {save_path}&#34;
+        )
+        self._model_is_saved = True
+
+    def save_model_paras(
+        self, file_name: Optional[str] = None, fold_num: Optional[int] = None
+    ):
+        &#34;&#34;&#34;Save model parameters to yaml file.&#34;&#34;&#34;
+        rc = self._job_config.run.clone()
+        # prepare paras
+        paras_dict = dict()
+        model_meta_save = copy.deepcopy(self._model_meta)
+        model_meta_save[&#34;model_name&#34;] = self._model_name
+        model_meta_save[&#34;model_label&#34;] = self._model_label
+        model_meta_save[&#34;model_note&#34;] = self._model_note
+        model_meta_save[&#34;model_create_time&#34;] = self._model_create_time
+        model_meta_save[&#34;model_is_compiled&#34;] = self._model_is_compiled
+        model_meta_save[&#34;model_is_saved&#34;] = self._model_is_saved
+        model_meta_save[&#34;model_is_trained&#34;] = self._model_is_trained
+        paras_dict[&#34;model_meta&#34;] = model_meta_save
+        paras_dict[&#34;train_history&#34;] = self._train_history[fold_num]
+        # save to file
+        save_dir = self.get_model_save_dir(fold_num=fold_num)
+        if file_name is None:
+            file_name = self._model_name
+        save_path = f&#34;{save_dir}/{file_name}_paras.yaml&#34;
+        with open(save_path, &#34;w&#34;) as write_file:
+            yaml.dump(paras_dict, write_file, indent=2)
+        logger.debug(f&#34;model parameters has been saved to: {save_path}&#34;)
+
+        norm_dict_path = (
+            pathlib.Path(rc.save_sub_dir) / &#34;models&#34; / &#34;norm_dict.yaml&#34;
+        )
+        with open(norm_dict_path, &#34;w&#34;) as norm_file:
+            yaml.dump(self._feedbox.get_norm_dict(), norm_file, indent=2)</code></pre>
+</details>
+<h3>Subclasses</h3>
+<ul class="hlist">
+<li><a title="hepynet.train.hep_model.Model_Sequential_Base" href="#hepynet.train.hep_model.Model_Sequential_Base">Model_Sequential_Base</a></li>
+</ul>
+<h3>Methods</h3>
+<dl>
+<dt id="hepynet.train.hep_model.Model_Base.build"><code class="name flex">
+<span>def <span class="ident">build</span></span>(<span>self)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def build(self):
+    logger.warn(
+        &#34;The virtual function Model_Base.build() is called, please implement override funcion!&#34;
+    )</code></pre>
+</details>
+</dd>
+<dt id="hepynet.train.hep_model.Model_Base.get_feedbox"><code class="name flex">
+<span>def <span class="ident">get_feedbox</span></span>(<span>self) ‑> <a title="hepynet.data_io.feed_box.Feedbox" href="../data_io/feed_box.html#hepynet.data_io.feed_box.Feedbox">Feedbox</a></span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def get_feedbox(self) -&gt; feed_box.Feedbox:
+    return self._feedbox</code></pre>
+</details>
+</dd>
+<dt id="hepynet.train.hep_model.Model_Base.get_job_config"><code class="name flex">
+<span>def <span class="ident">get_job_config</span></span>(<span>self) ‑> <a title="hepynet.common.config_utils.Hepy_Config" href="../common/config_utils.html#hepynet.common.config_utils.Hepy_Config">Hepy_Config</a></span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def get_job_config(self) -&gt; ht.config:
+    return self._job_config</code></pre>
+</details>
+</dd>
+<dt id="hepynet.train.hep_model.Model_Base.get_model"><code class="name flex">
+<span>def <span class="ident">get_model</span></span>(<span>self, fold_num=None)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Returns model.</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def get_model(self, fold_num=None):
+    &#34;&#34;&#34;Returns model.&#34;&#34;&#34;
+    if not self._model_is_compiled:
+        logger.warning(&#34;Model is not compiled&#34;)
+    if fold_num is None:
+        return self._model
+    else:
+        return self._model[fold_num]</code></pre>
+</details>
+</dd>
+<dt id="hepynet.train.hep_model.Model_Base.get_model_meta"><code class="name flex">
+<span>def <span class="ident">get_model_meta</span></span>(<span>self) ‑> dict</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def get_model_meta(self) -&gt; dict:
+    return self._model_meta</code></pre>
+</details>
+</dd>
+<dt id="hepynet.train.hep_model.Model_Base.get_model_save_dir"><code class="name flex">
+<span>def <span class="ident">get_model_save_dir</span></span>(<span>self, fold_num: Union[int, NoneType] = None) ‑> Union[str, os.PathLike]</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def get_model_save_dir(
+    self, fold_num: Optional[int] = None
+) -&gt; ht.pathlike:
+    save_dir = f&#34;{self._job_config.run.save_sub_dir}/models&#34;
+    if fold_num is not None:
+        save_dir += f&#34;/fold_{fold_num}&#34;
+    return save_dir</code></pre>
+</details>
+</dd>
+<dt id="hepynet.train.hep_model.Model_Base.load_model"><code class="name flex">
+<span>def <span class="ident">load_model</span></span>(<span>self, epoch: Union[int, NoneType] = None)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Loads saved model.</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def load_model(self, epoch: Optional[int] = None):
+    &#34;&#34;&#34;Loads saved model.&#34;&#34;&#34;
+    # load model(s)
+    self._model = list()
+    num_exist_models = 0
+    for fold_num in range(self._num_folds):
+        model_dir = self.get_model_save_dir(fold_num=fold_num)
+        if epoch is None:
+            model_path = pathlib.Path(f&#34;{model_dir}/{self._model_name}.h5&#34;)
+        else:
+            model_path = pathlib.Path(
+                f&#34;{model_dir}/{self._model_name}_epoch{epoch}.h5&#34;
+            )
+        if model_path.exists():
+            fold_model = keras.models.load_model(
+                model_path,
+                custom_objects={&#34;plain_acc&#34;: plain_acc,},
+                compile=False,
+            )  # it&#39;s important to specify custom_objects
+            self._model.append(fold_model)
+            num_exist_models += 1
+    self._model_is_loaded = True
+    # Load parameters
+    model_dir = self.get_model_save_dir()
+    self.load_model_parameters(model_dir)
+    self.model_paras_is_loaded = True
+    if epoch is None:
+        logger.info(f&#34;{num_exist_models}/{self._num_folds} models loaded&#34;)
+    else:
+        logger.info(
+            f&#34;{num_exist_models}/{self._num_folds} models loaded for epoch {epoch}&#34;
+        )</code></pre>
+</details>
+</dd>
+<dt id="hepynet.train.hep_model.Model_Base.load_model_parameters"><code class="name flex">
+<span>def <span class="ident">load_model_parameters</span></span>(<span>self, model_dir: Union[str, os.PathLike])</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Retrieves model parameters from yaml file.</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def load_model_parameters(self, model_dir: ht.pathlike):
+    &#34;&#34;&#34;Retrieves model parameters from yaml file.&#34;&#34;&#34;
+    paras_path = f&#34;{model_dir}/fold_{0}/{self._model_name}_paras.yaml&#34;
+    with open(paras_path, &#34;r&#34;) as paras_file:
+        paras_dict = yaml.load(paras_file, Loader=yaml.UnsafeLoader)
+    # update meta data
+    model_meta_save = paras_dict[&#34;model_meta&#34;]
+    self._model_meta = model_meta_save
+    self._model_name = model_meta_save[&#34;model_name&#34;]
+    self._model_label = model_meta_save[&#34;model_label&#34;]
+    self._model_note = model_meta_save[&#34;model_note&#34;]
+    self._model_create_time = model_meta_save[&#34;model_create_time&#34;]
+    self._model_is_compiled = model_meta_save[&#34;model_is_compiled&#34;]
+    self._model_is_saved = model_meta_save[&#34;model_is_saved&#34;]
+    self._model_is_trained = model_meta_save[&#34;model_is_trained&#34;]
+    # load train history
+    for fold_num in range(self._num_folds):
+        paras_path = (
+            f&#34;{model_dir}/fold_{fold_num}/{self._model_name}_paras.yaml&#34;
+        )
+        with open(paras_path, &#34;r&#34;) as paras_file:
+            fold_paras_dict = yaml.load(
+                paras_file, Loader=yaml.UnsafeLoader
+            )
+        self._train_history[fold_num] = fold_paras_dict[&#34;train_history&#34;]</code></pre>
+</details>
+</dd>
+<dt id="hepynet.train.hep_model.Model_Base.save_model"><code class="name flex">
+<span>def <span class="ident">save_model</span></span>(<span>self, file_name: Union[str, NoneType] = None, fold_num: Union[int, NoneType] = None)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Saves trained model.</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def save_model(
+    self, file_name: Optional[str] = None, fold_num: Optional[int] = None
+):
+    &#34;&#34;&#34;Saves trained model.&#34;&#34;&#34;
+    # Define save path
+    save_dir = self.get_model_save_dir(fold_num=fold_num)
+    if file_name is None:
+        file_name = self._model_name
+    # Check path
+    save_path = f&#34;{save_dir}/{file_name}.h5&#34;
+    pathlib.Path(save_dir).mkdir(parents=True, exist_ok=True)
+    # Save
+    if fold_num is not None:
+        self._model[fold_num].save(save_path)
+    else:
+        self._model[0].save(save_path)
+    self._model_save_path = save_path
+    logger.debug(
+        f&#34;model: {self._model_name} has been saved to: {save_path}&#34;
+    )
+    self._model_is_saved = True</code></pre>
+</details>
+</dd>
+<dt id="hepynet.train.hep_model.Model_Base.save_model_paras"><code class="name flex">
+<span>def <span class="ident">save_model_paras</span></span>(<span>self, file_name: Union[str, NoneType] = None, fold_num: Union[int, NoneType] = None)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Save model parameters to yaml file.</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def save_model_paras(
+    self, file_name: Optional[str] = None, fold_num: Optional[int] = None
+):
+    &#34;&#34;&#34;Save model parameters to yaml file.&#34;&#34;&#34;
+    rc = self._job_config.run.clone()
+    # prepare paras
+    paras_dict = dict()
+    model_meta_save = copy.deepcopy(self._model_meta)
+    model_meta_save[&#34;model_name&#34;] = self._model_name
+    model_meta_save[&#34;model_label&#34;] = self._model_label
+    model_meta_save[&#34;model_note&#34;] = self._model_note
+    model_meta_save[&#34;model_create_time&#34;] = self._model_create_time
+    model_meta_save[&#34;model_is_compiled&#34;] = self._model_is_compiled
+    model_meta_save[&#34;model_is_saved&#34;] = self._model_is_saved
+    model_meta_save[&#34;model_is_trained&#34;] = self._model_is_trained
+    paras_dict[&#34;model_meta&#34;] = model_meta_save
+    paras_dict[&#34;train_history&#34;] = self._train_history[fold_num]
+    # save to file
+    save_dir = self.get_model_save_dir(fold_num=fold_num)
+    if file_name is None:
+        file_name = self._model_name
+    save_path = f&#34;{save_dir}/{file_name}_paras.yaml&#34;
+    with open(save_path, &#34;w&#34;) as write_file:
+        yaml.dump(paras_dict, write_file, indent=2)
+    logger.debug(f&#34;model parameters has been saved to: {save_path}&#34;)
+
+    norm_dict_path = (
+        pathlib.Path(rc.save_sub_dir) / &#34;models&#34; / &#34;norm_dict.yaml&#34;
+    )
+    with open(norm_dict_path, &#34;w&#34;) as norm_file:
+        yaml.dump(self._feedbox.get_norm_dict(), norm_file, indent=2)</code></pre>
+</details>
+</dd>
+<dt id="hepynet.train.hep_model.Model_Base.set_inputs"><code class="name flex">
+<span>def <span class="ident">set_inputs</span></span>(<span>self, job_config: <a title="hepynet.common.config_utils.Hepy_Config" href="../common/config_utils.html#hepynet.common.config_utils.Hepy_Config">Hepy_Config</a>)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Prepare feedbox to generate inputs</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def set_inputs(self, job_config: ht.config):
+    &#34;&#34;&#34;Prepare feedbox to generate inputs&#34;&#34;&#34;
+    rc = self._job_config.run.clone()
+    try:
+        input_dir = pathlib.Path(rc.save_sub_dir) / &#34;models&#34;
+        with open(input_dir / &#34;norm_dict.yaml&#34;, &#34;r&#34;) as norm_file:
+            norm_dict = yaml.load(norm_file, Loader=yaml.UnsafeLoader)
+        logger.info(f&#34;Successfully loaded norm_dict in {input_dir}&#34;)
+    except:
+        norm_dict = None
+    feedbox = feed_box.Feedbox(job_config, norm_dict=norm_dict)
+    self._model_meta[&#34;norm_dict&#34;] = copy.deepcopy(feedbox.get_norm_dict())
+    self._feedbox = feedbox
+    self._array_prepared = feedbox._array_prepared</code></pre>
+</details>
+</dd>
+</dl>
+</dd>
+<dt id="hepynet.train.hep_model.Model_Sequential_Base"><code class="flex name class">
+<span>class <span class="ident">Model_Sequential_Base</span></span>
+<span>(</span><span>job_config: <a title="hepynet.common.config_utils.Hepy_Config" href="../common/config_utils.html#hepynet.common.config_utils.Hepy_Config">Hepy_Config</a>)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Sequential model base.</p>
+<h2 id="note">Note</h2>
+<p>This class should not be used directly</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class Model_Sequential_Base(Model_Base):
+    &#34;&#34;&#34;Sequential model base.
+
+    Note:
+        This class should not be used directly
+    &#34;&#34;&#34;
+
+    def __init__(self, job_config: ht.config):
+        super().__init__(job_config)
+        tc = self._job_config.train
+        ic = self._job_config.input
+        # Model parameters
+        self._model_label = &#34;mod_seq_base&#34;
+        self._model_note = &#34;Basic sequential model.&#34;
+        self._model_input_dim = len(ic.selected_features)
+        if isinstance(tc.k_folds, int) and tc.k_folds &gt;= 2:
+            self._num_folds = tc.k_folds
+            models = list()
+            for _ in range(tc.k_folds):
+                models.append(Sequential())
+            self._model = models
+        else:
+            self._num_folds = 1
+            self._model = [Sequential()]
+        self._train_history = [None] * self._num_folds
+        # Arrays
+        self._array_prepared = False
+        self._model_meta = {
+            &#34;norm_dict&#34;: None,
+        }
+        # Report
+        self._save_tb_logs = tc.save_tb_logs
+        self._tb_logs_path = tc.tb_logs_path
+
+    def get_hypers(self):
+        &#34;&#34;&#34;Gets a dictionary of hyper-parameters that defines a training&#34;&#34;&#34;
+        tc = self._job_config.train.clone()
+        hypers = {
+            # hypers for building model
+            &#34;layers&#34;: tc.layers,
+            &#34;nodes&#34;: tc.nodes,
+            &#34;dropout_rate&#34;: tc.dropout_rate,
+            &#34;output_bkg_node_names&#34;: tc.output_bkg_node_names,
+            &#34;train_metrics&#34;: tc.train_metrics,
+            &#34;train_metrics_weighted&#34;: tc.train_metrics_weighted,
+            &#34;learn_rate&#34;: tc.learn_rate,
+            &#34;learn_rate_decay&#34;: tc.learn_rate_decay,
+            &#34;momentum&#34;: tc.momentum,
+            &#34;nesterov&#34;: tc.nesterov,
+            # hypers for training
+            &#34;val_split&#34;: tc.val_split,
+            &#34;batch_size&#34;: tc.batch_size,
+            &#34;epochs&#34;: tc.epochs,
+            &#34;sig_class_weight&#34;: tc.sig_class_weight,
+            &#34;bkg_class_weight&#34;: tc.bkg_class_weight,
+        }
+        return hypers
+
+    def get_inputs(
+        self,
+    ) -&gt; Dict[str, Tuple[np.ndarray, np.ndarray, np.ndarray]]:
+        &#34;&#34;&#34;Gets train/test datasets from feedbox&#34;&#34;&#34;
+        ic = self._job_config.input.clone()
+        ## get input
+        input_df = self._feedbox.get_processed_df()
+        cols = ic.selected_features
+        # load train/test
+        train_index = input_df[&#34;is_train&#34;] == True
+        test_index = input_df[&#34;is_train&#34;] == False
+        x_train = input_df.loc[train_index, cols].values
+        x_test = input_df.loc[test_index, cols].values
+        y_train = input_df.loc[train_index, [&#34;y&#34;]].values
+        y_test = input_df.loc[test_index, [&#34;y&#34;]].values
+        wt_train = input_df.loc[train_index, &#34;weight&#34;].values
+        wt_test = input_df.loc[test_index, &#34;weight&#34;].values
+        del input_df
+        # remove negative weight events
+        if ic.rm_negative_weight_events == True:
+            wt_train = wt_train.clip(min=0)
+            wt_test = wt_test.clip(min=0)
+
+        return {
+            &#34;train&#34;: (x_train, y_train, wt_train),
+            &#34;test&#34;: (x_test, y_test, wt_test),
+        }
+
+    def get_train_callbacks(self, fold_num: Optional[int] = None) -&gt; list:
+        &#34;&#34;&#34;Prepares callbacks of training&#34;&#34;&#34;
+        train_callbacks = []
+        tc = self._job_config.train.clone()
+        if self._save_tb_logs:  # TODO: add back this function
+            pass
+            # if self._tb_logs_path is None:
+            #    self._tb_logs_path = &#34;temp_logs/{}&#34;.format(self._model_label)
+            #    logger.warning(
+            #        &#34;TensorBoard logs path not specified, set path to: {}&#34;.format(
+            #            self._tb_logs_path
+            #        )
+            #    )
+            # tb_callback = TensorBoard(log_dir=self._tb_logs_path, histogram_freq=1)
+            # train_callbacks.append(tb_callback)
+        if tc.use_early_stop:
+            early_stop_callback = callbacks.EarlyStopping(
+                monitor=tc.early_stop_paras.monitor,
+                min_delta=tc.early_stop_paras.min_delta,
+                patience=tc.early_stop_paras.patience,
+                mode=tc.early_stop_paras.mode,
+                restore_best_weights=tc.early_stop_paras.restore_best_weights,
+            )
+            train_callbacks.append(early_stop_callback)
+        ## set up check point to save model in each epoch
+        if tc.save_model:
+            model_save_dir = self.get_model_save_dir(fold_num=fold_num)
+            pathlib.Path(model_save_dir).mkdir(parents=True, exist_ok=True)
+            path_pattern = (
+                f&#34;{model_save_dir}/{self._model_name}_epoch{{epoch}}.h5&#34;
+            )
+            checkpoint = ModelCheckpoint(path_pattern, monitor=&#34;val_loss&#34;)
+            train_callbacks.append(checkpoint)
+        return train_callbacks
+
+    def train(self):
+        # Check
+        if not self._model_is_compiled:
+            logger.critical(&#34;DNN model is not yet built, rebuilding&#34;)
+            self.build()
+        if not self._array_prepared:
+            logger.critical(&#34;Training data is not ready, pleas set up inputs&#34;)
+            exit(1)
+        # Prepare
+        tc = self._job_config.train.clone()
+        input_dict = self.get_inputs()
+        model = self.get_model()
+        hypers = self.get_hypers()
+        n_folds = self._num_folds
+        verbose = tc.verbose
+        # Input
+        x_train, y_train, wt_train = input_dict[&#34;train&#34;]
+        x_test, y_test, wt_test = input_dict[&#34;test&#34;]
+        # Train
+        logger.info(&#34;-&#34; * 40)
+        logger.info(&#34;Loading inputs&#34;)
+        (
+            train_index_list,
+            validation_index_list,
+        ) = train_utils.get_train_val_indices(
+            y_train, y_train, wt_train, hypers[&#34;val_split&#34;], k_folds=tc.k_folds
+        )
+        for fold_num in range(n_folds):
+            logger.info(f&#34;Training start. Using model: {self._model_name}&#34;)
+            logger.info(f&#34;Model info: {self._model_note}&#34;)
+            if n_folds &gt;= 2:
+                logger.info(
+                    f&#34;Performing k-fold training {fold_num + 1}/{n_folds}&#34;
+                )
+            fold_model = model[fold_num]
+            fold_model.summary()
+            train_index = train_index_list[fold_num]
+            val_index = validation_index_list[fold_num]
+            x_fold = x_train[train_index]
+            y_fold = y_train[train_index]
+            wt_fold = wt_train[train_index]
+            val_x_fold = x_train[val_index]
+            val_y_fold = y_train[val_index]
+            val_wt_fold = wt_train[val_index]
+            val_fold = (val_x_fold, val_y_fold, val_wt_fold)
+            logger.info(
+                f&#34;&gt; Training on {len(y_fold)}, validating on {len(val_y_fold)} events.&#34;
+            )
+            history_obj = fold_model.fit(
+                x_fold,
+                y_fold,
+                batch_size=hypers[&#34;batch_size&#34;],
+                epochs=hypers[&#34;epochs&#34;],
+                validation_data=val_fold,
+                shuffle=True,
+                class_weight={
+                    1: hypers[&#34;sig_class_weight&#34;],
+                    0: hypers[&#34;bkg_class_weight&#34;],
+                },
+                sample_weight=wt_fold,
+                callbacks=self.get_train_callbacks(fold_num=fold_num),
+                verbose=verbose,
+            )
+            logger.info(&#34;Training finished.&#34;)
+            # evaluation
+            logger.info(&#34;Evaluate with test dataset:&#34;)
+            score = fold_model.evaluate(
+                x_test, y_test, verbose=verbose, sample_weight=wt_test,
+            )
+            if not isinstance(score, Iterable):
+                logger.info(f&#34;&gt; test loss: {score}&#34;)
+            else:
+                for i, metric in enumerate(fold_model.metrics_names):
+                    logger.info(f&#34;&gt; test - {metric}: {score[i]}&#34;)
+            # save training details
+            self._train_history[fold_num] = history_obj.history
+            self.save_model(fold_num=fold_num)
+            self.save_model_paras(fold_num=fold_num)
+        # Update status
+        self._model_is_trained = True</code></pre>
+</details>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li><a title="hepynet.train.hep_model.Model_Base" href="#hepynet.train.hep_model.Model_Base">Model_Base</a></li>
+</ul>
+<h3>Subclasses</h3>
+<ul class="hlist">
+<li><a title="hepynet.train.hep_model.Model_Sequential_Flat" href="#hepynet.train.hep_model.Model_Sequential_Flat">Model_Sequential_Flat</a></li>
+</ul>
+<h3>Methods</h3>
+<dl>
+<dt id="hepynet.train.hep_model.Model_Sequential_Base.get_hypers"><code class="name flex">
+<span>def <span class="ident">get_hypers</span></span>(<span>self)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Gets a dictionary of hyper-parameters that defines a training</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def get_hypers(self):
+    &#34;&#34;&#34;Gets a dictionary of hyper-parameters that defines a training&#34;&#34;&#34;
+    tc = self._job_config.train.clone()
+    hypers = {
+        # hypers for building model
+        &#34;layers&#34;: tc.layers,
+        &#34;nodes&#34;: tc.nodes,
+        &#34;dropout_rate&#34;: tc.dropout_rate,
+        &#34;output_bkg_node_names&#34;: tc.output_bkg_node_names,
+        &#34;train_metrics&#34;: tc.train_metrics,
+        &#34;train_metrics_weighted&#34;: tc.train_metrics_weighted,
+        &#34;learn_rate&#34;: tc.learn_rate,
+        &#34;learn_rate_decay&#34;: tc.learn_rate_decay,
+        &#34;momentum&#34;: tc.momentum,
+        &#34;nesterov&#34;: tc.nesterov,
+        # hypers for training
+        &#34;val_split&#34;: tc.val_split,
+        &#34;batch_size&#34;: tc.batch_size,
+        &#34;epochs&#34;: tc.epochs,
+        &#34;sig_class_weight&#34;: tc.sig_class_weight,
+        &#34;bkg_class_weight&#34;: tc.bkg_class_weight,
+    }
+    return hypers</code></pre>
+</details>
+</dd>
+<dt id="hepynet.train.hep_model.Model_Sequential_Base.get_inputs"><code class="name flex">
+<span>def <span class="ident">get_inputs</span></span>(<span>self) ‑> Dict[str, Tuple[numpy.ndarray, numpy.ndarray, numpy.ndarray]]</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Gets train/test datasets from feedbox</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def get_inputs(
+    self,
+) -&gt; Dict[str, Tuple[np.ndarray, np.ndarray, np.ndarray]]:
+    &#34;&#34;&#34;Gets train/test datasets from feedbox&#34;&#34;&#34;
+    ic = self._job_config.input.clone()
+    ## get input
+    input_df = self._feedbox.get_processed_df()
+    cols = ic.selected_features
+    # load train/test
+    train_index = input_df[&#34;is_train&#34;] == True
+    test_index = input_df[&#34;is_train&#34;] == False
+    x_train = input_df.loc[train_index, cols].values
+    x_test = input_df.loc[test_index, cols].values
+    y_train = input_df.loc[train_index, [&#34;y&#34;]].values
+    y_test = input_df.loc[test_index, [&#34;y&#34;]].values
+    wt_train = input_df.loc[train_index, &#34;weight&#34;].values
+    wt_test = input_df.loc[test_index, &#34;weight&#34;].values
+    del input_df
+    # remove negative weight events
+    if ic.rm_negative_weight_events == True:
+        wt_train = wt_train.clip(min=0)
+        wt_test = wt_test.clip(min=0)
+
+    return {
+        &#34;train&#34;: (x_train, y_train, wt_train),
+        &#34;test&#34;: (x_test, y_test, wt_test),
+    }</code></pre>
+</details>
+</dd>
+<dt id="hepynet.train.hep_model.Model_Sequential_Base.get_train_callbacks"><code class="name flex">
+<span>def <span class="ident">get_train_callbacks</span></span>(<span>self, fold_num: Union[int, NoneType] = None) ‑> list</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Prepares callbacks of training</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def get_train_callbacks(self, fold_num: Optional[int] = None) -&gt; list:
+    &#34;&#34;&#34;Prepares callbacks of training&#34;&#34;&#34;
+    train_callbacks = []
+    tc = self._job_config.train.clone()
+    if self._save_tb_logs:  # TODO: add back this function
+        pass
+        # if self._tb_logs_path is None:
+        #    self._tb_logs_path = &#34;temp_logs/{}&#34;.format(self._model_label)
+        #    logger.warning(
+        #        &#34;TensorBoard logs path not specified, set path to: {}&#34;.format(
+        #            self._tb_logs_path
+        #        )
+        #    )
+        # tb_callback = TensorBoard(log_dir=self._tb_logs_path, histogram_freq=1)
+        # train_callbacks.append(tb_callback)
+    if tc.use_early_stop:
+        early_stop_callback = callbacks.EarlyStopping(
+            monitor=tc.early_stop_paras.monitor,
+            min_delta=tc.early_stop_paras.min_delta,
+            patience=tc.early_stop_paras.patience,
+            mode=tc.early_stop_paras.mode,
+            restore_best_weights=tc.early_stop_paras.restore_best_weights,
+        )
+        train_callbacks.append(early_stop_callback)
+    ## set up check point to save model in each epoch
+    if tc.save_model:
+        model_save_dir = self.get_model_save_dir(fold_num=fold_num)
+        pathlib.Path(model_save_dir).mkdir(parents=True, exist_ok=True)
+        path_pattern = (
+            f&#34;{model_save_dir}/{self._model_name}_epoch{{epoch}}.h5&#34;
+        )
+        checkpoint = ModelCheckpoint(path_pattern, monitor=&#34;val_loss&#34;)
+        train_callbacks.append(checkpoint)
+    return train_callbacks</code></pre>
+</details>
+</dd>
+<dt id="hepynet.train.hep_model.Model_Sequential_Base.train"><code class="name flex">
+<span>def <span class="ident">train</span></span>(<span>self)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def train(self):
+    # Check
+    if not self._model_is_compiled:
+        logger.critical(&#34;DNN model is not yet built, rebuilding&#34;)
+        self.build()
+    if not self._array_prepared:
+        logger.critical(&#34;Training data is not ready, pleas set up inputs&#34;)
+        exit(1)
+    # Prepare
+    tc = self._job_config.train.clone()
+    input_dict = self.get_inputs()
+    model = self.get_model()
+    hypers = self.get_hypers()
+    n_folds = self._num_folds
+    verbose = tc.verbose
+    # Input
+    x_train, y_train, wt_train = input_dict[&#34;train&#34;]
+    x_test, y_test, wt_test = input_dict[&#34;test&#34;]
+    # Train
+    logger.info(&#34;-&#34; * 40)
+    logger.info(&#34;Loading inputs&#34;)
+    (
+        train_index_list,
+        validation_index_list,
+    ) = train_utils.get_train_val_indices(
+        y_train, y_train, wt_train, hypers[&#34;val_split&#34;], k_folds=tc.k_folds
+    )
+    for fold_num in range(n_folds):
+        logger.info(f&#34;Training start. Using model: {self._model_name}&#34;)
+        logger.info(f&#34;Model info: {self._model_note}&#34;)
+        if n_folds &gt;= 2:
+            logger.info(
+                f&#34;Performing k-fold training {fold_num + 1}/{n_folds}&#34;
+            )
+        fold_model = model[fold_num]
+        fold_model.summary()
+        train_index = train_index_list[fold_num]
+        val_index = validation_index_list[fold_num]
+        x_fold = x_train[train_index]
+        y_fold = y_train[train_index]
+        wt_fold = wt_train[train_index]
+        val_x_fold = x_train[val_index]
+        val_y_fold = y_train[val_index]
+        val_wt_fold = wt_train[val_index]
+        val_fold = (val_x_fold, val_y_fold, val_wt_fold)
+        logger.info(
+            f&#34;&gt; Training on {len(y_fold)}, validating on {len(val_y_fold)} events.&#34;
+        )
+        history_obj = fold_model.fit(
+            x_fold,
+            y_fold,
+            batch_size=hypers[&#34;batch_size&#34;],
+            epochs=hypers[&#34;epochs&#34;],
+            validation_data=val_fold,
+            shuffle=True,
+            class_weight={
+                1: hypers[&#34;sig_class_weight&#34;],
+                0: hypers[&#34;bkg_class_weight&#34;],
+            },
+            sample_weight=wt_fold,
+            callbacks=self.get_train_callbacks(fold_num=fold_num),
+            verbose=verbose,
+        )
+        logger.info(&#34;Training finished.&#34;)
+        # evaluation
+        logger.info(&#34;Evaluate with test dataset:&#34;)
+        score = fold_model.evaluate(
+            x_test, y_test, verbose=verbose, sample_weight=wt_test,
+        )
+        if not isinstance(score, Iterable):
+            logger.info(f&#34;&gt; test loss: {score}&#34;)
+        else:
+            for i, metric in enumerate(fold_model.metrics_names):
+                logger.info(f&#34;&gt; test - {metric}: {score[i]}&#34;)
+        # save training details
+        self._train_history[fold_num] = history_obj.history
+        self.save_model(fold_num=fold_num)
+        self.save_model_paras(fold_num=fold_num)
+    # Update status
+    self._model_is_trained = True</code></pre>
+</details>
+</dd>
+</dl>
+<h3>Inherited members</h3>
+<ul class="hlist">
+<li><code><b><a title="hepynet.train.hep_model.Model_Base" href="#hepynet.train.hep_model.Model_Base">Model_Base</a></b></code>:
+<ul class="hlist">
+<li><code><a title="hepynet.train.hep_model.Model_Base.get_model" href="#hepynet.train.hep_model.Model_Base.get_model">get_model</a></code></li>
+<li><code><a title="hepynet.train.hep_model.Model_Base.load_model" href="#hepynet.train.hep_model.Model_Base.load_model">load_model</a></code></li>
+<li><code><a title="hepynet.train.hep_model.Model_Base.load_model_parameters" href="#hepynet.train.hep_model.Model_Base.load_model_parameters">load_model_parameters</a></code></li>
+<li><code><a title="hepynet.train.hep_model.Model_Base.save_model" href="#hepynet.train.hep_model.Model_Base.save_model">save_model</a></code></li>
+<li><code><a title="hepynet.train.hep_model.Model_Base.save_model_paras" href="#hepynet.train.hep_model.Model_Base.save_model_paras">save_model_paras</a></code></li>
+<li><code><a title="hepynet.train.hep_model.Model_Base.set_inputs" href="#hepynet.train.hep_model.Model_Base.set_inputs">set_inputs</a></code></li>
+</ul>
+</li>
+</ul>
+</dd>
+<dt id="hepynet.train.hep_model.Model_Sequential_Flat"><code class="flex name class">
+<span>class <span class="ident">Model_Sequential_Flat</span></span>
+<span>(</span><span>job_config)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Flat sequential model</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class Model_Sequential_Flat(Model_Sequential_Base):
+    &#34;&#34;&#34;Flat sequential model&#34;&#34;&#34;
+
+    def __init__(self, job_config):
+        super().__init__(job_config)
+
+        self._model_label = &#34;mod_seq&#34;
+        self._model_note = &#34;Sequential model with flexible layers and nodes.&#34;
+        self._tune_fun_name = &#34;tune_Model_Sequential_Flat&#34;
+
+    def build(self):
+        hypers = self.get_hypers()
+        for fold_num in range(self._num_folds):
+            fold_model = self._model[fold_num]
+            self.build_single(fold_model, hypers)
+        self._model_is_compiled = True
+
+    def build_single(self, fold_model, hypers):
+        # Add layers
+        for layer in range(int(hypers[&#34;layers&#34;])):
+            # input layer
+            if layer == 0:
+                fold_model.add(
+                    Dense(
+                        hypers[&#34;nodes&#34;],
+                        kernel_initializer=&#34;glorot_uniform&#34;,
+                        activation=&#34;relu&#34;,
+                        input_dim=self._model_input_dim,
+                    )
+                )
+            # hidden layers
+            else:
+                fold_model.add(
+                    Dense(
+                        hypers[&#34;nodes&#34;],
+                        kernel_initializer=&#34;glorot_uniform&#34;,
+                        activation=&#34;relu&#34;,
+                    )
+                )
+            if hypers[&#34;dropout_rate&#34;] != 0:
+                fold_model.add(Dropout(hypers[&#34;dropout_rate&#34;]))
+        # output layer
+        if hypers[&#34;output_bkg_node_names&#34;]:
+            num_nodes_out = len(hypers[&#34;output_bkg_node_names&#34;]) + 1
+        else:
+            num_nodes_out = 1
+        fold_model.add(
+            Dense(
+                num_nodes_out,
+                kernel_initializer=&#34;glorot_uniform&#34;,
+                activation=&#34;sigmoid&#34;,
+            )
+        )
+        # Compile
+        # transfer self-defined metrics into real function
+        metrics = copy.deepcopy(hypers[&#34;train_metrics&#34;])
+        weighted_metrics = copy.deepcopy(hypers[&#34;train_metrics_weighted&#34;])
+        if &#34;plain_acc&#34; in metrics:
+            index = metrics.index(&#34;plain_acc&#34;)
+            metrics[index] = plain_acc
+        if &#34;plain_acc&#34; in weighted_metrics:
+            index = weighted_metrics.index(&#34;plain_acc&#34;)
+            weighted_metrics[index] = plain_acc
+        if &#34;auc&#34; in weighted_metrics:
+            index = weighted_metrics.index(&#34;auc&#34;)
+            weighted_metrics[index] = tf.keras.metrics.AUC(name=&#34;auc&#34;)
+        # compile model
+        fold_model.compile(
+            loss=&#34;binary_crossentropy&#34;,
+            optimizer=SGD(
+                lr=hypers[&#34;learn_rate&#34;],
+                decay=hypers[&#34;learn_rate_decay&#34;],
+                momentum=hypers[&#34;momentum&#34;],
+                nesterov=hypers[&#34;nesterov&#34;],
+            ),
+            metrics=metrics,
+            weighted_metrics=weighted_metrics,
+        )
+
+    def get_hypers_tune(self):
+        &#34;&#34;&#34;Gets a dict of hyperparameter (space) for auto-tuning&#34;&#34;&#34;
+        ic = self._job_config.input.clone()
+        rc = self._job_config.run.clone()
+        model_cfg = self._job_config.tune.clone().model
+        gs = train_utils.get_single_hyper
+        hypers = {
+            # hypers for building model
+            &#34;layers&#34;: gs(model_cfg.layers),
+            &#34;nodes&#34;: gs(model_cfg.nodes),
+            &#34;dropout_rate&#34;: gs(model_cfg.dropout_rate),
+            &#34;output_bkg_node_names&#34;: model_cfg.output_bkg_node_names,
+            &#34;tune_metrics&#34;: model_cfg.tune_metrics,
+            &#34;tune_metrics_weighted&#34;: model_cfg.tune_metrics_weighted,
+            &#34;learn_rate&#34;: gs(model_cfg.learn_rate),
+            &#34;learn_rate_decay&#34;: gs(model_cfg.learn_rate_decay),
+            &#34;momentum&#34;: gs(model_cfg.momentum),
+            &#34;nesterov&#34;: gs(model_cfg.nesterov),
+            # hypers for training
+            &#34;batch_size&#34;: gs(model_cfg.batch_size),
+            &#34;epochs&#34;: gs(model_cfg.epochs),
+            &#34;sig_class_weight&#34;: gs(model_cfg.sig_class_weight),
+            &#34;bkg_class_weight&#34;: gs(model_cfg.bkg_class_weight),
+            &#34;use_early_stop&#34;: model_cfg.use_early_stop,
+            &#34;early_stop_paras&#34;: model_cfg.early_stop_paras.get_config_dict(),
+            # job config
+            &#34;input_dim&#34;: len(ic.selected_features),
+            # input dir
+            &#34;input_dir&#34;: str(pathlib.Path(rc.tune_input_cache).resolve()),
+        }
+        return hypers</code></pre>
+</details>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li><a title="hepynet.train.hep_model.Model_Sequential_Base" href="#hepynet.train.hep_model.Model_Sequential_Base">Model_Sequential_Base</a></li>
+<li><a title="hepynet.train.hep_model.Model_Base" href="#hepynet.train.hep_model.Model_Base">Model_Base</a></li>
+</ul>
+<h3>Methods</h3>
+<dl>
+<dt id="hepynet.train.hep_model.Model_Sequential_Flat.build"><code class="name flex">
+<span>def <span class="ident">build</span></span>(<span>self)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def build(self):
+    hypers = self.get_hypers()
+    for fold_num in range(self._num_folds):
+        fold_model = self._model[fold_num]
+        self.build_single(fold_model, hypers)
+    self._model_is_compiled = True</code></pre>
+</details>
+</dd>
+<dt id="hepynet.train.hep_model.Model_Sequential_Flat.build_single"><code class="name flex">
+<span>def <span class="ident">build_single</span></span>(<span>self, fold_model, hypers)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def build_single(self, fold_model, hypers):
+    # Add layers
+    for layer in range(int(hypers[&#34;layers&#34;])):
+        # input layer
+        if layer == 0:
+            fold_model.add(
+                Dense(
+                    hypers[&#34;nodes&#34;],
+                    kernel_initializer=&#34;glorot_uniform&#34;,
+                    activation=&#34;relu&#34;,
+                    input_dim=self._model_input_dim,
+                )
+            )
+        # hidden layers
+        else:
+            fold_model.add(
+                Dense(
+                    hypers[&#34;nodes&#34;],
+                    kernel_initializer=&#34;glorot_uniform&#34;,
+                    activation=&#34;relu&#34;,
+                )
+            )
+        if hypers[&#34;dropout_rate&#34;] != 0:
+            fold_model.add(Dropout(hypers[&#34;dropout_rate&#34;]))
+    # output layer
+    if hypers[&#34;output_bkg_node_names&#34;]:
+        num_nodes_out = len(hypers[&#34;output_bkg_node_names&#34;]) + 1
+    else:
+        num_nodes_out = 1
+    fold_model.add(
+        Dense(
+            num_nodes_out,
+            kernel_initializer=&#34;glorot_uniform&#34;,
+            activation=&#34;sigmoid&#34;,
+        )
+    )
+    # Compile
+    # transfer self-defined metrics into real function
+    metrics = copy.deepcopy(hypers[&#34;train_metrics&#34;])
+    weighted_metrics = copy.deepcopy(hypers[&#34;train_metrics_weighted&#34;])
+    if &#34;plain_acc&#34; in metrics:
+        index = metrics.index(&#34;plain_acc&#34;)
+        metrics[index] = plain_acc
+    if &#34;plain_acc&#34; in weighted_metrics:
+        index = weighted_metrics.index(&#34;plain_acc&#34;)
+        weighted_metrics[index] = plain_acc
+    if &#34;auc&#34; in weighted_metrics:
+        index = weighted_metrics.index(&#34;auc&#34;)
+        weighted_metrics[index] = tf.keras.metrics.AUC(name=&#34;auc&#34;)
+    # compile model
+    fold_model.compile(
+        loss=&#34;binary_crossentropy&#34;,
+        optimizer=SGD(
+            lr=hypers[&#34;learn_rate&#34;],
+            decay=hypers[&#34;learn_rate_decay&#34;],
+            momentum=hypers[&#34;momentum&#34;],
+            nesterov=hypers[&#34;nesterov&#34;],
+        ),
+        metrics=metrics,
+        weighted_metrics=weighted_metrics,
+    )</code></pre>
+</details>
+</dd>
+<dt id="hepynet.train.hep_model.Model_Sequential_Flat.get_hypers_tune"><code class="name flex">
+<span>def <span class="ident">get_hypers_tune</span></span>(<span>self)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Gets a dict of hyperparameter (space) for auto-tuning</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def get_hypers_tune(self):
+    &#34;&#34;&#34;Gets a dict of hyperparameter (space) for auto-tuning&#34;&#34;&#34;
+    ic = self._job_config.input.clone()
+    rc = self._job_config.run.clone()
+    model_cfg = self._job_config.tune.clone().model
+    gs = train_utils.get_single_hyper
+    hypers = {
+        # hypers for building model
+        &#34;layers&#34;: gs(model_cfg.layers),
+        &#34;nodes&#34;: gs(model_cfg.nodes),
+        &#34;dropout_rate&#34;: gs(model_cfg.dropout_rate),
+        &#34;output_bkg_node_names&#34;: model_cfg.output_bkg_node_names,
+        &#34;tune_metrics&#34;: model_cfg.tune_metrics,
+        &#34;tune_metrics_weighted&#34;: model_cfg.tune_metrics_weighted,
+        &#34;learn_rate&#34;: gs(model_cfg.learn_rate),
+        &#34;learn_rate_decay&#34;: gs(model_cfg.learn_rate_decay),
+        &#34;momentum&#34;: gs(model_cfg.momentum),
+        &#34;nesterov&#34;: gs(model_cfg.nesterov),
+        # hypers for training
+        &#34;batch_size&#34;: gs(model_cfg.batch_size),
+        &#34;epochs&#34;: gs(model_cfg.epochs),
+        &#34;sig_class_weight&#34;: gs(model_cfg.sig_class_weight),
+        &#34;bkg_class_weight&#34;: gs(model_cfg.bkg_class_weight),
+        &#34;use_early_stop&#34;: model_cfg.use_early_stop,
+        &#34;early_stop_paras&#34;: model_cfg.early_stop_paras.get_config_dict(),
+        # job config
+        &#34;input_dim&#34;: len(ic.selected_features),
+        # input dir
+        &#34;input_dir&#34;: str(pathlib.Path(rc.tune_input_cache).resolve()),
+    }
+    return hypers</code></pre>
+</details>
+</dd>
+</dl>
+<h3>Inherited members</h3>
+<ul class="hlist">
+<li><code><b><a title="hepynet.train.hep_model.Model_Sequential_Base" href="#hepynet.train.hep_model.Model_Sequential_Base">Model_Sequential_Base</a></b></code>:
+<ul class="hlist">
+<li><code><a title="hepynet.train.hep_model.Model_Sequential_Base.get_hypers" href="#hepynet.train.hep_model.Model_Sequential_Base.get_hypers">get_hypers</a></code></li>
+<li><code><a title="hepynet.train.hep_model.Model_Sequential_Base.get_inputs" href="#hepynet.train.hep_model.Model_Sequential_Base.get_inputs">get_inputs</a></code></li>
+<li><code><a title="hepynet.train.hep_model.Model_Sequential_Base.get_model" href="#hepynet.train.hep_model.Model_Base.get_model">get_model</a></code></li>
+<li><code><a title="hepynet.train.hep_model.Model_Sequential_Base.get_train_callbacks" href="#hepynet.train.hep_model.Model_Sequential_Base.get_train_callbacks">get_train_callbacks</a></code></li>
+<li><code><a title="hepynet.train.hep_model.Model_Sequential_Base.load_model" href="#hepynet.train.hep_model.Model_Base.load_model">load_model</a></code></li>
+<li><code><a title="hepynet.train.hep_model.Model_Sequential_Base.load_model_parameters" href="#hepynet.train.hep_model.Model_Base.load_model_parameters">load_model_parameters</a></code></li>
+<li><code><a title="hepynet.train.hep_model.Model_Sequential_Base.save_model" href="#hepynet.train.hep_model.Model_Base.save_model">save_model</a></code></li>
+<li><code><a title="hepynet.train.hep_model.Model_Sequential_Base.save_model_paras" href="#hepynet.train.hep_model.Model_Base.save_model_paras">save_model_paras</a></code></li>
+<li><code><a title="hepynet.train.hep_model.Model_Sequential_Base.set_inputs" href="#hepynet.train.hep_model.Model_Base.set_inputs">set_inputs</a></code></li>
+</ul>
+</li>
+</ul>
+</dd>
+</dl>
+</section>
+</article>
+<nav id="sidebar">
+<h1>Index</h1>
+<div class="toc">
+<ul></ul>
+</div>
+<ul id="index">
+<li><h3>Super-module</h3>
+<ul>
+<li><code><a title="hepynet.train" href="index.html">hepynet.train</a></code></li>
+</ul>
+</li>
+<li><h3><a href="#header-functions">Functions</a></h3>
+<ul class="">
+<li><code><a title="hepynet.train.hep_model.plain_acc" href="#hepynet.train.hep_model.plain_acc">plain_acc</a></code></li>
+<li><code><a title="hepynet.train.hep_model.tune_Model_Sequential_Flat" href="#hepynet.train.hep_model.tune_Model_Sequential_Flat">tune_Model_Sequential_Flat</a></code></li>
+</ul>
+</li>
+<li><h3><a href="#header-classes">Classes</a></h3>
+<ul>
+<li>
+<h4><code><a title="hepynet.train.hep_model.Model_Base" href="#hepynet.train.hep_model.Model_Base">Model_Base</a></code></h4>
+<ul class="">
+<li><code><a title="hepynet.train.hep_model.Model_Base.build" href="#hepynet.train.hep_model.Model_Base.build">build</a></code></li>
+<li><code><a title="hepynet.train.hep_model.Model_Base.get_feedbox" href="#hepynet.train.hep_model.Model_Base.get_feedbox">get_feedbox</a></code></li>
+<li><code><a title="hepynet.train.hep_model.Model_Base.get_job_config" href="#hepynet.train.hep_model.Model_Base.get_job_config">get_job_config</a></code></li>
+<li><code><a title="hepynet.train.hep_model.Model_Base.get_model" href="#hepynet.train.hep_model.Model_Base.get_model">get_model</a></code></li>
+<li><code><a title="hepynet.train.hep_model.Model_Base.get_model_meta" href="#hepynet.train.hep_model.Model_Base.get_model_meta">get_model_meta</a></code></li>
+<li><code><a title="hepynet.train.hep_model.Model_Base.get_model_save_dir" href="#hepynet.train.hep_model.Model_Base.get_model_save_dir">get_model_save_dir</a></code></li>
+<li><code><a title="hepynet.train.hep_model.Model_Base.load_model" href="#hepynet.train.hep_model.Model_Base.load_model">load_model</a></code></li>
+<li><code><a title="hepynet.train.hep_model.Model_Base.load_model_parameters" href="#hepynet.train.hep_model.Model_Base.load_model_parameters">load_model_parameters</a></code></li>
+<li><code><a title="hepynet.train.hep_model.Model_Base.save_model" href="#hepynet.train.hep_model.Model_Base.save_model">save_model</a></code></li>
+<li><code><a title="hepynet.train.hep_model.Model_Base.save_model_paras" href="#hepynet.train.hep_model.Model_Base.save_model_paras">save_model_paras</a></code></li>
+<li><code><a title="hepynet.train.hep_model.Model_Base.set_inputs" href="#hepynet.train.hep_model.Model_Base.set_inputs">set_inputs</a></code></li>
+</ul>
+</li>
+<li>
+<h4><code><a title="hepynet.train.hep_model.Model_Sequential_Base" href="#hepynet.train.hep_model.Model_Sequential_Base">Model_Sequential_Base</a></code></h4>
+<ul class="">
+<li><code><a title="hepynet.train.hep_model.Model_Sequential_Base.get_hypers" href="#hepynet.train.hep_model.Model_Sequential_Base.get_hypers">get_hypers</a></code></li>
+<li><code><a title="hepynet.train.hep_model.Model_Sequential_Base.get_inputs" href="#hepynet.train.hep_model.Model_Sequential_Base.get_inputs">get_inputs</a></code></li>
+<li><code><a title="hepynet.train.hep_model.Model_Sequential_Base.get_train_callbacks" href="#hepynet.train.hep_model.Model_Sequential_Base.get_train_callbacks">get_train_callbacks</a></code></li>
+<li><code><a title="hepynet.train.hep_model.Model_Sequential_Base.train" href="#hepynet.train.hep_model.Model_Sequential_Base.train">train</a></code></li>
+</ul>
+</li>
+<li>
+<h4><code><a title="hepynet.train.hep_model.Model_Sequential_Flat" href="#hepynet.train.hep_model.Model_Sequential_Flat">Model_Sequential_Flat</a></code></h4>
+<ul class="">
+<li><code><a title="hepynet.train.hep_model.Model_Sequential_Flat.build" href="#hepynet.train.hep_model.Model_Sequential_Flat.build">build</a></code></li>
+<li><code><a title="hepynet.train.hep_model.Model_Sequential_Flat.build_single" href="#hepynet.train.hep_model.Model_Sequential_Flat.build_single">build_single</a></code></li>
+<li><code><a title="hepynet.train.hep_model.Model_Sequential_Flat.get_hypers_tune" href="#hepynet.train.hep_model.Model_Sequential_Flat.get_hypers_tune">get_hypers_tune</a></code></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</nav>
+</main>
+<footer id="footer">
+<p>Generated by <a href="https://pdoc3.github.io/pdoc"><cite>pdoc</cite> 0.9.2</a>.</p>
+</footer>
+</body>
+</html>

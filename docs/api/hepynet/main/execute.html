@@ -29,24 +29,43 @@
 <pre><code class="python">import argparse
 import logging
 import os
-import sys
 import time
+
 logger = logging.getLogger(&#34;hepynet&#34;)
 # Show tensorflow warnings and errors only
 os.environ[&#34;TF_CPP_MIN_LOG_LEVEL&#34;] = &#34;1&#34;
 
 
 def execute():
+    &#34;&#34;&#34;Enterpoint function of hepynet&#34;&#34;&#34;
     parser = argparse.ArgumentParser()
     parser.add_argument(&#34;yaml_configs&#34;, nargs=&#34;*&#34;, action=&#34;store&#34;)
     parser.add_argument(
-        &#34;-d&#34;, &#34;--debug&#34;, required=False, help=&#34;run in debug mode&#34;, action=&#34;store_true&#34;,
+        &#34;-d&#34;,
+        &#34;--debug&#34;,
+        required=False,
+        help=&#34;run in debug mode&#34;,
+        action=&#34;store_true&#34;,
+    )
+    parser.add_argument(
+        &#34;-r&#34;,
+        &#34;--resume&#34;,
+        required=False,
+        help=&#34;resume (tune) job&#34;,
+        action=&#34;store_true&#34;,
+    )
+    parser.add_argument(
+        &#34;-t&#34;,
+        &#34;--time&#34;,
+        required=False,
+        help=&#34;display time&#34;,
+        action=&#34;store_true&#34;,
     )
     parser.add_argument(
         &#34;-v&#34;,
         &#34;--verbose&#34;,
         required=False,
-        help=&#34;verbose debug infomation&#34;,
+        help=&#34;verbose debug information&#34;,
         action=&#34;store_true&#34;,
     )
     args = parser.parse_args()
@@ -56,20 +75,20 @@ def execute():
         parser.print_help()
         exit()
     else:
-        # set debug level
+        # set logging level
         if args.debug:  # DEBUG, INFO, WARNING, ERROR, CRITICAL
             logging.getLogger(&#34;hepynet&#34;).setLevel(logging.DEBUG)
-            if args.verbose:
-                logging_format = &#34;%(asctime)s,%(msecs)03d %(levelname)7s %(message)s  &gt;&gt;  file: %(filename)s, line: %(lineno)d&#34;
-            else:
-                logging_format = &#34;%(asctime)s,%(msecs)03d %(levelname)7s %(message)s&#34;
-
-            logging.basicConfig(
-                format=logging_format, datefmt=&#34;%Y-%m-%d:%H:%M:%S&#34;,
-            )
         else:
             logging.getLogger(&#34;hepynet&#34;).setLevel(logging.INFO)
-            logging.basicConfig(format=&#34;%(levelname)s %(message)s&#34;)
+        # set logging format
+        logging_format = &#34;%(levelname)s %(message)s&#34;
+        if args.verbose:
+            logging_format += &#34; @ %(filename)s:%(lineno)d - %(funcName)s&#34;
+        if args.time:
+            logging_format = &#34;%(asctime)s,%(msecs)03d &#34; + logging_format
+        logging.basicConfig(
+            format=logging_format, datefmt=&#34;%Y-%m-%d:%H:%M:%S&#34;,
+        )
 
         from hepynet.main import job_executor
 
@@ -77,10 +96,14 @@ def execute():
             logger.info(&#34;#&#34; * 80)
             logger.info(f&#34;Executing: {yaml_cfg}&#34;)
             job_start_time = time.perf_counter()
-            ex_test = job_executor.job_executor(yaml_cfg)
-            ex_test.execute_jobs()
+            executor = job_executor.job_executor(yaml_cfg)
+            executor.execute_jobs(resume=args.resume)
             job_end_time = time.perf_counter()
-            logger.info(f&#34;Time consumed: {job_end_time - job_start_time}&#34;)
+            time_consumed = job_end_time - job_start_time
+            time_consumed_str = time.strftime(
+                &#34;%H:%M:%S&#34;, time.gmtime(time_consumed)
+            )
+            logger.info(f&#34;Time consumed: {time_consumed_str}&#34;)
         logger.info(&#34;#&#34; * 80)
         logger.info(&#34;Done!&#34;)
         logger.info(&#34;#&#34; * 80)</code></pre>
@@ -97,22 +120,41 @@ def execute():
 <span>def <span class="ident">execute</span></span>(<span>)</span>
 </code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>Enterpoint function of hepynet</p></div>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">def execute():
+    &#34;&#34;&#34;Enterpoint function of hepynet&#34;&#34;&#34;
     parser = argparse.ArgumentParser()
     parser.add_argument(&#34;yaml_configs&#34;, nargs=&#34;*&#34;, action=&#34;store&#34;)
     parser.add_argument(
-        &#34;-d&#34;, &#34;--debug&#34;, required=False, help=&#34;run in debug mode&#34;, action=&#34;store_true&#34;,
+        &#34;-d&#34;,
+        &#34;--debug&#34;,
+        required=False,
+        help=&#34;run in debug mode&#34;,
+        action=&#34;store_true&#34;,
+    )
+    parser.add_argument(
+        &#34;-r&#34;,
+        &#34;--resume&#34;,
+        required=False,
+        help=&#34;resume (tune) job&#34;,
+        action=&#34;store_true&#34;,
+    )
+    parser.add_argument(
+        &#34;-t&#34;,
+        &#34;--time&#34;,
+        required=False,
+        help=&#34;display time&#34;,
+        action=&#34;store_true&#34;,
     )
     parser.add_argument(
         &#34;-v&#34;,
         &#34;--verbose&#34;,
         required=False,
-        help=&#34;verbose debug infomation&#34;,
+        help=&#34;verbose debug information&#34;,
         action=&#34;store_true&#34;,
     )
     args = parser.parse_args()
@@ -122,20 +164,20 @@ def execute():
         parser.print_help()
         exit()
     else:
-        # set debug level
+        # set logging level
         if args.debug:  # DEBUG, INFO, WARNING, ERROR, CRITICAL
             logging.getLogger(&#34;hepynet&#34;).setLevel(logging.DEBUG)
-            if args.verbose:
-                logging_format = &#34;%(asctime)s,%(msecs)03d %(levelname)7s %(message)s  &gt;&gt;  file: %(filename)s, line: %(lineno)d&#34;
-            else:
-                logging_format = &#34;%(asctime)s,%(msecs)03d %(levelname)7s %(message)s&#34;
-
-            logging.basicConfig(
-                format=logging_format, datefmt=&#34;%Y-%m-%d:%H:%M:%S&#34;,
-            )
         else:
             logging.getLogger(&#34;hepynet&#34;).setLevel(logging.INFO)
-            logging.basicConfig(format=&#34;%(levelname)s %(message)s&#34;)
+        # set logging format
+        logging_format = &#34;%(levelname)s %(message)s&#34;
+        if args.verbose:
+            logging_format += &#34; @ %(filename)s:%(lineno)d - %(funcName)s&#34;
+        if args.time:
+            logging_format = &#34;%(asctime)s,%(msecs)03d &#34; + logging_format
+        logging.basicConfig(
+            format=logging_format, datefmt=&#34;%Y-%m-%d:%H:%M:%S&#34;,
+        )
 
         from hepynet.main import job_executor
 
@@ -143,10 +185,14 @@ def execute():
             logger.info(&#34;#&#34; * 80)
             logger.info(f&#34;Executing: {yaml_cfg}&#34;)
             job_start_time = time.perf_counter()
-            ex_test = job_executor.job_executor(yaml_cfg)
-            ex_test.execute_jobs()
+            executor = job_executor.job_executor(yaml_cfg)
+            executor.execute_jobs(resume=args.resume)
             job_end_time = time.perf_counter()
-            logger.info(f&#34;Time consumed: {job_end_time - job_start_time}&#34;)
+            time_consumed = job_end_time - job_start_time
+            time_consumed_str = time.strftime(
+                &#34;%H:%M:%S&#34;, time.gmtime(time_consumed)
+            )
+            logger.info(f&#34;Time consumed: {time_consumed_str}&#34;)
         logger.info(&#34;#&#34; * 80)
         logger.info(&#34;Done!&#34;)
         logger.info(&#34;#&#34; * 80)</code></pre>

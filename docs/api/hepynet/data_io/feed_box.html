@@ -26,16 +26,20 @@
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">import copy
+<pre><code class="python">from __future__ import nested_scopes
+
+import copy
 import logging
-import time
-from sys import getsizeof
+import pathlib
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
+import pandas as pd
+import yaml
+from sklearn.model_selection import StratifiedShuffleSplit
 
-from hepynet.common import array_utils
+from hepynet.common import config_utils
 from hepynet.data_io import numpy_io
-from hepynet.train import train_utils
 
 logger = logging.getLogger(&#34;hepynet&#34;)
 
@@ -44,80 +48,185 @@ class Feedbox(object):
     &#34;&#34;&#34;DNN inputs management class.&#34;&#34;&#34;
 
     def __init__(
-        self, job_config, model_meta=None,
+        self, job_config: config_utils.Hepy_Config, norm_dict=None,
     ):
         # get config
         self._job_config = job_config.clone()
-        self._ic = self._job_config.input
-        self._tc = self._job_config.train
-        self._ac = self._job_config.apply
-        # meta info
-        if self._ic.reset_feature:
-            if self._ic.reset_feature_name in self._ic.selected_features:
-                self._reset_mass_id = self._ic.selected_features.index(
-                    self._ic.reset_feature_name
-                )
-            else:
-                logger.critical(
-                    f&#34;input.reset_feature is True but input.reset_feature_name {self._ic.reset_feature_name} is invalid, please check the config&#34;
-                )
-                exit(1)
-        else:
-            self._reset_mass_id = None
-        self._rdm_seed = self._ic.rdm_seed
+        self._data_dir = pathlib.Path(numpy_io.get_data_dir())
+        jc = self._job_config.job.clone()
         self._array_prepared = False
-        # set random seed
-        if self._rdm_seed is None:
-            self._rdm_seed = int(time.time())
-        # set up array dict
-        self._sig_dict = None
-        self._bkg_dict = None
-        self._data_dict = None
 
-        # get normalization parameters
-        no_norm_paras = False
-        if model_meta is None:
-            no_norm_paras = True
-        else:
-            if model_meta[&#34;norm_dict&#34;] is None:
-                no_norm_paras = True
-            else:
-                no_norm_paras = False
-        norm_dict = {}
-        if no_norm_paras:
-            logger.info(f&#34;No norm_dict found, recalculating norm parameters&#34;)
-            if self._bkg_dict is not None:
-                xb_dict = self._bkg_dict
-            else:
-                xb_dict = numpy_io.load_npy_arrays(self._job_config, &#34;bkg&#34;)
-            weight_array = np.concatenate(
-                [sample_dict[&#34;weight&#34;] for sample_dict in xb_dict.values()]
-            )
-            for feature in self._ic.selected_features:
-                feature_array = np.concatenate(
-                    [sample_dict[feature] for sample_dict in xb_dict.values()]
+        # get norm dict
+        if norm_dict is None:
+            if jc.job_name == &#34;apply&#34;:
+                logger.warning(
+                    f&#34;No norm_dict found, but this is not expected as the job type is &#39;apply&#39;! The normalization parameters may not be consistent with the training!&#34;
                 )
-                mean = np.average(feature_array, weights=weight_array)
-                variance = np.average((feature_array - mean) ** 2, weights=weight_array)
-                norm_dict[feature] = {&#34;mean&#34;: mean, &#34;variance&#34;: variance}
-                logger.debug(f&#34;Feature {feature} mean: {mean}, variance: {variance}&#34;)
+            self._norm_dict = {}
         else:
-            norm_dict = model_meta[&#34;norm_dict&#34;]
+            self._norm_dict = copy.deepcopy(norm_dict)
 
-        self._norm_dict = norm_dict
         self._array_prepared = True
 
-    def load_sig_arrays(self):
-        self._sig_dict = numpy_io.load_npy_arrays(self._job_config, &#34;sig&#34;)
+    def get_raw_df(self) -&gt; pd.DataFrame:
+        logger.info(&#34;Loading raw input DataFrame...&#34;)
+        ic = self._job_config.input.clone()
+        raw_df: pd.DataFrame = pd.read_feather(self._data_dir / ic.input_path)
+        # select events in sig/bkg sample_list
+        sample_list = ic.sig_list + ic.bkg_list + ic.data_list
+        logger.info(f&#34;&gt; Loading samples in list: {sample_list}&#34;)
+        # raw_df = raw_df[raw_df[&#34;sample_name&#34;].isin(sample_list)]
+        # raw_df.drop(raw_df[~raw_df[&#34;sample_name&#34;].isin(sample_list)], inplace=True)
+        raw_df.drop(
+            raw_df.index[~raw_df[&#34;sample_name&#34;].isin(sample_list)],
+            inplace=True,
+        )
+        # select events by extra cut features
+        if ic.cut_expression:
+            logger.info(
+                f&#34;&gt; Cutting inputs according to expression: {ic.cut_expression}&#34;
+            )
+            raw_df.query(ic.cut_expression, inplace=True)
+        # return
+        raw_df.reset_index(drop=True, inplace=True)
+        logger.info(&#34;&gt; Successfully loaded raw input DataFrame...&#34;)
+        return raw_df
 
-    def delete_sig_arrays(self):
-        self._sig_dict = None
+    def get_processed_df(
+        self, raw_df: pd.DataFrame = None, keep_unreset: bool = False
+    ):
+        logger.info(&#34;Loading processed input DataFrame...&#34;)
+        ic = self._job_config.input.clone()
+        if raw_df is None:
+            out_df: pd.DataFrame = self.get_raw_df()
+        else:
+            out_df: pd.DataFrame = raw_df.copy()
+        feature_include = ic.selected_features + ic.validation_features
+        # overwrite physic parameter
+        if ic.reset_feature_overwrite:
+            physic_para = ic.reset_feature_name
+            physic_para_value = ic.reset_feature_overwrite_value
+            logger.info(f&#34;&gt; Setting physic para to {physic_para_value}&#34;)
+            if not isinstance(physic_para_value, (int, float)):
+                logger.error(
+                    f&#34;Invalid physic_para_value type: {type(physic_para_value)}&#34;
+                )
+                exit()
+            out_df.loc[
+                out_df[&#34;is_sig&#34;] == False, physic_para
+            ] = physic_para_value
+        # reshape inputs
+        if ic.reshape_input:
+            logger.info(&#34;&gt; Reshaping inputs&#34;)
+            # check missing norm parameters
+            missing_norms = []
+            norm_alias = ic.feature_norm_alias.get_config_dict()
+            for feature in feature_include:
+                if feature not in self._norm_dict:
+                    found_norm_alias = False
+                    # check feature normalization alias
+                    if feature in norm_alias:
+                        feature_alias = norm_alias[feature]
+                        if feature_alias in self._norm_dict:
+                            logger.debug(f&#34;Found norm_alias for: {feature}&#34;)
+                            found_norm_alias = True
+                            self._norm_dict[feature] = copy.deepcopy(
+                                self._norm_dict[feature_alias]
+                            )
+                        else:
+                            logger.warn(
+                                f&#34;Specified but can&#39;t find norm_alias for: {feature}&#34;
+                            )
+                    if not found_norm_alias:
+                        missing_norms.append(feature)
+            # recalculate missing norm parameters
+            if len(missing_norms) &gt; 0:
+                logger.debug(
+                    f&#34;Recalculating normalization parameters for {missing_norms}&#34;
+                )
+                self.update_norm_dict(missing_norms)
+            # reshape inputs
+            for feature in feature_include:
+                if feature in self._norm_dict:
+                    f_mean = self._norm_dict[feature][&#34;mean&#34;]
+                    f_var = self._norm_dict[feature][&#34;variance&#34;]
+                    new_values = (
+                        out_df[feature].to_numpy(&#34;float32&#34;) - f_mean
+                    ) / np.sqrt(f_var)
+                    out_df.loc[:, feature].update(new_values)
+                else:
+                    logger.debug(
+                        f&#34;{feature} is not in self._norm_dict, ignoring reshape process.&#34;
+                    )
+        # deal with negative weights
+        nwt_method = ic.negative_weight_process
+        logger.info(f&#34;&gt; Processing negative weights with method: {nwt_method}&#34;)
+        if nwt_method == &#34;to_zero&#34;:
+            out_df.loc[out_df[&#34;weight&#34;] &lt; 0, &#34;weight&#34;] = 0
+        elif nwt_method == &#34;to_positive&#34;:
+            out_df.loc[out_df[&#34;weight&#34;] &lt; 0, &#34;weight&#34;].update(
+                out_df.loc[out_df[&#34;weight&#34;] &lt; 0, &#34;weight&#34;].abs()
+            )
+        elif nwt_method == &#34;keep&#34;:
+            pass
+        else:
+            logger.warn(f&#34;&gt; Unknown ic.negative_weight_process {nwt_method}&#34;)
+        # reweight inputs
+        if ic.reweight_input:
+            logger.info(&#34;&gt; Reweighting inputs&#34;)
+            # reweight signal
+            self.reweight_df(
+                out_df, ic.sig_list, ic.sig_key, ic.sig_sumofweight, True, True
+            )
+            # reweight background
+            self.reweight_df(
+                out_df,
+                ic.bkg_list,
+                ic.bkg_key,
+                ic.bkg_sumofweight,
+                True,
+                False,
+            )
+        # reset physic para for pDNN
+        physic_para = ic.reset_feature_name
+        if keep_unreset:
+            unreset_physic_para_values = out_df[physic_para].values
+            out_df[physic_para + &#34;_unreset&#34;] = unreset_physic_para_values
+        if ic.reset_feature:
+            logger.info(
+                f&#34;&gt; Resetting physic para {physic_para} distribution for pDNN&#34;
+            )
+            ref_df = out_df.loc[
+                out_df[&#34;is_sig&#34;] == True, [physic_para, &#34;weight&#34;]
+            ]
+            ref_array = ref_df[physic_para]
+            ref_weight = ref_df[&#34;weight&#34;]
+            ref_weight_positive = ref_weight.copy()
+            ref_weight_positive[ref_weight_positive &lt; 0] = 0
+            sump = ref_weight_positive.sum()
+            reset_size = len(out_df.loc[out_df[&#34;is_sig&#34;] == False].index)
+            reset_values = np.random.choice(
+                ref_array.to_numpy(&#34;float32&#34;),
+                size=reset_size,
+                p=(1 / sump) * ref_weight_positive.to_numpy(&#34;float32&#34;),
+            )
+            out_df.loc[out_df[&#34;is_sig&#34;] == False, physic_para] = reset_values
 
-    def load_bkg_arrays(self):
-        self._bkg_dict = numpy_io.load_npy_arrays(self._job_config, &#34;bkg&#34;)
+        # set y
+        logger.info(&#34;&gt; Setting up y values&#34;)
+        out_df.loc[:, &#34;y&#34;] = 0
+        out_df.loc[out_df[&#34;is_sig&#34;] == True, &#34;y&#34;] = 1
+        # tag train / test
+        logger.info(&#34;&gt; Tagging train / test&#34;)
+        sss = StratifiedShuffleSplit(n_splits=1, test_size=ic.test_rate)
+        y_arr = out_df[&#34;y&#34;].to_numpy(&#34;float32&#34;)
+        for train_index, _ in sss.split(y_arr, y_arr):
+            break
+        out_df.loc[:, &#34;is_train&#34;] = False
+        out_df.loc[train_index, &#34;is_train&#34;] = True
 
-    def delete_bkg_arrays(self):
-        self._bkg_dict = None
+        logger.info(&#34;&gt; Successfully loaded processed input DataFrame...&#34;)
+        return out_df
 
     def get_job_config(self):
         return self._job_config
@@ -125,293 +234,68 @@ class Feedbox(object):
     def get_norm_dict(self):
         return self._norm_dict
 
-    def get_raw(self, input_type, array_key=&#34;all&#34;, add_validation_features=False):
-        array_out = None
-        weight_out = None
-        # get dict
-        array_dict = None
-        if input_type == &#34;xs&#34;:
-            if self._sig_dict is not None:
-                array_dict = self._sig_dict
-            else:
-                array_dict = numpy_io.load_npy_arrays(self._job_config, &#34;sig&#34;)
-        elif input_type == &#34;xb&#34;:
-            if self._bkg_dict is not None:
-                array_dict = self._bkg_dict
-            else:
-                array_dict = numpy_io.load_npy_arrays(self._job_config, &#34;bkg&#34;)
-        elif input_type == &#34;xd&#34;:
-            if self._ac.apply_data:
-                array_dict = numpy_io.load_npy_arrays(self._job_config, &#34;data&#34;)
+    def reweight_df(
+        self,
+        df: pd.DataFrame,
+        sample_list,
+        array_key,
+        sumofweight,
+        is_mc,
+        is_sig,
+    ):
+        total_wt = df.loc[
+            (df[&#34;is_mc&#34;] == is_mc)
+            &amp; (df[&#34;is_sig&#34;] == is_sig)
+            &amp; df[&#34;sample_name&#34;].isin(sample_list),
+            &#34;weight&#34;,
+        ].sum()
+        if array_key in sample_list:
+            sample_list = [array_key]
+        for sample in sample_list:
+            sample_wt = df.loc[df[&#34;sample_name&#34;] == sample, &#34;weight&#34;]
+            sample_sumw = sample_wt.sum()
+            if sample_sumw &lt;= 0:
+                continue
+            # get norm factor
+            norm_factor = 1
+            if array_key == &#34;all&#34;:
+                norm_factor = sumofweight / total_wt
+            elif array_key == &#34;all_norm&#34;:
+                n_samples = len(sample_list)
+                norm_factor = (sumofweight / n_samples) / sample_sumw
+            elif array_key == sample:
+                norm_factor = sumofweight / sample_sumw
             else:
                 logger.warn(
-                    &#34;Trying to get data array as apply_data option is set to False&#34;
+                    f&#34;Unknown array_key {array_key} for sample {sample}&#34;
                 )
-                return None
-        else:
-            logger.warn(&#34;Unknown input type&#34;)
-            return None
-        if add_validation_features:
-            if self._ic.validation_features is None:
-                validation_features = []
-            else:
-                validation_features = self._ic.validation_features
-            feature_list = self._ic.selected_features + validation_features
-        else:
-            feature_list = self._ic.selected_features
-        if array_key in list(array_dict.keys()):
-            array_out = np.concatenate(
-                [array_dict[array_key][feature] for feature in feature_list], axis=1,
+            df.loc[df[&#34;sample_name&#34;] == sample, &#34;weight&#34;] = (
+                sample_wt * norm_factor
             )
-            weight_out = array_dict[array_key][&#34;weight&#34;]
-        elif array_key == &#34;all&#34; or array_key == &#34;all_norm&#34;:
-            array_components = []
-            weight_components = []
-            for temp_key in array_dict.keys():
-                temp_array = np.concatenate(
-                    [array_dict[temp_key][feature] for feature in feature_list], axis=1,
-                )
-                array_components.append(temp_array)
-                weight_component = array_dict[temp_key][&#34;weight&#34;]
-                if array_key == &#34;all&#34;:
-                    weight_components.append(weight_component)
-                else:
-                    sumofweights = np.sum(weight_component)
-                    weight_components.append(weight_component / sumofweights)
-            array_out = np.concatenate(array_components)
-            weight_out = np.concatenate(weight_components)
-        else:
-            logger.warn(&#34;Unknown array_key&#34;)
-            return None
-        if self._ic.rm_negative_weight_events:
-            weight_out = array_utils.clean_negative_weights(weight_out)
-        return array_out, weight_out.reshape((-1,))
 
-    def get_reshape(self, input_type, array_key=&#34;all&#34;):
-        x_reshape, weight_reshape = self.get_raw(input_type, array_key=array_key)
-        norm_means = []
-        norm_variances = []
-        xb_dict = None
-        for feature in self._ic.selected_features:
-            norm_alias = self._job_config.input.feature_norm_alias.get_config_dict()
-            mean = None
-            variance = None
-            if feature in self._norm_dict:
-                mean = self._norm_dict[feature][&#34;mean&#34;]
-                variance = self._norm_dict[feature][&#34;variance&#34;]
-            else:
-                found_norm_alias = False
-                # check feature normalization alias
-                if feature in norm_alias:
-                    alias_feature = norm_alias[feature]
-                    if alias_feature in self._norm_dict:
-                        logger.debug(f&#34;Using norm_alias for: {feature}&#34;)
-                        mean = self._norm_dict[alias_feature][&#34;mean&#34;]
-                        variance = self._norm_dict[alias_feature][&#34;variance&#34;]
-                        found_norm_alias = True
-                    else:
-                        logger.warn(
-                            f&#34;Specified but can&#39;t find norm_alias for: {feature}&#34;
-                        )
-                # recalculate if no existing mean/variance found
-                if not found_norm_alias:
-                    logger.debug(&#34;Recalculating normalization parameters for {feature}&#34;)
-                    if xb_dict is None:
-                        xb_dict = numpy_io.load_npy_arrays(self._job_config, &#34;bkg&#34;)
-                    if not xb_dict:
-                        logger.critical(
-                            f&#34;Can&#39;t recalculate norm factor with empty background inputs, please check input.bkg_list&#34;
-                        )
-                        exit(1)
-                    feature_array = np.concatenate(
-                        [sample_dict[feature] for sample_dict in xb_dict.values()]
-                    )
-                    weight_array = np.concatenate(
-                        [sample_dict[&#34;weight&#34;] for sample_dict in xb_dict.values()]
-                    )
-                    mean = np.average(feature_array, weights=weight_array)
-                    variance = np.average(
-                        (feature_array - mean) ** 2, weights=weight_array
-                    )
-                    self._norm_dict[feature] = {&#34;mean&#34;: mean, &#34;variance&#34;: variance}
-            norm_means.append(mean)
-            norm_variances.append(variance)
-        x_reshape = train_utils.norarray(
-            x_reshape, average=norm_means, variance=norm_variances,
-        )
-        return x_reshape.copy(), weight_reshape.copy()
-
-    def get_reweight(
-        self,
-        input_type,
-        array_key=&#34;all&#34;,
-        reset_mass=None,
-        reset_array_key=&#34;all&#34;,
-        norm=True,
-    ):
-        if reset_mass == None:
-            reset_mass = self._ic.reset_feature
-        if input_type == &#34;xs&#34;:
-            xs_reshape, xs_weight_reshape = self.get_reshape(&#34;xs&#34;, array_key=array_key)
-            return array_utils.modify_array(
-                xs_reshape,
-                xs_weight_reshape,
-                remove_negative_weight=self._ic.rm_negative_weight_events,
-                norm=norm,
-                sumofweight=self._ic.sig_sumofweight,
-            )
-        elif input_type == &#34;xb&#34;:
-            xb_reshape, xb_weight_reshape = self.get_reshape(&#34;xb&#34;, array_key=array_key)
-            if reset_mass:
-                reset_mass_arr, reset_mass_wts = self.get_reshape(
-                    &#34;xs&#34;, array_key=reset_array_key
-                )
-                xb_reshape, xb_weight_reshape = array_utils.modify_array(
-                    xb_reshape,
-                    xb_weight_reshape,
-                    reset_mass=True,
-                    reset_mass_array=reset_mass_arr,
-                    reset_mass_weights=reset_mass_wts,
-                    reset_mass_id=self._reset_mass_id,
-                )
-            return array_utils.modify_array(
-                xb_reshape,
-                xb_weight_reshape,
-                remove_negative_weight=self._ic.rm_negative_weight_events,
-                norm=norm,
-                sumofweight=self._ic.bkg_sumofweight,
-            )
-        elif input_type == &#34;xd&#34;:
-            xd_reshape, xd_weight_reshape = self.get_reshape(&#34;xd&#34;, array_key=array_key)
-            if reset_mass:
-                reset_mass_arr, reset_mass_wts = self.get_reshape(
-                    &#34;xs&#34;, array_key=reset_array_key
-                )
-                xd_reshape = array_utils.modify_array(
-                    xd_reshape,
-                    xd_weight_reshape,
-                    reset_mass=True,
-                    reset_mass_array=reset_mass_arr,
-                    reset_mass_weights=reset_mass_wts,
-                    reset_mass_id=self._reset_mass_id,
-                )
-            return array_utils.modify_array(
-                xd_reshape,
-                xd_weight_reshape,
-                remove_negative_weight=self._ic.rm_negative_weight_events,
-                norm=norm,
-                sumofweight=self._ic.data_weight,
-            )
+    def update_norm_dict(self, features: Optional[List[str]] = None):
+        ic = self._job_config.input.clone()
+        feature_list = list()
+        if features is not None:
+            feature_list = features
         else:
-            logger.warn(&#34;Unknown input_type&#34;)
-            return None
-
-    def get_train_test_arrays(
-        self,
-        sig_key=&#34;all&#34;,
-        bkg_key=&#34;all&#34;,
-        multi_class_bkgs=[],
-        reset_mass=None,
-        output_keys=[],
-    ):
-        if reset_mass == None:
-            reset_mass = self._ic.reset_feature
-
-        # deal with different number of output nodes
-        ## load sig
-        delete_sig_dict = False
-        if self._sig_dict is None:
-            self.load_sig_arrays()
-            delete_sig_dict = True
-        xs_reweight, xs_weight_reweight = self.get_reweight(
-            &#34;xs&#34;, array_key=sig_key, reset_mass=reset_mass, reset_array_key=sig_key
-        )
-        if delete_sig_dict:
-            self.delete_sig_arrays()
-        logger.debug(f&#34;xs_weight_reweight shape: {xs_weight_reweight.shape}&#34;)
-        ## load bkg
-        delete_bkg_dict = False
-        if self._bkg_dict is None:
-            self.load_bkg_arrays()
-            delete_bkg_dict = True
-        if multi_class_bkgs is not None and len(multi_class_bkgs) &gt; 0:
-            xb_reweight = None
-            xb_weight_reweight = None
-            yb = None
-            num_bkg_nodes = len(multi_class_bkgs)
-            ys_element = np.zeros(num_bkg_nodes + 1)
-            ys_element[0] = 1
-            ys = np.tile(ys_element, (len(xs_reweight), 1))
-            for node_num, bkg_node in enumerate(multi_class_bkgs):
-                bkg_node_list = (&#34;&#34;.join(bkg_node.split())).split(&#34;+&#34;)
-                xb_reweight_node = None
-                wt_reweight_node = None
-                for bkg_ele in bkg_node_list:
-                    xb_reweight_ele, xb_wt_reweight_ele = self.get_reweight(
-                        &#34;xb&#34;,
-                        array_key=bkg_ele,
-                        reset_mass=reset_mass,
-                        reset_array_key=sig_key,
-                    )
-                    if xb_reweight_node is None:
-                        xb_reweight_node = xb_reweight_ele
-                        wt_reweight_node = xb_wt_reweight_ele
-                    else:
-                        xb_reweight_node = np.concatenate(
-                            (xb_reweight_node, xb_reweight_ele)
-                        )
-                        wt_reweight_node = np.concatenate(
-                            (wt_reweight_node, xb_wt_reweight_ele)
-                        )
-                xb_reweight_node, wt_reweight_node = array_utils.modify_array(
-                    xb_reweight_node, wt_reweight_node, norm=True, sumofweight=1000,
-                )
-                yb_single_element = np.zeros(num_bkg_nodes + 1)
-                yb_single_element[node_num + 1] = 1
-                yb_single = np.tile(yb_single_element, (len(xb_reweight_node), 1))
-                if xb_reweight is None:
-                    xb_reweight = xb_reweight_node
-                    yb = yb_single
-                    xb_weight_reweight = wt_reweight_node
-                else:
-                    xb_reweight = np.concatenate((xb_reweight, xb_reweight_node))
-                    yb = np.concatenate((yb, yb_single))
-                    xb_weight_reweight = np.concatenate(
-                        (xb_weight_reweight, wt_reweight_node)
-                    )
-            xb_reweight, xb_weight_reweight = array_utils.modify_array(
-                xb_reweight,
-                xb_weight_reweight,
-                norm=True,
-                sumofweight=self._ic.bkg_sumofweight,
+            feature_list = ic.selected_features + ic.validation_features
+        feature_list = list(set().union(feature_list))  # remove duplicates
+        df = self.get_raw_df()
+        weight_array = df.loc[
+            (df[&#34;is_mc&#34;] == True) &amp; (df[&#34;is_sig&#34;] == False), &#34;weight&#34;
+        ].to_numpy(&#34;float32&#34;)
+        for feature in feature_list:
+            feature_array = df.loc[
+                (df[&#34;is_mc&#34;] == True) &amp; (df[&#34;is_sig&#34;] == False), feature
+            ].to_numpy(&#34;float32&#34;)
+            mean = np.average(feature_array, weights=weight_array)
+            variance = np.average(
+                (feature_array - mean) ** 2, weights=weight_array
             )
-            if delete_bkg_dict:
-                self.delete_bkg_arrays
-            return train_utils.split_and_combine(
-                xs_reweight,
-                xs_weight_reweight,
-                xb_reweight,
-                xb_weight_reweight,
-                ys=ys,
-                yb=yb,
-                output_keys=output_keys,
-                test_rate=self._tc.test_rate,
-                shuffle_seed=self._rdm_seed,
-            )
-        else:
-            xb_reweight, xb_weight_reweight = self.get_reweight(
-                &#34;xb&#34;, array_key=bkg_key, reset_mass=reset_mass, reset_array_key=sig_key
-            )
-            if delete_bkg_dict:
-                self.delete_bkg_arrays
-            return train_utils.split_and_combine(
-                xs_reweight,
-                xs_weight_reweight,
-                xb_reweight,
-                xb_weight_reweight,
-                output_keys=output_keys,
-                test_rate=self._tc.test_rate,
-                shuffle_seed=self._rdm_seed,
+            self._norm_dict[feature] = {&#34;mean&#34;: mean, &#34;variance&#34;: variance}
+            logger.info(
+                f&#34;&gt; &gt; Recalculated norm factors for feature {feature} mean: {mean}, variance: {variance}&#34;
             )</code></pre>
 </details>
 </section>
@@ -426,7 +310,7 @@ class Feedbox(object):
 <dl>
 <dt id="hepynet.data_io.feed_box.Feedbox"><code class="flex name class">
 <span>class <span class="ident">Feedbox</span></span>
-<span>(</span><span>job_config, model_meta=None)</span>
+<span>(</span><span>job_config: <a title="hepynet.common.config_utils.Hepy_Config" href="../common/config_utils.html#hepynet.common.config_utils.Hepy_Config">Hepy_Config</a>, norm_dict=None)</span>
 </code></dt>
 <dd>
 <div class="desc"><p>DNN inputs management class.</p></div>
@@ -438,80 +322,185 @@ class Feedbox(object):
     &#34;&#34;&#34;DNN inputs management class.&#34;&#34;&#34;
 
     def __init__(
-        self, job_config, model_meta=None,
+        self, job_config: config_utils.Hepy_Config, norm_dict=None,
     ):
         # get config
         self._job_config = job_config.clone()
-        self._ic = self._job_config.input
-        self._tc = self._job_config.train
-        self._ac = self._job_config.apply
-        # meta info
-        if self._ic.reset_feature:
-            if self._ic.reset_feature_name in self._ic.selected_features:
-                self._reset_mass_id = self._ic.selected_features.index(
-                    self._ic.reset_feature_name
-                )
-            else:
-                logger.critical(
-                    f&#34;input.reset_feature is True but input.reset_feature_name {self._ic.reset_feature_name} is invalid, please check the config&#34;
-                )
-                exit(1)
-        else:
-            self._reset_mass_id = None
-        self._rdm_seed = self._ic.rdm_seed
+        self._data_dir = pathlib.Path(numpy_io.get_data_dir())
+        jc = self._job_config.job.clone()
         self._array_prepared = False
-        # set random seed
-        if self._rdm_seed is None:
-            self._rdm_seed = int(time.time())
-        # set up array dict
-        self._sig_dict = None
-        self._bkg_dict = None
-        self._data_dict = None
 
-        # get normalization parameters
-        no_norm_paras = False
-        if model_meta is None:
-            no_norm_paras = True
-        else:
-            if model_meta[&#34;norm_dict&#34;] is None:
-                no_norm_paras = True
-            else:
-                no_norm_paras = False
-        norm_dict = {}
-        if no_norm_paras:
-            logger.info(f&#34;No norm_dict found, recalculating norm parameters&#34;)
-            if self._bkg_dict is not None:
-                xb_dict = self._bkg_dict
-            else:
-                xb_dict = numpy_io.load_npy_arrays(self._job_config, &#34;bkg&#34;)
-            weight_array = np.concatenate(
-                [sample_dict[&#34;weight&#34;] for sample_dict in xb_dict.values()]
-            )
-            for feature in self._ic.selected_features:
-                feature_array = np.concatenate(
-                    [sample_dict[feature] for sample_dict in xb_dict.values()]
+        # get norm dict
+        if norm_dict is None:
+            if jc.job_name == &#34;apply&#34;:
+                logger.warning(
+                    f&#34;No norm_dict found, but this is not expected as the job type is &#39;apply&#39;! The normalization parameters may not be consistent with the training!&#34;
                 )
-                mean = np.average(feature_array, weights=weight_array)
-                variance = np.average((feature_array - mean) ** 2, weights=weight_array)
-                norm_dict[feature] = {&#34;mean&#34;: mean, &#34;variance&#34;: variance}
-                logger.debug(f&#34;Feature {feature} mean: {mean}, variance: {variance}&#34;)
+            self._norm_dict = {}
         else:
-            norm_dict = model_meta[&#34;norm_dict&#34;]
+            self._norm_dict = copy.deepcopy(norm_dict)
 
-        self._norm_dict = norm_dict
         self._array_prepared = True
 
-    def load_sig_arrays(self):
-        self._sig_dict = numpy_io.load_npy_arrays(self._job_config, &#34;sig&#34;)
+    def get_raw_df(self) -&gt; pd.DataFrame:
+        logger.info(&#34;Loading raw input DataFrame...&#34;)
+        ic = self._job_config.input.clone()
+        raw_df: pd.DataFrame = pd.read_feather(self._data_dir / ic.input_path)
+        # select events in sig/bkg sample_list
+        sample_list = ic.sig_list + ic.bkg_list + ic.data_list
+        logger.info(f&#34;&gt; Loading samples in list: {sample_list}&#34;)
+        # raw_df = raw_df[raw_df[&#34;sample_name&#34;].isin(sample_list)]
+        # raw_df.drop(raw_df[~raw_df[&#34;sample_name&#34;].isin(sample_list)], inplace=True)
+        raw_df.drop(
+            raw_df.index[~raw_df[&#34;sample_name&#34;].isin(sample_list)],
+            inplace=True,
+        )
+        # select events by extra cut features
+        if ic.cut_expression:
+            logger.info(
+                f&#34;&gt; Cutting inputs according to expression: {ic.cut_expression}&#34;
+            )
+            raw_df.query(ic.cut_expression, inplace=True)
+        # return
+        raw_df.reset_index(drop=True, inplace=True)
+        logger.info(&#34;&gt; Successfully loaded raw input DataFrame...&#34;)
+        return raw_df
 
-    def delete_sig_arrays(self):
-        self._sig_dict = None
+    def get_processed_df(
+        self, raw_df: pd.DataFrame = None, keep_unreset: bool = False
+    ):
+        logger.info(&#34;Loading processed input DataFrame...&#34;)
+        ic = self._job_config.input.clone()
+        if raw_df is None:
+            out_df: pd.DataFrame = self.get_raw_df()
+        else:
+            out_df: pd.DataFrame = raw_df.copy()
+        feature_include = ic.selected_features + ic.validation_features
+        # overwrite physic parameter
+        if ic.reset_feature_overwrite:
+            physic_para = ic.reset_feature_name
+            physic_para_value = ic.reset_feature_overwrite_value
+            logger.info(f&#34;&gt; Setting physic para to {physic_para_value}&#34;)
+            if not isinstance(physic_para_value, (int, float)):
+                logger.error(
+                    f&#34;Invalid physic_para_value type: {type(physic_para_value)}&#34;
+                )
+                exit()
+            out_df.loc[
+                out_df[&#34;is_sig&#34;] == False, physic_para
+            ] = physic_para_value
+        # reshape inputs
+        if ic.reshape_input:
+            logger.info(&#34;&gt; Reshaping inputs&#34;)
+            # check missing norm parameters
+            missing_norms = []
+            norm_alias = ic.feature_norm_alias.get_config_dict()
+            for feature in feature_include:
+                if feature not in self._norm_dict:
+                    found_norm_alias = False
+                    # check feature normalization alias
+                    if feature in norm_alias:
+                        feature_alias = norm_alias[feature]
+                        if feature_alias in self._norm_dict:
+                            logger.debug(f&#34;Found norm_alias for: {feature}&#34;)
+                            found_norm_alias = True
+                            self._norm_dict[feature] = copy.deepcopy(
+                                self._norm_dict[feature_alias]
+                            )
+                        else:
+                            logger.warn(
+                                f&#34;Specified but can&#39;t find norm_alias for: {feature}&#34;
+                            )
+                    if not found_norm_alias:
+                        missing_norms.append(feature)
+            # recalculate missing norm parameters
+            if len(missing_norms) &gt; 0:
+                logger.debug(
+                    f&#34;Recalculating normalization parameters for {missing_norms}&#34;
+                )
+                self.update_norm_dict(missing_norms)
+            # reshape inputs
+            for feature in feature_include:
+                if feature in self._norm_dict:
+                    f_mean = self._norm_dict[feature][&#34;mean&#34;]
+                    f_var = self._norm_dict[feature][&#34;variance&#34;]
+                    new_values = (
+                        out_df[feature].to_numpy(&#34;float32&#34;) - f_mean
+                    ) / np.sqrt(f_var)
+                    out_df.loc[:, feature].update(new_values)
+                else:
+                    logger.debug(
+                        f&#34;{feature} is not in self._norm_dict, ignoring reshape process.&#34;
+                    )
+        # deal with negative weights
+        nwt_method = ic.negative_weight_process
+        logger.info(f&#34;&gt; Processing negative weights with method: {nwt_method}&#34;)
+        if nwt_method == &#34;to_zero&#34;:
+            out_df.loc[out_df[&#34;weight&#34;] &lt; 0, &#34;weight&#34;] = 0
+        elif nwt_method == &#34;to_positive&#34;:
+            out_df.loc[out_df[&#34;weight&#34;] &lt; 0, &#34;weight&#34;].update(
+                out_df.loc[out_df[&#34;weight&#34;] &lt; 0, &#34;weight&#34;].abs()
+            )
+        elif nwt_method == &#34;keep&#34;:
+            pass
+        else:
+            logger.warn(f&#34;&gt; Unknown ic.negative_weight_process {nwt_method}&#34;)
+        # reweight inputs
+        if ic.reweight_input:
+            logger.info(&#34;&gt; Reweighting inputs&#34;)
+            # reweight signal
+            self.reweight_df(
+                out_df, ic.sig_list, ic.sig_key, ic.sig_sumofweight, True, True
+            )
+            # reweight background
+            self.reweight_df(
+                out_df,
+                ic.bkg_list,
+                ic.bkg_key,
+                ic.bkg_sumofweight,
+                True,
+                False,
+            )
+        # reset physic para for pDNN
+        physic_para = ic.reset_feature_name
+        if keep_unreset:
+            unreset_physic_para_values = out_df[physic_para].values
+            out_df[physic_para + &#34;_unreset&#34;] = unreset_physic_para_values
+        if ic.reset_feature:
+            logger.info(
+                f&#34;&gt; Resetting physic para {physic_para} distribution for pDNN&#34;
+            )
+            ref_df = out_df.loc[
+                out_df[&#34;is_sig&#34;] == True, [physic_para, &#34;weight&#34;]
+            ]
+            ref_array = ref_df[physic_para]
+            ref_weight = ref_df[&#34;weight&#34;]
+            ref_weight_positive = ref_weight.copy()
+            ref_weight_positive[ref_weight_positive &lt; 0] = 0
+            sump = ref_weight_positive.sum()
+            reset_size = len(out_df.loc[out_df[&#34;is_sig&#34;] == False].index)
+            reset_values = np.random.choice(
+                ref_array.to_numpy(&#34;float32&#34;),
+                size=reset_size,
+                p=(1 / sump) * ref_weight_positive.to_numpy(&#34;float32&#34;),
+            )
+            out_df.loc[out_df[&#34;is_sig&#34;] == False, physic_para] = reset_values
 
-    def load_bkg_arrays(self):
-        self._bkg_dict = numpy_io.load_npy_arrays(self._job_config, &#34;bkg&#34;)
+        # set y
+        logger.info(&#34;&gt; Setting up y values&#34;)
+        out_df.loc[:, &#34;y&#34;] = 0
+        out_df.loc[out_df[&#34;is_sig&#34;] == True, &#34;y&#34;] = 1
+        # tag train / test
+        logger.info(&#34;&gt; Tagging train / test&#34;)
+        sss = StratifiedShuffleSplit(n_splits=1, test_size=ic.test_rate)
+        y_arr = out_df[&#34;y&#34;].to_numpy(&#34;float32&#34;)
+        for train_index, _ in sss.split(y_arr, y_arr):
+            break
+        out_df.loc[:, &#34;is_train&#34;] = False
+        out_df.loc[train_index, &#34;is_train&#34;] = True
 
-    def delete_bkg_arrays(self):
-        self._bkg_dict = None
+        logger.info(&#34;&gt; Successfully loaded processed input DataFrame...&#34;)
+        return out_df
 
     def get_job_config(self):
         return self._job_config
@@ -519,323 +508,72 @@ class Feedbox(object):
     def get_norm_dict(self):
         return self._norm_dict
 
-    def get_raw(self, input_type, array_key=&#34;all&#34;, add_validation_features=False):
-        array_out = None
-        weight_out = None
-        # get dict
-        array_dict = None
-        if input_type == &#34;xs&#34;:
-            if self._sig_dict is not None:
-                array_dict = self._sig_dict
-            else:
-                array_dict = numpy_io.load_npy_arrays(self._job_config, &#34;sig&#34;)
-        elif input_type == &#34;xb&#34;:
-            if self._bkg_dict is not None:
-                array_dict = self._bkg_dict
-            else:
-                array_dict = numpy_io.load_npy_arrays(self._job_config, &#34;bkg&#34;)
-        elif input_type == &#34;xd&#34;:
-            if self._ac.apply_data:
-                array_dict = numpy_io.load_npy_arrays(self._job_config, &#34;data&#34;)
+    def reweight_df(
+        self,
+        df: pd.DataFrame,
+        sample_list,
+        array_key,
+        sumofweight,
+        is_mc,
+        is_sig,
+    ):
+        total_wt = df.loc[
+            (df[&#34;is_mc&#34;] == is_mc)
+            &amp; (df[&#34;is_sig&#34;] == is_sig)
+            &amp; df[&#34;sample_name&#34;].isin(sample_list),
+            &#34;weight&#34;,
+        ].sum()
+        if array_key in sample_list:
+            sample_list = [array_key]
+        for sample in sample_list:
+            sample_wt = df.loc[df[&#34;sample_name&#34;] == sample, &#34;weight&#34;]
+            sample_sumw = sample_wt.sum()
+            if sample_sumw &lt;= 0:
+                continue
+            # get norm factor
+            norm_factor = 1
+            if array_key == &#34;all&#34;:
+                norm_factor = sumofweight / total_wt
+            elif array_key == &#34;all_norm&#34;:
+                n_samples = len(sample_list)
+                norm_factor = (sumofweight / n_samples) / sample_sumw
+            elif array_key == sample:
+                norm_factor = sumofweight / sample_sumw
             else:
                 logger.warn(
-                    &#34;Trying to get data array as apply_data option is set to False&#34;
+                    f&#34;Unknown array_key {array_key} for sample {sample}&#34;
                 )
-                return None
-        else:
-            logger.warn(&#34;Unknown input type&#34;)
-            return None
-        if add_validation_features:
-            if self._ic.validation_features is None:
-                validation_features = []
-            else:
-                validation_features = self._ic.validation_features
-            feature_list = self._ic.selected_features + validation_features
-        else:
-            feature_list = self._ic.selected_features
-        if array_key in list(array_dict.keys()):
-            array_out = np.concatenate(
-                [array_dict[array_key][feature] for feature in feature_list], axis=1,
+            df.loc[df[&#34;sample_name&#34;] == sample, &#34;weight&#34;] = (
+                sample_wt * norm_factor
             )
-            weight_out = array_dict[array_key][&#34;weight&#34;]
-        elif array_key == &#34;all&#34; or array_key == &#34;all_norm&#34;:
-            array_components = []
-            weight_components = []
-            for temp_key in array_dict.keys():
-                temp_array = np.concatenate(
-                    [array_dict[temp_key][feature] for feature in feature_list], axis=1,
-                )
-                array_components.append(temp_array)
-                weight_component = array_dict[temp_key][&#34;weight&#34;]
-                if array_key == &#34;all&#34;:
-                    weight_components.append(weight_component)
-                else:
-                    sumofweights = np.sum(weight_component)
-                    weight_components.append(weight_component / sumofweights)
-            array_out = np.concatenate(array_components)
-            weight_out = np.concatenate(weight_components)
-        else:
-            logger.warn(&#34;Unknown array_key&#34;)
-            return None
-        if self._ic.rm_negative_weight_events:
-            weight_out = array_utils.clean_negative_weights(weight_out)
-        return array_out, weight_out.reshape((-1,))
 
-    def get_reshape(self, input_type, array_key=&#34;all&#34;):
-        x_reshape, weight_reshape = self.get_raw(input_type, array_key=array_key)
-        norm_means = []
-        norm_variances = []
-        xb_dict = None
-        for feature in self._ic.selected_features:
-            norm_alias = self._job_config.input.feature_norm_alias.get_config_dict()
-            mean = None
-            variance = None
-            if feature in self._norm_dict:
-                mean = self._norm_dict[feature][&#34;mean&#34;]
-                variance = self._norm_dict[feature][&#34;variance&#34;]
-            else:
-                found_norm_alias = False
-                # check feature normalization alias
-                if feature in norm_alias:
-                    alias_feature = norm_alias[feature]
-                    if alias_feature in self._norm_dict:
-                        logger.debug(f&#34;Using norm_alias for: {feature}&#34;)
-                        mean = self._norm_dict[alias_feature][&#34;mean&#34;]
-                        variance = self._norm_dict[alias_feature][&#34;variance&#34;]
-                        found_norm_alias = True
-                    else:
-                        logger.warn(
-                            f&#34;Specified but can&#39;t find norm_alias for: {feature}&#34;
-                        )
-                # recalculate if no existing mean/variance found
-                if not found_norm_alias:
-                    logger.debug(&#34;Recalculating normalization parameters for {feature}&#34;)
-                    if xb_dict is None:
-                        xb_dict = numpy_io.load_npy_arrays(self._job_config, &#34;bkg&#34;)
-                    if not xb_dict:
-                        logger.critical(
-                            f&#34;Can&#39;t recalculate norm factor with empty background inputs, please check input.bkg_list&#34;
-                        )
-                        exit(1)
-                    feature_array = np.concatenate(
-                        [sample_dict[feature] for sample_dict in xb_dict.values()]
-                    )
-                    weight_array = np.concatenate(
-                        [sample_dict[&#34;weight&#34;] for sample_dict in xb_dict.values()]
-                    )
-                    mean = np.average(feature_array, weights=weight_array)
-                    variance = np.average(
-                        (feature_array - mean) ** 2, weights=weight_array
-                    )
-                    self._norm_dict[feature] = {&#34;mean&#34;: mean, &#34;variance&#34;: variance}
-            norm_means.append(mean)
-            norm_variances.append(variance)
-        x_reshape = train_utils.norarray(
-            x_reshape, average=norm_means, variance=norm_variances,
-        )
-        return x_reshape.copy(), weight_reshape.copy()
-
-    def get_reweight(
-        self,
-        input_type,
-        array_key=&#34;all&#34;,
-        reset_mass=None,
-        reset_array_key=&#34;all&#34;,
-        norm=True,
-    ):
-        if reset_mass == None:
-            reset_mass = self._ic.reset_feature
-        if input_type == &#34;xs&#34;:
-            xs_reshape, xs_weight_reshape = self.get_reshape(&#34;xs&#34;, array_key=array_key)
-            return array_utils.modify_array(
-                xs_reshape,
-                xs_weight_reshape,
-                remove_negative_weight=self._ic.rm_negative_weight_events,
-                norm=norm,
-                sumofweight=self._ic.sig_sumofweight,
-            )
-        elif input_type == &#34;xb&#34;:
-            xb_reshape, xb_weight_reshape = self.get_reshape(&#34;xb&#34;, array_key=array_key)
-            if reset_mass:
-                reset_mass_arr, reset_mass_wts = self.get_reshape(
-                    &#34;xs&#34;, array_key=reset_array_key
-                )
-                xb_reshape, xb_weight_reshape = array_utils.modify_array(
-                    xb_reshape,
-                    xb_weight_reshape,
-                    reset_mass=True,
-                    reset_mass_array=reset_mass_arr,
-                    reset_mass_weights=reset_mass_wts,
-                    reset_mass_id=self._reset_mass_id,
-                )
-            return array_utils.modify_array(
-                xb_reshape,
-                xb_weight_reshape,
-                remove_negative_weight=self._ic.rm_negative_weight_events,
-                norm=norm,
-                sumofweight=self._ic.bkg_sumofweight,
-            )
-        elif input_type == &#34;xd&#34;:
-            xd_reshape, xd_weight_reshape = self.get_reshape(&#34;xd&#34;, array_key=array_key)
-            if reset_mass:
-                reset_mass_arr, reset_mass_wts = self.get_reshape(
-                    &#34;xs&#34;, array_key=reset_array_key
-                )
-                xd_reshape = array_utils.modify_array(
-                    xd_reshape,
-                    xd_weight_reshape,
-                    reset_mass=True,
-                    reset_mass_array=reset_mass_arr,
-                    reset_mass_weights=reset_mass_wts,
-                    reset_mass_id=self._reset_mass_id,
-                )
-            return array_utils.modify_array(
-                xd_reshape,
-                xd_weight_reshape,
-                remove_negative_weight=self._ic.rm_negative_weight_events,
-                norm=norm,
-                sumofweight=self._ic.data_weight,
-            )
+    def update_norm_dict(self, features: Optional[List[str]] = None):
+        ic = self._job_config.input.clone()
+        feature_list = list()
+        if features is not None:
+            feature_list = features
         else:
-            logger.warn(&#34;Unknown input_type&#34;)
-            return None
-
-    def get_train_test_arrays(
-        self,
-        sig_key=&#34;all&#34;,
-        bkg_key=&#34;all&#34;,
-        multi_class_bkgs=[],
-        reset_mass=None,
-        output_keys=[],
-    ):
-        if reset_mass == None:
-            reset_mass = self._ic.reset_feature
-
-        # deal with different number of output nodes
-        ## load sig
-        delete_sig_dict = False
-        if self._sig_dict is None:
-            self.load_sig_arrays()
-            delete_sig_dict = True
-        xs_reweight, xs_weight_reweight = self.get_reweight(
-            &#34;xs&#34;, array_key=sig_key, reset_mass=reset_mass, reset_array_key=sig_key
-        )
-        if delete_sig_dict:
-            self.delete_sig_arrays()
-        logger.debug(f&#34;xs_weight_reweight shape: {xs_weight_reweight.shape}&#34;)
-        ## load bkg
-        delete_bkg_dict = False
-        if self._bkg_dict is None:
-            self.load_bkg_arrays()
-            delete_bkg_dict = True
-        if multi_class_bkgs is not None and len(multi_class_bkgs) &gt; 0:
-            xb_reweight = None
-            xb_weight_reweight = None
-            yb = None
-            num_bkg_nodes = len(multi_class_bkgs)
-            ys_element = np.zeros(num_bkg_nodes + 1)
-            ys_element[0] = 1
-            ys = np.tile(ys_element, (len(xs_reweight), 1))
-            for node_num, bkg_node in enumerate(multi_class_bkgs):
-                bkg_node_list = (&#34;&#34;.join(bkg_node.split())).split(&#34;+&#34;)
-                xb_reweight_node = None
-                wt_reweight_node = None
-                for bkg_ele in bkg_node_list:
-                    xb_reweight_ele, xb_wt_reweight_ele = self.get_reweight(
-                        &#34;xb&#34;,
-                        array_key=bkg_ele,
-                        reset_mass=reset_mass,
-                        reset_array_key=sig_key,
-                    )
-                    if xb_reweight_node is None:
-                        xb_reweight_node = xb_reweight_ele
-                        wt_reweight_node = xb_wt_reweight_ele
-                    else:
-                        xb_reweight_node = np.concatenate(
-                            (xb_reweight_node, xb_reweight_ele)
-                        )
-                        wt_reweight_node = np.concatenate(
-                            (wt_reweight_node, xb_wt_reweight_ele)
-                        )
-                xb_reweight_node, wt_reweight_node = array_utils.modify_array(
-                    xb_reweight_node, wt_reweight_node, norm=True, sumofweight=1000,
-                )
-                yb_single_element = np.zeros(num_bkg_nodes + 1)
-                yb_single_element[node_num + 1] = 1
-                yb_single = np.tile(yb_single_element, (len(xb_reweight_node), 1))
-                if xb_reweight is None:
-                    xb_reweight = xb_reweight_node
-                    yb = yb_single
-                    xb_weight_reweight = wt_reweight_node
-                else:
-                    xb_reweight = np.concatenate((xb_reweight, xb_reweight_node))
-                    yb = np.concatenate((yb, yb_single))
-                    xb_weight_reweight = np.concatenate(
-                        (xb_weight_reweight, wt_reweight_node)
-                    )
-            xb_reweight, xb_weight_reweight = array_utils.modify_array(
-                xb_reweight,
-                xb_weight_reweight,
-                norm=True,
-                sumofweight=self._ic.bkg_sumofweight,
+            feature_list = ic.selected_features + ic.validation_features
+        feature_list = list(set().union(feature_list))  # remove duplicates
+        df = self.get_raw_df()
+        weight_array = df.loc[
+            (df[&#34;is_mc&#34;] == True) &amp; (df[&#34;is_sig&#34;] == False), &#34;weight&#34;
+        ].to_numpy(&#34;float32&#34;)
+        for feature in feature_list:
+            feature_array = df.loc[
+                (df[&#34;is_mc&#34;] == True) &amp; (df[&#34;is_sig&#34;] == False), feature
+            ].to_numpy(&#34;float32&#34;)
+            mean = np.average(feature_array, weights=weight_array)
+            variance = np.average(
+                (feature_array - mean) ** 2, weights=weight_array
             )
-            if delete_bkg_dict:
-                self.delete_bkg_arrays
-            return train_utils.split_and_combine(
-                xs_reweight,
-                xs_weight_reweight,
-                xb_reweight,
-                xb_weight_reweight,
-                ys=ys,
-                yb=yb,
-                output_keys=output_keys,
-                test_rate=self._tc.test_rate,
-                shuffle_seed=self._rdm_seed,
-            )
-        else:
-            xb_reweight, xb_weight_reweight = self.get_reweight(
-                &#34;xb&#34;, array_key=bkg_key, reset_mass=reset_mass, reset_array_key=sig_key
-            )
-            if delete_bkg_dict:
-                self.delete_bkg_arrays
-            return train_utils.split_and_combine(
-                xs_reweight,
-                xs_weight_reweight,
-                xb_reweight,
-                xb_weight_reweight,
-                output_keys=output_keys,
-                test_rate=self._tc.test_rate,
-                shuffle_seed=self._rdm_seed,
+            self._norm_dict[feature] = {&#34;mean&#34;: mean, &#34;variance&#34;: variance}
+            logger.info(
+                f&#34;&gt; &gt; Recalculated norm factors for feature {feature} mean: {mean}, variance: {variance}&#34;
             )</code></pre>
 </details>
 <h3>Methods</h3>
 <dl>
-<dt id="hepynet.data_io.feed_box.Feedbox.delete_bkg_arrays"><code class="name flex">
-<span>def <span class="ident">delete_bkg_arrays</span></span>(<span>self)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def delete_bkg_arrays(self):
-    self._bkg_dict = None</code></pre>
-</details>
-</dd>
-<dt id="hepynet.data_io.feed_box.Feedbox.delete_sig_arrays"><code class="name flex">
-<span>def <span class="ident">delete_sig_arrays</span></span>(<span>self)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def delete_sig_arrays(self):
-    self._sig_dict = None</code></pre>
-</details>
-</dd>
 <dt id="hepynet.data_io.feed_box.Feedbox.get_job_config"><code class="name flex">
 <span>def <span class="ident">get_job_config</span></span>(<span>self)</span>
 </code></dt>
@@ -862,8 +600,8 @@ class Feedbox(object):
     return self._norm_dict</code></pre>
 </details>
 </dd>
-<dt id="hepynet.data_io.feed_box.Feedbox.get_raw"><code class="name flex">
-<span>def <span class="ident">get_raw</span></span>(<span>self, input_type, array_key='all', add_validation_features=False)</span>
+<dt id="hepynet.data_io.feed_box.Feedbox.get_processed_df"><code class="name flex">
+<span>def <span class="ident">get_processed_df</span></span>(<span>self, raw_df: pandas.core.frame.DataFrame = None, keep_unreset: bool = False)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -871,328 +609,228 @@ class Feedbox(object):
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def get_raw(self, input_type, array_key=&#34;all&#34;, add_validation_features=False):
-    array_out = None
-    weight_out = None
-    # get dict
-    array_dict = None
-    if input_type == &#34;xs&#34;:
-        if self._sig_dict is not None:
-            array_dict = self._sig_dict
-        else:
-            array_dict = numpy_io.load_npy_arrays(self._job_config, &#34;sig&#34;)
-    elif input_type == &#34;xb&#34;:
-        if self._bkg_dict is not None:
-            array_dict = self._bkg_dict
-        else:
-            array_dict = numpy_io.load_npy_arrays(self._job_config, &#34;bkg&#34;)
-    elif input_type == &#34;xd&#34;:
-        if self._ac.apply_data:
-            array_dict = numpy_io.load_npy_arrays(self._job_config, &#34;data&#34;)
+<pre><code class="python">def get_processed_df(
+    self, raw_df: pd.DataFrame = None, keep_unreset: bool = False
+):
+    logger.info(&#34;Loading processed input DataFrame...&#34;)
+    ic = self._job_config.input.clone()
+    if raw_df is None:
+        out_df: pd.DataFrame = self.get_raw_df()
+    else:
+        out_df: pd.DataFrame = raw_df.copy()
+    feature_include = ic.selected_features + ic.validation_features
+    # overwrite physic parameter
+    if ic.reset_feature_overwrite:
+        physic_para = ic.reset_feature_name
+        physic_para_value = ic.reset_feature_overwrite_value
+        logger.info(f&#34;&gt; Setting physic para to {physic_para_value}&#34;)
+        if not isinstance(physic_para_value, (int, float)):
+            logger.error(
+                f&#34;Invalid physic_para_value type: {type(physic_para_value)}&#34;
+            )
+            exit()
+        out_df.loc[
+            out_df[&#34;is_sig&#34;] == False, physic_para
+        ] = physic_para_value
+    # reshape inputs
+    if ic.reshape_input:
+        logger.info(&#34;&gt; Reshaping inputs&#34;)
+        # check missing norm parameters
+        missing_norms = []
+        norm_alias = ic.feature_norm_alias.get_config_dict()
+        for feature in feature_include:
+            if feature not in self._norm_dict:
+                found_norm_alias = False
+                # check feature normalization alias
+                if feature in norm_alias:
+                    feature_alias = norm_alias[feature]
+                    if feature_alias in self._norm_dict:
+                        logger.debug(f&#34;Found norm_alias for: {feature}&#34;)
+                        found_norm_alias = True
+                        self._norm_dict[feature] = copy.deepcopy(
+                            self._norm_dict[feature_alias]
+                        )
+                    else:
+                        logger.warn(
+                            f&#34;Specified but can&#39;t find norm_alias for: {feature}&#34;
+                        )
+                if not found_norm_alias:
+                    missing_norms.append(feature)
+        # recalculate missing norm parameters
+        if len(missing_norms) &gt; 0:
+            logger.debug(
+                f&#34;Recalculating normalization parameters for {missing_norms}&#34;
+            )
+            self.update_norm_dict(missing_norms)
+        # reshape inputs
+        for feature in feature_include:
+            if feature in self._norm_dict:
+                f_mean = self._norm_dict[feature][&#34;mean&#34;]
+                f_var = self._norm_dict[feature][&#34;variance&#34;]
+                new_values = (
+                    out_df[feature].to_numpy(&#34;float32&#34;) - f_mean
+                ) / np.sqrt(f_var)
+                out_df.loc[:, feature].update(new_values)
+            else:
+                logger.debug(
+                    f&#34;{feature} is not in self._norm_dict, ignoring reshape process.&#34;
+                )
+    # deal with negative weights
+    nwt_method = ic.negative_weight_process
+    logger.info(f&#34;&gt; Processing negative weights with method: {nwt_method}&#34;)
+    if nwt_method == &#34;to_zero&#34;:
+        out_df.loc[out_df[&#34;weight&#34;] &lt; 0, &#34;weight&#34;] = 0
+    elif nwt_method == &#34;to_positive&#34;:
+        out_df.loc[out_df[&#34;weight&#34;] &lt; 0, &#34;weight&#34;].update(
+            out_df.loc[out_df[&#34;weight&#34;] &lt; 0, &#34;weight&#34;].abs()
+        )
+    elif nwt_method == &#34;keep&#34;:
+        pass
+    else:
+        logger.warn(f&#34;&gt; Unknown ic.negative_weight_process {nwt_method}&#34;)
+    # reweight inputs
+    if ic.reweight_input:
+        logger.info(&#34;&gt; Reweighting inputs&#34;)
+        # reweight signal
+        self.reweight_df(
+            out_df, ic.sig_list, ic.sig_key, ic.sig_sumofweight, True, True
+        )
+        # reweight background
+        self.reweight_df(
+            out_df,
+            ic.bkg_list,
+            ic.bkg_key,
+            ic.bkg_sumofweight,
+            True,
+            False,
+        )
+    # reset physic para for pDNN
+    physic_para = ic.reset_feature_name
+    if keep_unreset:
+        unreset_physic_para_values = out_df[physic_para].values
+        out_df[physic_para + &#34;_unreset&#34;] = unreset_physic_para_values
+    if ic.reset_feature:
+        logger.info(
+            f&#34;&gt; Resetting physic para {physic_para} distribution for pDNN&#34;
+        )
+        ref_df = out_df.loc[
+            out_df[&#34;is_sig&#34;] == True, [physic_para, &#34;weight&#34;]
+        ]
+        ref_array = ref_df[physic_para]
+        ref_weight = ref_df[&#34;weight&#34;]
+        ref_weight_positive = ref_weight.copy()
+        ref_weight_positive[ref_weight_positive &lt; 0] = 0
+        sump = ref_weight_positive.sum()
+        reset_size = len(out_df.loc[out_df[&#34;is_sig&#34;] == False].index)
+        reset_values = np.random.choice(
+            ref_array.to_numpy(&#34;float32&#34;),
+            size=reset_size,
+            p=(1 / sump) * ref_weight_positive.to_numpy(&#34;float32&#34;),
+        )
+        out_df.loc[out_df[&#34;is_sig&#34;] == False, physic_para] = reset_values
+
+    # set y
+    logger.info(&#34;&gt; Setting up y values&#34;)
+    out_df.loc[:, &#34;y&#34;] = 0
+    out_df.loc[out_df[&#34;is_sig&#34;] == True, &#34;y&#34;] = 1
+    # tag train / test
+    logger.info(&#34;&gt; Tagging train / test&#34;)
+    sss = StratifiedShuffleSplit(n_splits=1, test_size=ic.test_rate)
+    y_arr = out_df[&#34;y&#34;].to_numpy(&#34;float32&#34;)
+    for train_index, _ in sss.split(y_arr, y_arr):
+        break
+    out_df.loc[:, &#34;is_train&#34;] = False
+    out_df.loc[train_index, &#34;is_train&#34;] = True
+
+    logger.info(&#34;&gt; Successfully loaded processed input DataFrame...&#34;)
+    return out_df</code></pre>
+</details>
+</dd>
+<dt id="hepynet.data_io.feed_box.Feedbox.get_raw_df"><code class="name flex">
+<span>def <span class="ident">get_raw_df</span></span>(<span>self) ‑> pandas.core.frame.DataFrame</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def get_raw_df(self) -&gt; pd.DataFrame:
+    logger.info(&#34;Loading raw input DataFrame...&#34;)
+    ic = self._job_config.input.clone()
+    raw_df: pd.DataFrame = pd.read_feather(self._data_dir / ic.input_path)
+    # select events in sig/bkg sample_list
+    sample_list = ic.sig_list + ic.bkg_list + ic.data_list
+    logger.info(f&#34;&gt; Loading samples in list: {sample_list}&#34;)
+    # raw_df = raw_df[raw_df[&#34;sample_name&#34;].isin(sample_list)]
+    # raw_df.drop(raw_df[~raw_df[&#34;sample_name&#34;].isin(sample_list)], inplace=True)
+    raw_df.drop(
+        raw_df.index[~raw_df[&#34;sample_name&#34;].isin(sample_list)],
+        inplace=True,
+    )
+    # select events by extra cut features
+    if ic.cut_expression:
+        logger.info(
+            f&#34;&gt; Cutting inputs according to expression: {ic.cut_expression}&#34;
+        )
+        raw_df.query(ic.cut_expression, inplace=True)
+    # return
+    raw_df.reset_index(drop=True, inplace=True)
+    logger.info(&#34;&gt; Successfully loaded raw input DataFrame...&#34;)
+    return raw_df</code></pre>
+</details>
+</dd>
+<dt id="hepynet.data_io.feed_box.Feedbox.reweight_df"><code class="name flex">
+<span>def <span class="ident">reweight_df</span></span>(<span>self, df: pandas.core.frame.DataFrame, sample_list, array_key, sumofweight, is_mc, is_sig)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def reweight_df(
+    self,
+    df: pd.DataFrame,
+    sample_list,
+    array_key,
+    sumofweight,
+    is_mc,
+    is_sig,
+):
+    total_wt = df.loc[
+        (df[&#34;is_mc&#34;] == is_mc)
+        &amp; (df[&#34;is_sig&#34;] == is_sig)
+        &amp; df[&#34;sample_name&#34;].isin(sample_list),
+        &#34;weight&#34;,
+    ].sum()
+    if array_key in sample_list:
+        sample_list = [array_key]
+    for sample in sample_list:
+        sample_wt = df.loc[df[&#34;sample_name&#34;] == sample, &#34;weight&#34;]
+        sample_sumw = sample_wt.sum()
+        if sample_sumw &lt;= 0:
+            continue
+        # get norm factor
+        norm_factor = 1
+        if array_key == &#34;all&#34;:
+            norm_factor = sumofweight / total_wt
+        elif array_key == &#34;all_norm&#34;:
+            n_samples = len(sample_list)
+            norm_factor = (sumofweight / n_samples) / sample_sumw
+        elif array_key == sample:
+            norm_factor = sumofweight / sample_sumw
         else:
             logger.warn(
-                &#34;Trying to get data array as apply_data option is set to False&#34;
+                f&#34;Unknown array_key {array_key} for sample {sample}&#34;
             )
-            return None
-    else:
-        logger.warn(&#34;Unknown input type&#34;)
-        return None
-    if add_validation_features:
-        if self._ic.validation_features is None:
-            validation_features = []
-        else:
-            validation_features = self._ic.validation_features
-        feature_list = self._ic.selected_features + validation_features
-    else:
-        feature_list = self._ic.selected_features
-    if array_key in list(array_dict.keys()):
-        array_out = np.concatenate(
-            [array_dict[array_key][feature] for feature in feature_list], axis=1,
-        )
-        weight_out = array_dict[array_key][&#34;weight&#34;]
-    elif array_key == &#34;all&#34; or array_key == &#34;all_norm&#34;:
-        array_components = []
-        weight_components = []
-        for temp_key in array_dict.keys():
-            temp_array = np.concatenate(
-                [array_dict[temp_key][feature] for feature in feature_list], axis=1,
-            )
-            array_components.append(temp_array)
-            weight_component = array_dict[temp_key][&#34;weight&#34;]
-            if array_key == &#34;all&#34;:
-                weight_components.append(weight_component)
-            else:
-                sumofweights = np.sum(weight_component)
-                weight_components.append(weight_component / sumofweights)
-        array_out = np.concatenate(array_components)
-        weight_out = np.concatenate(weight_components)
-    else:
-        logger.warn(&#34;Unknown array_key&#34;)
-        return None
-    if self._ic.rm_negative_weight_events:
-        weight_out = array_utils.clean_negative_weights(weight_out)
-    return array_out, weight_out.reshape((-1,))</code></pre>
-</details>
-</dd>
-<dt id="hepynet.data_io.feed_box.Feedbox.get_reshape"><code class="name flex">
-<span>def <span class="ident">get_reshape</span></span>(<span>self, input_type, array_key='all')</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def get_reshape(self, input_type, array_key=&#34;all&#34;):
-    x_reshape, weight_reshape = self.get_raw(input_type, array_key=array_key)
-    norm_means = []
-    norm_variances = []
-    xb_dict = None
-    for feature in self._ic.selected_features:
-        norm_alias = self._job_config.input.feature_norm_alias.get_config_dict()
-        mean = None
-        variance = None
-        if feature in self._norm_dict:
-            mean = self._norm_dict[feature][&#34;mean&#34;]
-            variance = self._norm_dict[feature][&#34;variance&#34;]
-        else:
-            found_norm_alias = False
-            # check feature normalization alias
-            if feature in norm_alias:
-                alias_feature = norm_alias[feature]
-                if alias_feature in self._norm_dict:
-                    logger.debug(f&#34;Using norm_alias for: {feature}&#34;)
-                    mean = self._norm_dict[alias_feature][&#34;mean&#34;]
-                    variance = self._norm_dict[alias_feature][&#34;variance&#34;]
-                    found_norm_alias = True
-                else:
-                    logger.warn(
-                        f&#34;Specified but can&#39;t find norm_alias for: {feature}&#34;
-                    )
-            # recalculate if no existing mean/variance found
-            if not found_norm_alias:
-                logger.debug(&#34;Recalculating normalization parameters for {feature}&#34;)
-                if xb_dict is None:
-                    xb_dict = numpy_io.load_npy_arrays(self._job_config, &#34;bkg&#34;)
-                if not xb_dict:
-                    logger.critical(
-                        f&#34;Can&#39;t recalculate norm factor with empty background inputs, please check input.bkg_list&#34;
-                    )
-                    exit(1)
-                feature_array = np.concatenate(
-                    [sample_dict[feature] for sample_dict in xb_dict.values()]
-                )
-                weight_array = np.concatenate(
-                    [sample_dict[&#34;weight&#34;] for sample_dict in xb_dict.values()]
-                )
-                mean = np.average(feature_array, weights=weight_array)
-                variance = np.average(
-                    (feature_array - mean) ** 2, weights=weight_array
-                )
-                self._norm_dict[feature] = {&#34;mean&#34;: mean, &#34;variance&#34;: variance}
-        norm_means.append(mean)
-        norm_variances.append(variance)
-    x_reshape = train_utils.norarray(
-        x_reshape, average=norm_means, variance=norm_variances,
-    )
-    return x_reshape.copy(), weight_reshape.copy()</code></pre>
-</details>
-</dd>
-<dt id="hepynet.data_io.feed_box.Feedbox.get_reweight"><code class="name flex">
-<span>def <span class="ident">get_reweight</span></span>(<span>self, input_type, array_key='all', reset_mass=None, reset_array_key='all', norm=True)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def get_reweight(
-    self,
-    input_type,
-    array_key=&#34;all&#34;,
-    reset_mass=None,
-    reset_array_key=&#34;all&#34;,
-    norm=True,
-):
-    if reset_mass == None:
-        reset_mass = self._ic.reset_feature
-    if input_type == &#34;xs&#34;:
-        xs_reshape, xs_weight_reshape = self.get_reshape(&#34;xs&#34;, array_key=array_key)
-        return array_utils.modify_array(
-            xs_reshape,
-            xs_weight_reshape,
-            remove_negative_weight=self._ic.rm_negative_weight_events,
-            norm=norm,
-            sumofweight=self._ic.sig_sumofweight,
-        )
-    elif input_type == &#34;xb&#34;:
-        xb_reshape, xb_weight_reshape = self.get_reshape(&#34;xb&#34;, array_key=array_key)
-        if reset_mass:
-            reset_mass_arr, reset_mass_wts = self.get_reshape(
-                &#34;xs&#34;, array_key=reset_array_key
-            )
-            xb_reshape, xb_weight_reshape = array_utils.modify_array(
-                xb_reshape,
-                xb_weight_reshape,
-                reset_mass=True,
-                reset_mass_array=reset_mass_arr,
-                reset_mass_weights=reset_mass_wts,
-                reset_mass_id=self._reset_mass_id,
-            )
-        return array_utils.modify_array(
-            xb_reshape,
-            xb_weight_reshape,
-            remove_negative_weight=self._ic.rm_negative_weight_events,
-            norm=norm,
-            sumofweight=self._ic.bkg_sumofweight,
-        )
-    elif input_type == &#34;xd&#34;:
-        xd_reshape, xd_weight_reshape = self.get_reshape(&#34;xd&#34;, array_key=array_key)
-        if reset_mass:
-            reset_mass_arr, reset_mass_wts = self.get_reshape(
-                &#34;xs&#34;, array_key=reset_array_key
-            )
-            xd_reshape = array_utils.modify_array(
-                xd_reshape,
-                xd_weight_reshape,
-                reset_mass=True,
-                reset_mass_array=reset_mass_arr,
-                reset_mass_weights=reset_mass_wts,
-                reset_mass_id=self._reset_mass_id,
-            )
-        return array_utils.modify_array(
-            xd_reshape,
-            xd_weight_reshape,
-            remove_negative_weight=self._ic.rm_negative_weight_events,
-            norm=norm,
-            sumofweight=self._ic.data_weight,
-        )
-    else:
-        logger.warn(&#34;Unknown input_type&#34;)
-        return None</code></pre>
-</details>
-</dd>
-<dt id="hepynet.data_io.feed_box.Feedbox.get_train_test_arrays"><code class="name flex">
-<span>def <span class="ident">get_train_test_arrays</span></span>(<span>self, sig_key='all', bkg_key='all', multi_class_bkgs=[], reset_mass=None, output_keys=[])</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def get_train_test_arrays(
-    self,
-    sig_key=&#34;all&#34;,
-    bkg_key=&#34;all&#34;,
-    multi_class_bkgs=[],
-    reset_mass=None,
-    output_keys=[],
-):
-    if reset_mass == None:
-        reset_mass = self._ic.reset_feature
-
-    # deal with different number of output nodes
-    ## load sig
-    delete_sig_dict = False
-    if self._sig_dict is None:
-        self.load_sig_arrays()
-        delete_sig_dict = True
-    xs_reweight, xs_weight_reweight = self.get_reweight(
-        &#34;xs&#34;, array_key=sig_key, reset_mass=reset_mass, reset_array_key=sig_key
-    )
-    if delete_sig_dict:
-        self.delete_sig_arrays()
-    logger.debug(f&#34;xs_weight_reweight shape: {xs_weight_reweight.shape}&#34;)
-    ## load bkg
-    delete_bkg_dict = False
-    if self._bkg_dict is None:
-        self.load_bkg_arrays()
-        delete_bkg_dict = True
-    if multi_class_bkgs is not None and len(multi_class_bkgs) &gt; 0:
-        xb_reweight = None
-        xb_weight_reweight = None
-        yb = None
-        num_bkg_nodes = len(multi_class_bkgs)
-        ys_element = np.zeros(num_bkg_nodes + 1)
-        ys_element[0] = 1
-        ys = np.tile(ys_element, (len(xs_reweight), 1))
-        for node_num, bkg_node in enumerate(multi_class_bkgs):
-            bkg_node_list = (&#34;&#34;.join(bkg_node.split())).split(&#34;+&#34;)
-            xb_reweight_node = None
-            wt_reweight_node = None
-            for bkg_ele in bkg_node_list:
-                xb_reweight_ele, xb_wt_reweight_ele = self.get_reweight(
-                    &#34;xb&#34;,
-                    array_key=bkg_ele,
-                    reset_mass=reset_mass,
-                    reset_array_key=sig_key,
-                )
-                if xb_reweight_node is None:
-                    xb_reweight_node = xb_reweight_ele
-                    wt_reweight_node = xb_wt_reweight_ele
-                else:
-                    xb_reweight_node = np.concatenate(
-                        (xb_reweight_node, xb_reweight_ele)
-                    )
-                    wt_reweight_node = np.concatenate(
-                        (wt_reweight_node, xb_wt_reweight_ele)
-                    )
-            xb_reweight_node, wt_reweight_node = array_utils.modify_array(
-                xb_reweight_node, wt_reweight_node, norm=True, sumofweight=1000,
-            )
-            yb_single_element = np.zeros(num_bkg_nodes + 1)
-            yb_single_element[node_num + 1] = 1
-            yb_single = np.tile(yb_single_element, (len(xb_reweight_node), 1))
-            if xb_reweight is None:
-                xb_reweight = xb_reweight_node
-                yb = yb_single
-                xb_weight_reweight = wt_reweight_node
-            else:
-                xb_reweight = np.concatenate((xb_reweight, xb_reweight_node))
-                yb = np.concatenate((yb, yb_single))
-                xb_weight_reweight = np.concatenate(
-                    (xb_weight_reweight, wt_reweight_node)
-                )
-        xb_reweight, xb_weight_reweight = array_utils.modify_array(
-            xb_reweight,
-            xb_weight_reweight,
-            norm=True,
-            sumofweight=self._ic.bkg_sumofweight,
-        )
-        if delete_bkg_dict:
-            self.delete_bkg_arrays
-        return train_utils.split_and_combine(
-            xs_reweight,
-            xs_weight_reweight,
-            xb_reweight,
-            xb_weight_reweight,
-            ys=ys,
-            yb=yb,
-            output_keys=output_keys,
-            test_rate=self._tc.test_rate,
-            shuffle_seed=self._rdm_seed,
-        )
-    else:
-        xb_reweight, xb_weight_reweight = self.get_reweight(
-            &#34;xb&#34;, array_key=bkg_key, reset_mass=reset_mass, reset_array_key=sig_key
-        )
-        if delete_bkg_dict:
-            self.delete_bkg_arrays
-        return train_utils.split_and_combine(
-            xs_reweight,
-            xs_weight_reweight,
-            xb_reweight,
-            xb_weight_reweight,
-            output_keys=output_keys,
-            test_rate=self._tc.test_rate,
-            shuffle_seed=self._rdm_seed,
+        df.loc[df[&#34;sample_name&#34;] == sample, &#34;weight&#34;] = (
+            sample_wt * norm_factor
         )</code></pre>
 </details>
 </dd>
-<dt id="hepynet.data_io.feed_box.Feedbox.load_bkg_arrays"><code class="name flex">
-<span>def <span class="ident">load_bkg_arrays</span></span>(<span>self)</span>
+<dt id="hepynet.data_io.feed_box.Feedbox.update_norm_dict"><code class="name flex">
+<span>def <span class="ident">update_norm_dict</span></span>(<span>self, features: Union[List[str], NoneType] = None)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -1200,21 +838,30 @@ class Feedbox(object):
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def load_bkg_arrays(self):
-    self._bkg_dict = numpy_io.load_npy_arrays(self._job_config, &#34;bkg&#34;)</code></pre>
-</details>
-</dd>
-<dt id="hepynet.data_io.feed_box.Feedbox.load_sig_arrays"><code class="name flex">
-<span>def <span class="ident">load_sig_arrays</span></span>(<span>self)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def load_sig_arrays(self):
-    self._sig_dict = numpy_io.load_npy_arrays(self._job_config, &#34;sig&#34;)</code></pre>
+<pre><code class="python">def update_norm_dict(self, features: Optional[List[str]] = None):
+    ic = self._job_config.input.clone()
+    feature_list = list()
+    if features is not None:
+        feature_list = features
+    else:
+        feature_list = ic.selected_features + ic.validation_features
+    feature_list = list(set().union(feature_list))  # remove duplicates
+    df = self.get_raw_df()
+    weight_array = df.loc[
+        (df[&#34;is_mc&#34;] == True) &amp; (df[&#34;is_sig&#34;] == False), &#34;weight&#34;
+    ].to_numpy(&#34;float32&#34;)
+    for feature in feature_list:
+        feature_array = df.loc[
+            (df[&#34;is_mc&#34;] == True) &amp; (df[&#34;is_sig&#34;] == False), feature
+        ].to_numpy(&#34;float32&#34;)
+        mean = np.average(feature_array, weights=weight_array)
+        variance = np.average(
+            (feature_array - mean) ** 2, weights=weight_array
+        )
+        self._norm_dict[feature] = {&#34;mean&#34;: mean, &#34;variance&#34;: variance}
+        logger.info(
+            f&#34;&gt; &gt; Recalculated norm factors for feature {feature} mean: {mean}, variance: {variance}&#34;
+        )</code></pre>
 </details>
 </dd>
 </dl>
@@ -1237,17 +884,13 @@ class Feedbox(object):
 <ul>
 <li>
 <h4><code><a title="hepynet.data_io.feed_box.Feedbox" href="#hepynet.data_io.feed_box.Feedbox">Feedbox</a></code></h4>
-<ul class="">
-<li><code><a title="hepynet.data_io.feed_box.Feedbox.delete_bkg_arrays" href="#hepynet.data_io.feed_box.Feedbox.delete_bkg_arrays">delete_bkg_arrays</a></code></li>
-<li><code><a title="hepynet.data_io.feed_box.Feedbox.delete_sig_arrays" href="#hepynet.data_io.feed_box.Feedbox.delete_sig_arrays">delete_sig_arrays</a></code></li>
+<ul class="two-column">
 <li><code><a title="hepynet.data_io.feed_box.Feedbox.get_job_config" href="#hepynet.data_io.feed_box.Feedbox.get_job_config">get_job_config</a></code></li>
 <li><code><a title="hepynet.data_io.feed_box.Feedbox.get_norm_dict" href="#hepynet.data_io.feed_box.Feedbox.get_norm_dict">get_norm_dict</a></code></li>
-<li><code><a title="hepynet.data_io.feed_box.Feedbox.get_raw" href="#hepynet.data_io.feed_box.Feedbox.get_raw">get_raw</a></code></li>
-<li><code><a title="hepynet.data_io.feed_box.Feedbox.get_reshape" href="#hepynet.data_io.feed_box.Feedbox.get_reshape">get_reshape</a></code></li>
-<li><code><a title="hepynet.data_io.feed_box.Feedbox.get_reweight" href="#hepynet.data_io.feed_box.Feedbox.get_reweight">get_reweight</a></code></li>
-<li><code><a title="hepynet.data_io.feed_box.Feedbox.get_train_test_arrays" href="#hepynet.data_io.feed_box.Feedbox.get_train_test_arrays">get_train_test_arrays</a></code></li>
-<li><code><a title="hepynet.data_io.feed_box.Feedbox.load_bkg_arrays" href="#hepynet.data_io.feed_box.Feedbox.load_bkg_arrays">load_bkg_arrays</a></code></li>
-<li><code><a title="hepynet.data_io.feed_box.Feedbox.load_sig_arrays" href="#hepynet.data_io.feed_box.Feedbox.load_sig_arrays">load_sig_arrays</a></code></li>
+<li><code><a title="hepynet.data_io.feed_box.Feedbox.get_processed_df" href="#hepynet.data_io.feed_box.Feedbox.get_processed_df">get_processed_df</a></code></li>
+<li><code><a title="hepynet.data_io.feed_box.Feedbox.get_raw_df" href="#hepynet.data_io.feed_box.Feedbox.get_raw_df">get_raw_df</a></code></li>
+<li><code><a title="hepynet.data_io.feed_box.Feedbox.reweight_df" href="#hepynet.data_io.feed_box.Feedbox.reweight_df">reweight_df</a></code></li>
+<li><code><a title="hepynet.data_io.feed_box.Feedbox.update_norm_dict" href="#hepynet.data_io.feed_box.Feedbox.update_norm_dict">update_norm_dict</a></code></li>
 </ul>
 </li>
 </ul>

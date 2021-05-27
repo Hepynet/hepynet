@@ -26,8 +26,11 @@
 <h2 id="note">Note</h2>
 <ol>
 <li>Arrays organized by dictionary, each key is corresponding to a sample component</li>
-<li>Each sample component is a sub-dictionary, each key is corresponding to a input feature's array</li>
+<li>Each sample component is a sub-dictionary, each key is corresponding to a input feature's array </li>
 </ol>
+<h2 id="todo">Todo</h2>
+<p>Numpy input format has been replaced by pandas DataFrame.
+Should remove numpy_io or add support for different input formats?</p>
 <details class="source">
 <summary>
 <span>Expand source code</span>
@@ -38,18 +41,196 @@ Note:
   1. Arrays organized by dictionary, each key is corresponding to a sample component
   2. Each sample component is a sub-dictionary, each key is corresponding to a input feature&#39;s array 
 
+
+TODO:
+    Numpy input format has been replaced by pandas DataFrame.
+    Should remove numpy_io or add support for different input formats?
+
 &#34;&#34;&#34;
 import logging
 import pathlib
-import numpy as np
+from typing import Dict, List, Optional
 
-from hepynet.common import array_utils, common_utils, config_utils
+import numpy as np
+import pandas as pd
+
+from hepynet.common import common_utils, config_utils
+from hepynet.data_io import array_utils
 
 logger = logging.getLogger(&#34;hepynet&#34;)
 
 
+def get_array_key(job_config, sample_type):
+    ic = job_config.input.clone()
+    if sample_type == &#34;sig&#34;:
+        return ic.sig_key
+    elif sample_type == &#34;bkg&#34;:
+        return ic.bkg_key
+    elif sample_type == &#34;data&#34;:
+        return ic.data_key
+    else:
+        logger.error(f&#34;Unknown sample type: {sample_type}&#34;)
+        return None
+
+
+def get_campaign_list(job_config):
+    ic = job_config.input.clone()
+    if &#34;+&#34; in ic.campaign:
+        return [camp.strip() for camp in ic.campaign.split(&#34;+&#34;)]
+    else:
+        return [ic.campaign]
+
+
+def get_cut_index(job_config, cut_feature_dict):
+    ic = job_config.input.clone()
+    cut_index = None
+    for cut_feature, cut_value, cut_type in zip(
+        ic.cut_features, ic.cut_values, ic.cut_types
+    ):
+        cut_array = cut_feature_dict[cut_feature]
+        if cut_type == &#34;=&#34;:
+            temp_cut_index = np.argwhere(cut_array != cut_value)
+        elif cut_type == &#34;&gt;&#34;:
+            temp_cut_index = np.argwhere(cut_array &lt;= cut_value)
+        elif cut_type == &#34;&lt;&#34;:
+            temp_cut_index = np.argwhere(cut_array &gt;= cut_value)
+        else:
+            temp_cut_index = np.array([])
+        # update cut_index
+        if cut_index is None:
+            cut_index = temp_cut_index
+        else:
+            cut_index = np.union1d(cut_index, temp_cut_index)
+    return cut_index
+
+
+def get_cut_pass_index_dict(
+    job_config, array_type_list=None, sample_list_dict=None
+) -&gt; Dict[str, Dict[str, np.ndarray]]:
+    job_config_copy = job_config.clone()
+    ic = job_config_copy.input
+    # rc = job_config_copy.run
+    # ic.cut_features += [ic.channel]
+    # ic.cut_values += [1]
+    # ic.cut_types += [&#34;=&#34;]
+    pass_id_dict = dict()
+    if array_type_list is None:
+        array_type_list = [&#34;sig&#34;, &#34;bkg&#34;, &#34;data&#34;]
+    for array_type in array_type_list:
+        pass_id_dict[array_type] = dict()
+        sample_load_list = list()
+        if (sample_list_dict) is None or (array_type not in sample_list_dict):
+            samples = getattr(ic, f&#34;{array_type}_list&#34;)
+            if type(samples) != list:
+                sample_load_list = [samples]
+            else:
+                sample_load_list = samples
+        else:
+            sample_load_list = sample_list_dict[array_type]
+        data_dir = get_data_dir()
+        ## get campaign list
+        campaign_list = list()
+        if &#34;+&#34; in ic.campaign:
+            campaign_list = [camp.strip() for camp in ic.campaign.split(&#34;+&#34;)]
+        else:
+            campaign_list = [ic.campaign]
+        ## load sample array
+        for sample_component in sample_load_list:
+            cut_array_dict = {}
+            for feature in ic.cut_features:
+                feature_array = None
+                for camp in campaign_list:
+                    temp_array = np.load(
+                        f&#34;{data_dir}/{ic.arr_path}/{ic.arr_version}/{ic.variation}/{ic.channel}/{camp}/{ic.region}/{sample_component}_{feature}.npy &#34;,
+                    )
+                    if feature_array is None:
+                        feature_array = temp_array
+                    else:
+                        feature_array = np.concatenate(
+                            (feature_array, temp_array)
+                        )
+
+                feature_array = feature_array
+
+                cut_array_dict[feature] = feature_array.flatten()
+            # apply cuts
+            ## Get indexes that pass cuts
+            if not (
+                len(ic.cut_features) == len(ic.cut_values)
+                and len(ic.cut_features) == len(ic.cut_types)
+            ):
+                logger.critical(
+                    &#34;cut_features and cut_values and cut_types should have same length&#34;
+                )
+                exit(1)
+            pass_index = None
+            for cut_feature, cut_value, cut_type in zip(
+                ic.cut_features, ic.cut_values, ic.cut_types
+            ):
+                temp_pass_index = array_utils.get_cut_index_value(
+                    cut_array_dict[cut_feature], cut_value, cut_type
+                )
+                if pass_index is None:
+                    pass_index = temp_pass_index
+                else:
+                    pass_index = np.intersect1d(pass_index, temp_pass_index)
+            logger.debug(
+                f&#34;Got cut-passed index for {array_type} {sample_component}&#34;
+            )
+            if pass_index is not None:
+                logger.debug(f&#34;Shape {pass_index.shape}&#34;)
+            pass_id_dict[array_type][sample_component] = pass_index
+    return pass_id_dict
+
+
+def get_data_dir():
+    platform_meta = config_utils.load_current_platform_meta()
+    data_dir = platform_meta[&#34;data_path&#34;]
+    ## check data_root_directory
+    if not data_dir:
+        current_hostname = common_utils.get_current_hostname()
+        current_platform = common_utils.get_current_platform_name()
+        logger.info(
+            f&#34;NO data_path setting for current host {current_hostname} with platform {current_platform} found at share/cross_platform/pc_meta.yaml, will consider using absolute path for input data&#34;
+        )
+        data_dir = &#34;&#34;
+    return data_dir
+
+
+def get_samples_total_weight(job_config, sample_list):
+    ic = job_config.input.clone()
+    data_dir = get_data_dir()
+    total_weight = 0
+    for sample in sample_list:
+        for camp in get_campaign_list(job_config):
+            npy_in_dir = pathlib.Path(
+                f&#34;{data_dir}/{ic.arr_path}/{ic.arr_version}/{ic.variation}/{ic.channel}/{camp}/{ic.region}&#34;
+            )
+            wt_path = npy_in_dir / f&#34;{sample}_weight.npy&#34;
+            wt = np.load(wt_path)
+            total_weight += np.sum(wt)
+    return total_weight
+
+
+def get_sumofweight(job_config, sample_type):
+    ic = job_config.input.clone()
+    if sample_type == &#34;sig&#34;:
+        return ic.sig_sumofweight
+    elif sample_type == &#34;bkg&#34;:
+        return ic.bkg_sumofweight
+    elif sample_type == &#34;data&#34;:
+        return ic.data_sumofweight
+    else:
+        logger.error(f&#34;Unknown sample type: {sample_type}&#34;)
+        return None
+
+
 def load_npy_arrays(
-    job_config, array_type,
+    job_config,
+    array_type,
+    part_features: Optional[List[str]] = None,
+    cut_pass_index_dict=None,
+    include_weight=True,
 ):
     &#34;&#34;&#34;Gets individual npy arrays with given info.
 
@@ -61,8 +242,9 @@ def load_npy_arrays(
 
     &#34;&#34;&#34;
     # get settings from config file
-    rc = job_config.run.clone()
-    ic = job_config.input.clone()
+    job_config_copy = job_config.clone()
+    rc = job_config_copy.run
+    ic = job_config_copy.input
     if array_type == &#34;sig&#34;:
         samples = ic.sig_list
     elif array_type == &#34;bkg&#34;:
@@ -78,100 +260,67 @@ def load_npy_arrays(
         sample_list = [samples]
     else:
         sample_list = samples
-    if ic.campaign in [&#34;run2&#34;, &#34;all&#34;]:
-        campaign_list = [&#34;mc16a&#34;, &#34;mc16d&#34;, &#34;mc16e&#34;]
-    elif &#34;+&#34; in ic.campaign:
+
+    # load arrays
+    out_features = list()
+    if part_features is None:
+        out_features += ic.selected_features
+        out_features += ic.validation_features
+    else:
+        out_features += part_features
+    if include_weight:
+        out_features += [&#34;weight&#34;]
+    out_features = list(set().union(out_features))  # remove duplicates
+    logger.debug(f&#34;Out_features {out_features}&#34;)
+    out_dict = {}
+    ## check data_root_directory
+    data_dir = get_data_dir()
+    ## get campaign list
+    campaign_list = list()
+    if &#34;+&#34; in ic.campaign:
         campaign_list = [camp.strip() for camp in ic.campaign.split(&#34;+&#34;)]
     else:
         campaign_list = [ic.campaign]
-
-    # load arrays
-    included_features = ic.selected_features[:]
-    if ic.validation_features is None:
-        ic.validation_features = (
-            []
-        )  # TODO: need to solve this using a global default config setting in the future
-    included_features = list(
-        set().union(included_features, ic.validation_features, [&#34;weight&#34;])
-    )
-    if (
-        ic.cut_features is None
-    ):  # TODO: need to solve this using a global default config setting in the future
-        ic.cut_features = []
-        ic.cut_values = []
-        ic.cut_types = []
-    ic.cut_features += [ic.channel]
-    ic.cut_values += [1]
-    ic.cut_types += [&#34;=&#34;]
-    out_dict = {}
-    platform_meta = config_utils.load_current_platform_meta()
-    data_directory = platform_meta[&#34;data_path&#34;]
-    if not data_directory:
-        current_hostname = common_utils.get_current_hostname()
-        current_platform = common_utils.get_current_platform_name()
-        logger.critical(
-            f&#34;Can&#39;t find data_path setting for current host {current_hostname} with platform {current_platform}, please update the config at share/cross_platform/pc_meta.yaml&#34;
-        )
-        exit(1)
+    ## load sample array
     for sample_component in sample_list:
-        # load sample array
-        sample_array_dict = {}
-        cut_array_dict = {}
-        for feature in set().union(included_features, ic.cut_features):
-            feature_array = None
-            if ic.campaign in [&#34;run2&#34;, &#34;all&#34;]:
-                try:
-                    for camp in campaign_list:
-                        temp_array = np.load(
-                            f&#34;{data_directory}/{rc.npy_path}/{camp}/{ic.region}/{sample_component}_{feature}.npy&#34;
-                        )
-                        temp_array = np.reshape(temp_array, (-1, 1))
-                        if feature_array is None:
-                            feature_array = temp_array
-                        else:
-                            feature_array = np.concatenate((feature_array, temp_array))
-                except:
-                    feature_array = np.load(
-                        f&#34;{data_directory}/{rc.npy_path}/{ic.campaign}/{ic.region}/{sample_component}_{feature}.npy&#34;
-                    )
-            else:
-                feature_array = np.load(
-                    f&#34;{data_directory}/{rc.npy_path}/{ic.campaign}/{ic.region}/{sample_component}_{feature}.npy&#34;
-                )
-            feature_array = feature_array.reshape((-1, 1))
-
-            if feature in included_features:
-                sample_array_dict[feature] = feature_array
-            if feature in ic.cut_features:
-                cut_array_dict[feature] = feature_array
-        # apply cuts
-        ## Get indexes that pass cuts
-        if not (
-            len(ic.cut_features) == len(ic.cut_values)
-            and len(ic.cut_features) == len(ic.cut_types)
-        ):
-            logger.critical(
-                &#34;cut_features and cut_values and cut_types should have same length&#34;
-            )
-            exit(1)
         pass_index = None
-        for cut_feature, cut_value, cut_type in zip(
-            ic.cut_features, ic.cut_values, ic.cut_types
+        if (
+            isinstance(cut_pass_index_dict, dict)
+            and array_type in cut_pass_index_dict
+            and sample_component in cut_pass_index_dict[array_type]
         ):
-            temp_pass_index = array_utils.get_cut_index_value(
-                cut_array_dict[cut_feature], cut_value, cut_type
+            pass_index = cut_pass_index_dict[array_type][sample_component]
+        else:
+            feature_cut_dict = get_cut_pass_index_dict(
+                job_config,
+                array_type_list=[array_type],
+                sample_list_dict={array_type: [sample_component]},
             )
-            if pass_index is None:
-                pass_index = temp_pass_index
+            pass_index = feature_cut_dict[array_type][sample_component]
+        sample_array_dict = {}
+        for feature in out_features:
+            feature_array = None
+            for camp in campaign_list:
+                load_path = f&#34;{data_dir}/{ic.arr_path}/{ic.arr_version}/{ic.variation}/{ic.channel}/{camp}/{ic.region}/{sample_component}_{feature}.npy &#34;
+                temp_array = np.load(load_path)
+                if feature_array is None:
+                    feature_array = temp_array
+                else:
+                    feature_array = np.concatenate((feature_array, temp_array))
+            # use float32 to reduce memory consumption, risky?
+            feature_array = np.array(feature_array, dtype=np.float32)
+            if pass_index is not None:
+                sample_array_dict[feature] = feature_array[
+                    pass_index
+                ].flatten()
             else:
-                pass_index = np.intersect1d(pass_index, temp_pass_index)
-        ## keep the events that pass the selection
-        for feature in sample_array_dict:
-            sample_array_dict[feature] = sample_array_dict[feature][
-                pass_index.flatten(), :
-            ]
-        total_weights = np.sum(sample_array_dict[&#34;weight&#34;])
-        logger.debug(f&#34;Total input {sample_component} weights: {total_weights}&#34;)
+                sample_array_dict[feature] = feature_array.flatten()
+        if &#34;weight&#34; in out_features:
+            weight_array = sample_array_dict[&#34;weight&#34;]
+            total_weights = np.sum(weight_array)
+            logger.debug(
+                f&#34;Load sample {sample_component} total weights: {total_weights}, total events {weight_array.shape}&#34;
+            )
         out_dict[sample_component] = sample_array_dict
     return out_dict
 
@@ -186,8 +335,7 @@ def save_npy_array(
     logger.debug(f&#34;Array saved to: {save_path}&#34;)
     logger.debug(f&#34;Array contents:\n {npy_array}&#34;)
     logger.debug(f&#34;Array average:\n {np.average(npy_array)}&#34;)
-    logger.debug(f&#34;Array sum:\n {np.sum(npy_array)}&#34;)
-    </code></pre>
+    logger.debug(f&#34;Array sum:\n {np.sum(npy_array)}&#34;)</code></pre>
 </details>
 </section>
 <section>
@@ -197,8 +345,236 @@ def save_npy_array(
 <section>
 <h2 class="section-title" id="header-functions">Functions</h2>
 <dl>
+<dt id="hepynet.data_io.numpy_io.get_array_key"><code class="name flex">
+<span>def <span class="ident">get_array_key</span></span>(<span>job_config, sample_type)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def get_array_key(job_config, sample_type):
+    ic = job_config.input.clone()
+    if sample_type == &#34;sig&#34;:
+        return ic.sig_key
+    elif sample_type == &#34;bkg&#34;:
+        return ic.bkg_key
+    elif sample_type == &#34;data&#34;:
+        return ic.data_key
+    else:
+        logger.error(f&#34;Unknown sample type: {sample_type}&#34;)
+        return None</code></pre>
+</details>
+</dd>
+<dt id="hepynet.data_io.numpy_io.get_campaign_list"><code class="name flex">
+<span>def <span class="ident">get_campaign_list</span></span>(<span>job_config)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def get_campaign_list(job_config):
+    ic = job_config.input.clone()
+    if &#34;+&#34; in ic.campaign:
+        return [camp.strip() for camp in ic.campaign.split(&#34;+&#34;)]
+    else:
+        return [ic.campaign]</code></pre>
+</details>
+</dd>
+<dt id="hepynet.data_io.numpy_io.get_cut_index"><code class="name flex">
+<span>def <span class="ident">get_cut_index</span></span>(<span>job_config, cut_feature_dict)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def get_cut_index(job_config, cut_feature_dict):
+    ic = job_config.input.clone()
+    cut_index = None
+    for cut_feature, cut_value, cut_type in zip(
+        ic.cut_features, ic.cut_values, ic.cut_types
+    ):
+        cut_array = cut_feature_dict[cut_feature]
+        if cut_type == &#34;=&#34;:
+            temp_cut_index = np.argwhere(cut_array != cut_value)
+        elif cut_type == &#34;&gt;&#34;:
+            temp_cut_index = np.argwhere(cut_array &lt;= cut_value)
+        elif cut_type == &#34;&lt;&#34;:
+            temp_cut_index = np.argwhere(cut_array &gt;= cut_value)
+        else:
+            temp_cut_index = np.array([])
+        # update cut_index
+        if cut_index is None:
+            cut_index = temp_cut_index
+        else:
+            cut_index = np.union1d(cut_index, temp_cut_index)
+    return cut_index</code></pre>
+</details>
+</dd>
+<dt id="hepynet.data_io.numpy_io.get_cut_pass_index_dict"><code class="name flex">
+<span>def <span class="ident">get_cut_pass_index_dict</span></span>(<span>job_config, array_type_list=None, sample_list_dict=None) ‑> Dict[str, Dict[str, numpy.ndarray]]</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def get_cut_pass_index_dict(
+    job_config, array_type_list=None, sample_list_dict=None
+) -&gt; Dict[str, Dict[str, np.ndarray]]:
+    job_config_copy = job_config.clone()
+    ic = job_config_copy.input
+    # rc = job_config_copy.run
+    # ic.cut_features += [ic.channel]
+    # ic.cut_values += [1]
+    # ic.cut_types += [&#34;=&#34;]
+    pass_id_dict = dict()
+    if array_type_list is None:
+        array_type_list = [&#34;sig&#34;, &#34;bkg&#34;, &#34;data&#34;]
+    for array_type in array_type_list:
+        pass_id_dict[array_type] = dict()
+        sample_load_list = list()
+        if (sample_list_dict) is None or (array_type not in sample_list_dict):
+            samples = getattr(ic, f&#34;{array_type}_list&#34;)
+            if type(samples) != list:
+                sample_load_list = [samples]
+            else:
+                sample_load_list = samples
+        else:
+            sample_load_list = sample_list_dict[array_type]
+        data_dir = get_data_dir()
+        ## get campaign list
+        campaign_list = list()
+        if &#34;+&#34; in ic.campaign:
+            campaign_list = [camp.strip() for camp in ic.campaign.split(&#34;+&#34;)]
+        else:
+            campaign_list = [ic.campaign]
+        ## load sample array
+        for sample_component in sample_load_list:
+            cut_array_dict = {}
+            for feature in ic.cut_features:
+                feature_array = None
+                for camp in campaign_list:
+                    temp_array = np.load(
+                        f&#34;{data_dir}/{ic.arr_path}/{ic.arr_version}/{ic.variation}/{ic.channel}/{camp}/{ic.region}/{sample_component}_{feature}.npy &#34;,
+                    )
+                    if feature_array is None:
+                        feature_array = temp_array
+                    else:
+                        feature_array = np.concatenate(
+                            (feature_array, temp_array)
+                        )
+
+                feature_array = feature_array
+
+                cut_array_dict[feature] = feature_array.flatten()
+            # apply cuts
+            ## Get indexes that pass cuts
+            if not (
+                len(ic.cut_features) == len(ic.cut_values)
+                and len(ic.cut_features) == len(ic.cut_types)
+            ):
+                logger.critical(
+                    &#34;cut_features and cut_values and cut_types should have same length&#34;
+                )
+                exit(1)
+            pass_index = None
+            for cut_feature, cut_value, cut_type in zip(
+                ic.cut_features, ic.cut_values, ic.cut_types
+            ):
+                temp_pass_index = array_utils.get_cut_index_value(
+                    cut_array_dict[cut_feature], cut_value, cut_type
+                )
+                if pass_index is None:
+                    pass_index = temp_pass_index
+                else:
+                    pass_index = np.intersect1d(pass_index, temp_pass_index)
+            logger.debug(
+                f&#34;Got cut-passed index for {array_type} {sample_component}&#34;
+            )
+            if pass_index is not None:
+                logger.debug(f&#34;Shape {pass_index.shape}&#34;)
+            pass_id_dict[array_type][sample_component] = pass_index
+    return pass_id_dict</code></pre>
+</details>
+</dd>
+<dt id="hepynet.data_io.numpy_io.get_data_dir"><code class="name flex">
+<span>def <span class="ident">get_data_dir</span></span>(<span>)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def get_data_dir():
+    platform_meta = config_utils.load_current_platform_meta()
+    data_dir = platform_meta[&#34;data_path&#34;]
+    ## check data_root_directory
+    if not data_dir:
+        current_hostname = common_utils.get_current_hostname()
+        current_platform = common_utils.get_current_platform_name()
+        logger.info(
+            f&#34;NO data_path setting for current host {current_hostname} with platform {current_platform} found at share/cross_platform/pc_meta.yaml, will consider using absolute path for input data&#34;
+        )
+        data_dir = &#34;&#34;
+    return data_dir</code></pre>
+</details>
+</dd>
+<dt id="hepynet.data_io.numpy_io.get_samples_total_weight"><code class="name flex">
+<span>def <span class="ident">get_samples_total_weight</span></span>(<span>job_config, sample_list)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def get_samples_total_weight(job_config, sample_list):
+    ic = job_config.input.clone()
+    data_dir = get_data_dir()
+    total_weight = 0
+    for sample in sample_list:
+        for camp in get_campaign_list(job_config):
+            npy_in_dir = pathlib.Path(
+                f&#34;{data_dir}/{ic.arr_path}/{ic.arr_version}/{ic.variation}/{ic.channel}/{camp}/{ic.region}&#34;
+            )
+            wt_path = npy_in_dir / f&#34;{sample}_weight.npy&#34;
+            wt = np.load(wt_path)
+            total_weight += np.sum(wt)
+    return total_weight</code></pre>
+</details>
+</dd>
+<dt id="hepynet.data_io.numpy_io.get_sumofweight"><code class="name flex">
+<span>def <span class="ident">get_sumofweight</span></span>(<span>job_config, sample_type)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def get_sumofweight(job_config, sample_type):
+    ic = job_config.input.clone()
+    if sample_type == &#34;sig&#34;:
+        return ic.sig_sumofweight
+    elif sample_type == &#34;bkg&#34;:
+        return ic.bkg_sumofweight
+    elif sample_type == &#34;data&#34;:
+        return ic.data_sumofweight
+    else:
+        logger.error(f&#34;Unknown sample type: {sample_type}&#34;)
+        return None</code></pre>
+</details>
+</dd>
 <dt id="hepynet.data_io.numpy_io.load_npy_arrays"><code class="name flex">
-<span>def <span class="ident">load_npy_arrays</span></span>(<span>job_config, array_type)</span>
+<span>def <span class="ident">load_npy_arrays</span></span>(<span>job_config, array_type, part_features: Union[List[str], NoneType] = None, cut_pass_index_dict=None, include_weight=True)</span>
 </code></dt>
 <dd>
 <div class="desc"><p>Gets individual npy arrays with given info.</p>
@@ -212,7 +588,11 @@ examples: pT, eta, phi</p></div>
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">def load_npy_arrays(
-    job_config, array_type,
+    job_config,
+    array_type,
+    part_features: Optional[List[str]] = None,
+    cut_pass_index_dict=None,
+    include_weight=True,
 ):
     &#34;&#34;&#34;Gets individual npy arrays with given info.
 
@@ -224,8 +604,9 @@ examples: pT, eta, phi</p></div>
 
     &#34;&#34;&#34;
     # get settings from config file
-    rc = job_config.run.clone()
-    ic = job_config.input.clone()
+    job_config_copy = job_config.clone()
+    rc = job_config_copy.run
+    ic = job_config_copy.input
     if array_type == &#34;sig&#34;:
         samples = ic.sig_list
     elif array_type == &#34;bkg&#34;:
@@ -241,100 +622,67 @@ examples: pT, eta, phi</p></div>
         sample_list = [samples]
     else:
         sample_list = samples
-    if ic.campaign in [&#34;run2&#34;, &#34;all&#34;]:
-        campaign_list = [&#34;mc16a&#34;, &#34;mc16d&#34;, &#34;mc16e&#34;]
-    elif &#34;+&#34; in ic.campaign:
+
+    # load arrays
+    out_features = list()
+    if part_features is None:
+        out_features += ic.selected_features
+        out_features += ic.validation_features
+    else:
+        out_features += part_features
+    if include_weight:
+        out_features += [&#34;weight&#34;]
+    out_features = list(set().union(out_features))  # remove duplicates
+    logger.debug(f&#34;Out_features {out_features}&#34;)
+    out_dict = {}
+    ## check data_root_directory
+    data_dir = get_data_dir()
+    ## get campaign list
+    campaign_list = list()
+    if &#34;+&#34; in ic.campaign:
         campaign_list = [camp.strip() for camp in ic.campaign.split(&#34;+&#34;)]
     else:
         campaign_list = [ic.campaign]
-
-    # load arrays
-    included_features = ic.selected_features[:]
-    if ic.validation_features is None:
-        ic.validation_features = (
-            []
-        )  # TODO: need to solve this using a global default config setting in the future
-    included_features = list(
-        set().union(included_features, ic.validation_features, [&#34;weight&#34;])
-    )
-    if (
-        ic.cut_features is None
-    ):  # TODO: need to solve this using a global default config setting in the future
-        ic.cut_features = []
-        ic.cut_values = []
-        ic.cut_types = []
-    ic.cut_features += [ic.channel]
-    ic.cut_values += [1]
-    ic.cut_types += [&#34;=&#34;]
-    out_dict = {}
-    platform_meta = config_utils.load_current_platform_meta()
-    data_directory = platform_meta[&#34;data_path&#34;]
-    if not data_directory:
-        current_hostname = common_utils.get_current_hostname()
-        current_platform = common_utils.get_current_platform_name()
-        logger.critical(
-            f&#34;Can&#39;t find data_path setting for current host {current_hostname} with platform {current_platform}, please update the config at share/cross_platform/pc_meta.yaml&#34;
-        )
-        exit(1)
+    ## load sample array
     for sample_component in sample_list:
-        # load sample array
-        sample_array_dict = {}
-        cut_array_dict = {}
-        for feature in set().union(included_features, ic.cut_features):
-            feature_array = None
-            if ic.campaign in [&#34;run2&#34;, &#34;all&#34;]:
-                try:
-                    for camp in campaign_list:
-                        temp_array = np.load(
-                            f&#34;{data_directory}/{rc.npy_path}/{camp}/{ic.region}/{sample_component}_{feature}.npy&#34;
-                        )
-                        temp_array = np.reshape(temp_array, (-1, 1))
-                        if feature_array is None:
-                            feature_array = temp_array
-                        else:
-                            feature_array = np.concatenate((feature_array, temp_array))
-                except:
-                    feature_array = np.load(
-                        f&#34;{data_directory}/{rc.npy_path}/{ic.campaign}/{ic.region}/{sample_component}_{feature}.npy&#34;
-                    )
-            else:
-                feature_array = np.load(
-                    f&#34;{data_directory}/{rc.npy_path}/{ic.campaign}/{ic.region}/{sample_component}_{feature}.npy&#34;
-                )
-            feature_array = feature_array.reshape((-1, 1))
-
-            if feature in included_features:
-                sample_array_dict[feature] = feature_array
-            if feature in ic.cut_features:
-                cut_array_dict[feature] = feature_array
-        # apply cuts
-        ## Get indexes that pass cuts
-        if not (
-            len(ic.cut_features) == len(ic.cut_values)
-            and len(ic.cut_features) == len(ic.cut_types)
-        ):
-            logger.critical(
-                &#34;cut_features and cut_values and cut_types should have same length&#34;
-            )
-            exit(1)
         pass_index = None
-        for cut_feature, cut_value, cut_type in zip(
-            ic.cut_features, ic.cut_values, ic.cut_types
+        if (
+            isinstance(cut_pass_index_dict, dict)
+            and array_type in cut_pass_index_dict
+            and sample_component in cut_pass_index_dict[array_type]
         ):
-            temp_pass_index = array_utils.get_cut_index_value(
-                cut_array_dict[cut_feature], cut_value, cut_type
+            pass_index = cut_pass_index_dict[array_type][sample_component]
+        else:
+            feature_cut_dict = get_cut_pass_index_dict(
+                job_config,
+                array_type_list=[array_type],
+                sample_list_dict={array_type: [sample_component]},
             )
-            if pass_index is None:
-                pass_index = temp_pass_index
+            pass_index = feature_cut_dict[array_type][sample_component]
+        sample_array_dict = {}
+        for feature in out_features:
+            feature_array = None
+            for camp in campaign_list:
+                load_path = f&#34;{data_dir}/{ic.arr_path}/{ic.arr_version}/{ic.variation}/{ic.channel}/{camp}/{ic.region}/{sample_component}_{feature}.npy &#34;
+                temp_array = np.load(load_path)
+                if feature_array is None:
+                    feature_array = temp_array
+                else:
+                    feature_array = np.concatenate((feature_array, temp_array))
+            # use float32 to reduce memory consumption, risky?
+            feature_array = np.array(feature_array, dtype=np.float32)
+            if pass_index is not None:
+                sample_array_dict[feature] = feature_array[
+                    pass_index
+                ].flatten()
             else:
-                pass_index = np.intersect1d(pass_index, temp_pass_index)
-        ## keep the events that pass the selection
-        for feature in sample_array_dict:
-            sample_array_dict[feature] = sample_array_dict[feature][
-                pass_index.flatten(), :
-            ]
-        total_weights = np.sum(sample_array_dict[&#34;weight&#34;])
-        logger.debug(f&#34;Total input {sample_component} weights: {total_weights}&#34;)
+                sample_array_dict[feature] = feature_array.flatten()
+        if &#34;weight&#34; in out_features:
+            weight_array = sample_array_dict[&#34;weight&#34;]
+            total_weights = np.sum(weight_array)
+            logger.debug(
+                f&#34;Load sample {sample_component} total weights: {total_weights}, total events {weight_array.shape}&#34;
+            )
         out_dict[sample_component] = sample_array_dict
     return out_dict</code></pre>
 </details>
@@ -379,6 +727,13 @@ examples: pT, eta, phi</p></div>
 </li>
 <li><h3><a href="#header-functions">Functions</a></h3>
 <ul class="">
+<li><code><a title="hepynet.data_io.numpy_io.get_array_key" href="#hepynet.data_io.numpy_io.get_array_key">get_array_key</a></code></li>
+<li><code><a title="hepynet.data_io.numpy_io.get_campaign_list" href="#hepynet.data_io.numpy_io.get_campaign_list">get_campaign_list</a></code></li>
+<li><code><a title="hepynet.data_io.numpy_io.get_cut_index" href="#hepynet.data_io.numpy_io.get_cut_index">get_cut_index</a></code></li>
+<li><code><a title="hepynet.data_io.numpy_io.get_cut_pass_index_dict" href="#hepynet.data_io.numpy_io.get_cut_pass_index_dict">get_cut_pass_index_dict</a></code></li>
+<li><code><a title="hepynet.data_io.numpy_io.get_data_dir" href="#hepynet.data_io.numpy_io.get_data_dir">get_data_dir</a></code></li>
+<li><code><a title="hepynet.data_io.numpy_io.get_samples_total_weight" href="#hepynet.data_io.numpy_io.get_samples_total_weight">get_samples_total_weight</a></code></li>
+<li><code><a title="hepynet.data_io.numpy_io.get_sumofweight" href="#hepynet.data_io.numpy_io.get_sumofweight">get_sumofweight</a></code></li>
 <li><code><a title="hepynet.data_io.numpy_io.load_npy_arrays" href="#hepynet.data_io.numpy_io.load_npy_arrays">load_npy_arrays</a></code></li>
 <li><code><a title="hepynet.data_io.numpy_io.save_npy_array" href="#hepynet.data_io.numpy_io.save_npy_array">save_npy_array</a></code></li>
 </ul>

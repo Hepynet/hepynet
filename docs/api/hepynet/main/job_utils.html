@@ -29,17 +29,18 @@
 <pre><code class="python">import csv
 import logging
 import pathlib
+from typing import Iterable
 
 import git
 
-import hepynet
+import hepynet.common.hepy_type as ht
 
 logger = logging.getLogger(&#34;hepynet&#34;)
 
 MAIN_DIR_NAMES = [&#34;pdnn-lfv&#34;, &#34;work&#34;]
 
 
-def get_valid_cfg_path(path):
+def get_valid_cfg_path(path: ht.pathlike):
     &#34;&#34;&#34;Finds valid path for cfg file in /share folder.
 
     If path is already valid:
@@ -53,7 +54,7 @@ def get_valid_cfg_path(path):
     if pathlib.Path(path).is_file():
         return path
     # Check try add share folder prefix
-    repo = git.Repo(&#39;.&#39;, search_parent_directories=True)
+    repo = git.Repo(&#34;.&#34;, search_parent_directories=True)
     hepynet_dir = repo.working_tree_dir
     logger.debug(f&#34;Get hepynet dir: {hepynet_dir}&#34;)
     cfg_path = f&#34;{hepynet_dir}/{path}&#34;
@@ -61,17 +62,17 @@ def get_valid_cfg_path(path):
         return cfg_path
     elif pathlib.Path(cfg_path).is_dir():
         logger.critical(
-            f&#34;Expect a config file path but get directory path: {cfg_path}, please check .ini file.&#34;
+            f&#34;Expect a config file path but get directory path: {cfg_path}, please check the config file.&#34;
         )
         exit()
     else:
         logger.critical(
-            f&#34;No valid config file found at path {cfg_path}, please check .ini file.&#34;
+            f&#34;No valid config file found at path {cfg_path}, please check the config file.&#34;
         )
         exit()
 
 
-def make_table(data, save_dir, num_para=1):
+def make_table(data: Iterable, save_dir: ht.pathlike):
     &#34;&#34;&#34;Makes table for scan meta data and so on.
 
     Input example:
@@ -97,7 +98,7 @@ def make_table(data, save_dir, num_para=1):
 <h2 class="section-title" id="header-functions">Functions</h2>
 <dl>
 <dt id="hepynet.main.job_utils.get_valid_cfg_path"><code class="name flex">
-<span>def <span class="ident">get_valid_cfg_path</span></span>(<span>path)</span>
+<span>def <span class="ident">get_valid_cfg_path</span></span>(<span>path: Union[str, os.PathLike])</span>
 </code></dt>
 <dd>
 <div class="desc"><p>Finds valid path for cfg file in /share folder.</p>
@@ -110,7 +111,7 @@ Otherwise, raise error to ask configuration correction.</p></div>
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def get_valid_cfg_path(path):
+<pre><code class="python">def get_valid_cfg_path(path: ht.pathlike):
     &#34;&#34;&#34;Finds valid path for cfg file in /share folder.
 
     If path is already valid:
@@ -124,7 +125,7 @@ Otherwise, raise error to ask configuration correction.</p></div>
     if pathlib.Path(path).is_file():
         return path
     # Check try add share folder prefix
-    repo = git.Repo(&#39;.&#39;, search_parent_directories=True)
+    repo = git.Repo(&#34;.&#34;, search_parent_directories=True)
     hepynet_dir = repo.working_tree_dir
     logger.debug(f&#34;Get hepynet dir: {hepynet_dir}&#34;)
     cfg_path = f&#34;{hepynet_dir}/{path}&#34;
@@ -132,18 +133,18 @@ Otherwise, raise error to ask configuration correction.</p></div>
         return cfg_path
     elif pathlib.Path(cfg_path).is_dir():
         logger.critical(
-            f&#34;Expect a config file path but get directory path: {cfg_path}, please check .ini file.&#34;
+            f&#34;Expect a config file path but get directory path: {cfg_path}, please check the config file.&#34;
         )
         exit()
     else:
         logger.critical(
-            f&#34;No valid config file found at path {cfg_path}, please check .ini file.&#34;
+            f&#34;No valid config file found at path {cfg_path}, please check the config file.&#34;
         )
         exit()</code></pre>
 </details>
 </dd>
 <dt id="hepynet.main.job_utils.make_table"><code class="name flex">
-<span>def <span class="ident">make_table</span></span>(<span>data, save_dir, num_para=1)</span>
+<span>def <span class="ident">make_table</span></span>(<span>data: Iterable, save_dir: Union[str, os.PathLike])</span>
 </code></dt>
 <dd>
 <div class="desc"><p>Makes table for scan meta data and so on.</p>
@@ -157,7 +158,7 @@ data = [
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def make_table(data, save_dir, num_para=1):
+<pre><code class="python">def make_table(data: Iterable, save_dir: ht.pathlike):
     &#34;&#34;&#34;Makes table for scan meta data and so on.
 
     Input example:

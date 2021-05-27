@@ -27,26 +27,39 @@
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">DEFAULT_CFG = {
-    &#34;config&#34;: {&#34;include&#34;: [],},
+    &#34;config&#34;: {
+        &#34;include&#34;: [],
+        &#34;best_tune_overwrite&#34;: False,  # overwrite with best tuned config
+    },
     &#34;job&#34;: {
         &#34;job_name&#34;: &#34;JOB_NAME_DEF&#34;,
-        &#34;job_type&#34;: &#34;JOB_TYPE_DEF&#34;,
+        &#34;job_type&#34;: &#34;JOB_TYPE_DEF&#34;,  # could be train/tune/apply
         &#34;save_dir&#34;: &#34;.&#34;,
-        &#34;load_job_name&#34;: &#34;LOAD_JOB_NAME_DEF&#34;,
+        &#34;tune_job_name&#34;: &#34;TUNE_JOB_NAME_DEF&#34;,
+        &#34;train_job_name&#34;: &#34;TRAIN_JOB_NAME_DEF&#34;,
+        &#34;fix_rdm_seed&#34;: True,
+        &#34;rdm_seed&#34;: 1024,
+        &#34;date_str&#34;: None,
+        &#34;fix_date_str&#34;: False,
     },
     &#34;input&#34;: {
-        &#34;norm_array&#34;: True,
-        &#34;feature_norm_alias&#34;:{},
+        &#34;input_path&#34;: &#34;&#34;,
+        &#34;reshape_input&#34;: True,
+        &#34;reweight_input&#34;: True,
+        &#34;negative_weight_process&#34;: &#34;to_zero&#34;,  # could also be &#34;to_positive&#34; or &#34;keep&#34;
+        &#34;feature_norm_alias&#34;: {},
         &#34;sig_sumofweight&#34;: 1000,
         &#34;bkg_sumofweight&#34;: 1000,
         &#34;data_sumofweight&#34;: 1000,
         &#34;reset_feature&#34;: False,
         &#34;reset_feature_name&#34;: &#34;RESET_FEATURE_NAME_DEF&#34;,
+        &#34;reset_feature_overwrite&#34;: False,
+        &#34;reset_feature_overwrite_value&#34;: None,
         &#34;rm_negative_weight_events&#34;: False,
-        &#34;rdm_seed&#34;: 1024,
         &#34;arr_path&#34;: &#34;&#34;,
         &#34;arr_version&#34;: &#34;&#34;,
         &#34;variation&#34;: &#34;&#34;,
+        &#34;channel&#34;: &#34;&#34;,
         &#34;campaign&#34;: &#34;&#34;,
         &#34;region&#34;: &#34;&#34;,
         &#34;channel&#34;: &#34;&#34;,
@@ -54,11 +67,67 @@
         &#34;sig_list&#34;: [],
         &#34;bkg_key&#34;: &#34;all&#34;,
         &#34;bkg_list&#34;: [],
+        &#34;data_key&#34;: &#34;all&#34;,
+        &#34;data_list&#34;: [],
         &#34;selected_features&#34;: [],
         &#34;validation_features&#34;: [],
         &#34;cut_features&#34;: [],
         &#34;cut_values&#34;: [],
         &#34;cut_types&#34;: [],
+        &#34;cut_expression&#34;: None,
+        &#34;test_rate&#34;: 0.2,
+    },
+    &#34;tune&#34;: {
+        &#34;tuner&#34;: {
+            &#34;init&#34;: {
+                &#34;num_cpus&#34;: None,
+                &#34;num_gpus&#34;: None,
+                &#34;log_to_driver&#34;: False,
+            },
+            &#34;scheduler_class&#34;: &#34;AsyncHyperBandScheduler&#34;,
+            &#34;scheduler&#34;: {
+                &#34;time_attr&#34;: &#34;training_iteration&#34;,
+                &#34;max_t&#34;: 200,
+                &#34;grace_period&#34;: 10,
+            },
+            &#34;algo_class&#34;: None,
+            &#34;algo&#34;: {},
+            &#34;stopper_class&#34;: None,
+            &#34;stopper&#34;: {},
+            &#34;run&#34;: {
+                &#34;num_samples&#34;: 10,
+                &#34;resources_per_trial&#34;: {&#34;cpu&#34;: 1, &#34;gpu&#34;: 0},
+                &#34;log_to_file&#34;: True,
+            },
+        },
+        &#34;model_class&#34;: &#34;Model_Sequential_Flat&#34;,
+        &#34;model&#34;: {
+            &#34;output_bkg_node_names&#34;: [],
+            &#34;layers&#34;: 1,
+            &#34;nodes&#34;: 1,
+            &#34;learn_rate&#34;: 0.01,
+            &#34;learn_rate_decay&#34;: 0.01,
+            &#34;batch_size&#34;: 32,
+            &#34;epochs&#34;: 1,
+            &#34;momentum&#34;: 0,
+            &#34;nesterov&#34;: False,
+            &#34;dropout_rate&#34;: 0,
+            &#34;sig_class_weight&#34;: 1,
+            &#34;bkg_class_weight&#34;: 1,
+            &#34;val_split&#34;: 0.25,
+            &#34;use_early_stop&#34;: False,
+            &#34;early_stop_paras&#34;: {
+                &#34;monitor&#34;: &#34;val_loss&#34;,
+                &#34;min_delta&#34;: 0,
+                &#34;patience&#34;: 1,
+                &#34;mode&#34;: &#34;min&#34;,
+                &#34;restore_best_weights&#34;: True,
+            },
+            &#34;tune_metrics&#34;: [],
+            &#34;tune_metrics_weighted&#34;: [],
+        },
+        &#34;tmp_dir&#34;: &#34;run/tmp_log&#34;,
+        &#34;rm_tmp_log&#34;: False,
     },
     &#34;train&#34;: {
         &#34;model_name&#34;: &#34;MODEL_NAME_DEF&#34;,
@@ -75,8 +144,8 @@
         &#34;dropout_rate&#34;: 0,
         &#34;sig_class_weight&#34;: 1,
         &#34;bkg_class_weight&#34;: 1,
-        &#34;test_rate&#34;: 0.2,
         &#34;val_split&#34;: 0.25,
+        &#34;k_folds&#34;: None,
         &#34;use_early_stop&#34;: False,
         &#34;early_stop_paras&#34;: {
             &#34;monitor&#34;: &#34;val_loss&#34;,
@@ -91,69 +160,125 @@
         &#34;verbose&#34;: 0,
     },
     &#34;apply&#34;: {
+        &#34;color_cycle&#34;: [
+            &#34;#f99157&#34;,  # orange
+            &#34;#5fb3b3&#34;,  # cyan
+            &#34;#ec5f67&#34;,  # red
+            &#34;#6699cc&#34;,  # blue
+            &#34;#fac863&#34;,  # yellow
+            &#34;#99c794&#34;,  # green
+            &#34;#c594c5&#34;,  # pink
+            &#34;#ab7967&#34;,  # brown
+            &#34;#cdd3de&#34;,  # grey
+            &#34;#343d46&#34;,  # black
+        ],
+        &#34;plot_atlas_label&#34;: False,
+        &#34;atlas_label&#34;: {},
         &#34;check_model_epoch&#34;: False,
+        &#34;epoch_check_interval&#34;: 5,
         &#34;book_history&#34;: False,
         &#34;cfg_history&#34;: {},
-        &#34;book_roc&#34;: False,
-        &#34;book_mva_scores_data_mc&#34;: False,
-        &#34;cfg_mva_scores_data_mc&#34;: {
-            &#34;sig_list&#34;: [],
-            &#34;bkg_list&#34;: [],
-            &#34;apply_data&#34;: False,
-            &#34;data_key&#34;: &#34;&#34;,
-            &#34;apply_data_range&#34;: None,
-            &#34;plot_title&#34;: &#34;MVA scores&#34;,
-            &#34;bins&#34;: 25,
-            &#34;range&#34;: [0, 1],
-            &#34;density&#34;: False,
-            &#34;log&#34;: False,
+        &#34;book_kine&#34;: False,
+        &#34;cfg_kine&#34;: {
+            &#34;separate_bkg_sig&#34;: True,
+            &#34;bkg_scale_raw&#34;: 1,
+            &#34;bkg_scale_processed&#34;: 1,
+            &#34;sig_scale_raw&#34;: 1,
+            &#34;sig_scale_processed&#34;: 1,
+            &#34;hist_kwargs_sig&#34;: {  # kwargs of plt.hist
+                &#34;bins&#34;: 40,
+                &#34;logbin&#34;: False,
+                &#34;logx&#34;: False,
+                &#34;logy&#34;: False,
+                &#34;histtype&#34;: &#34;step&#34;,
+                &#34;density&#34;: False,
+                &#34;facecolor&#34;: &#34;#f99157&#34;,  # orange
+                &#34;edgecolor&#34;: &#34;#f99157&#34;,
+                &#34;lw&#34;: 2,
+            },
+            &#34;hist_kwargs_bkg&#34;: {
+                &#34;bins&#34;: 40,
+                &#34;logbin&#34;: False,
+                &#34;logx&#34;: False,
+                &#34;logy&#34;: False,
+                &#34;histtype&#34;: &#34;stepfilled&#34;,
+                &#34;density&#34;: False,
+                &#34;facecolor&#34;: &#34;#5fb3b3&#34;,  # cyan
+                &#34;edgecolor&#34;: &#34;#5fb3b3&#34;,
+            },
             &#34;save_format&#34;: &#34;png&#34;,
-            &#34;use_root&#34;: False,
+            &#34;x_label&#34;: &#34;&#34;,
+            &#34;y_label&#34;: &#34;&#34;,
+            # dedicated feature configs can be made like the following:
+            ## feature:
+            ##   bins: 25
+            ##   range: [10, 200]
+            # feature config will overwrite common plot configs
         },
+        &#34;book_cor_matrix&#34;: False,
+        # model dependent studies
+        &#34;jump_model_studies&#34;: False,
+        &#34;book_fit_inputs&#34;: False,
+        &#34;fit_df&#34;: {&#34;region&#34;: &#34;&#34;, &#34;branches&#34;: [], &#34;save_dir&#34;: &#34;&#34;,},
+        &#34;book_confusion_matrix&#34;: False,
+        &#34;cfg_confusion_matrix&#34;: {&#34;dnn_cut&#34;: 0.5},
+        &#34;book_roc&#34;: False,
+        &#34;book_pr&#34;: False,
         &#34;book_train_test_compare&#34;: False,
         &#34;cfg_train_test_compare&#34;: {
             &#34;sig_key&#34;: None,
             &#34;bkg_key&#34;: None,
             &#34;plot_title&#34;: &#34;train/test MVA scores compare&#34;,
+            &#34;bkg_color&#34;: &#34;#f99157&#34;,  # orange
+            &#34;sig_color&#34;: &#34;#5fb3b3&#34;,  # cyan
             &#34;bins&#34;: 25,
             &#34;range&#34;: [0, 1],
             &#34;density&#34;: False,
             &#34;log&#34;: False,
+            &#34;logy_min&#34;: 0.001,
             &#34;save_format&#34;: &#34;png&#34;,
         },
-        &#34;book_kine_study&#34;: False,
+        &#34;book_mva_scores_data_mc&#34;: False,
+        &#34;cfg_mva_scores_data_mc&#34;: {
+            &#34;sig_list&#34;: [],
+            &#34;bkg_list&#34;: [],
+            &#34;apply_data&#34;: False,
+            &#34;show_ratio&#34;: False,
+            &#34;data_key&#34;: &#34;&#34;,
+            &#34;data_range&#34;: None,
+            &#34;plot_title&#34;: &#34;MVA scores&#34;,
+            &#34;sig_color&#34;: &#34;#5fb3b3&#34;,  # cyan
+            &#34;bkg_color&#34;: &#34;#f99157&#34;,  # orange
+            &#34;sig_scale&#34;: 1.0,
+            &#34;bkg_scale&#34;: 1.0,
+            &#34;data_scale&#34;: 1.0,
+            &#34;bins&#34;: 25,
+            &#34;range&#34;: [0, 1],
+            &#34;density&#34;: False,
+            &#34;log&#34;: False,
+            &#34;logy_min&#34;: 0.001,
+            &#34;save_format&#34;: &#34;png&#34;,
+        },
+        &#34;book_significance_scan&#34;: False,
+        &#34;cfg_significance_scan&#34;: {&#34;significance_algo&#34;: &#34;s_sqrt_b_rel&#34;,},
         &#34;book_cut_kine_study&#34;: False,
-        &#34;cfg_kine_study&#34;: {
-            &#34;separate_sig_bkg&#34;: False,  # only valid for no DNN cut kinematics
-            &#34;save_ratio_table&#34;: False,  # only valid for DNN cut kinematics
+        &#34;cfg_cut_kine_study&#34;: {
+            &#34;separate_sig_bkg&#34;: False,
+            &#34;save_ratio_table&#34;: False,
             &#34;bins&#34;: 40,
             &#34;range&#34;: None,
             &#34;histtype&#34;: &#34;stepfilled&#34;,
             &#34;alpha&#34;: 0.3,
             &#34;density&#34;: False,
-            &#34;sig_color&#34;: &#34;tomato&#34;,
-            &#34;bkg_color&#34;: &#34;royalblue&#34;,
+            &#34;bkg_color&#34;: &#34;#f99157&#34;,  # orange
+            &#34;sig_color&#34;: &#34;#5fb3b3&#34;,  # cyan
             &#34;dnn_cut_list&#34;: None,
             &#34;save_format&#34;: &#34;png&#34;,
         },
-        &#34;book_cor_matrix&#34;: False,
         &#34;book_importance_study&#34;: False,
-        &#34;book_significance_scan&#34;: False,
-        &#34;cfg_significance_scan&#34;: {&#34;significance_algo&#34;: &#34;s_sqrt_b_rel&#34;,},
-        &#34;book_fit_npy&#34;: False,
-        &#34;cfg_fit_npy&#34;: {
-            &#34;fit_npy_region&#34;: &#34;&#34;,
-            &#34;fit_npy_branches&#34;: [],
-            &#34;npy_save_dir&#34;: &#34;&#34;,
-        },
+        &#34;cfg_importance_study&#34;: {&#34;log&#34;: False},
     },
-    &#34;para_scan&#34;: {&#34;perform_para_scan&#34;: False,},
-    &#34;run&#34;: {
-        &#34;datestr&#34;: &#34;&#34;,
-        &#34;npy_path&#34;: &#34;&#34;,
-        &#34;config_collected&#34;: False,
-        &#34;input_dim&#34;: None,
-    },
+    &#34;run&#34;: {&#34;datestr&#34;: &#34;&#34;, &#34;config_collected&#34;: False, &#34;input_dim&#34;: None,},
 }</code></pre>
 </details>
 </section>

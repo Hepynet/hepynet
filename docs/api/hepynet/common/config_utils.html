@@ -26,18 +26,13 @@
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">import argparse
-import collections
-import copy
+<pre><code class="python">import copy
 import logging
 import pathlib
 import re
-import sys
-from typing import Any
 
 import yaml
 
-import hepynet
 from hepynet.common import common_utils
 from hepynet.common.config_default import DEFAULT_CFG
 
@@ -53,6 +48,7 @@ class Hepy_Config(object):
         self.job = Hepy_Config_Section({})
         self.input = Hepy_Config_Section({})
         self.train = Hepy_Config_Section({})
+        self.tune = Hepy_Config_Section({})
         self.apply = Hepy_Config_Section({})
         self.para_scan = Hepy_Config_Section({})
         self.run = Hepy_Config_Section({})
@@ -80,6 +76,7 @@ class Hepy_Config(object):
         out_dict[&#34;job&#34;] = self.job.get_config_dict()
         out_dict[&#34;input&#34;] = self.input.get_config_dict()
         out_dict[&#34;train&#34;] = self.train.get_config_dict()
+        out_dict[&#34;tune&#34;] = self.tune.get_config_dict()
         out_dict[&#34;apply&#34;] = self.apply.get_config_dict()
         out_dict[&#34;para_scan&#34;] = self.para_scan.get_config_dict()
         out_dict[&#34;run&#34;] = self.run.get_config_dict()
@@ -108,13 +105,13 @@ class Hepy_Config(object):
     def print(self) -&gt; None:
         &#34;&#34;&#34;Shows all configs
         &#34;&#34;&#34;
-        logger.info(&#34;&#34;)
-        logger.info(&#34;Config details &#34; + &#34;&gt;&#34; * 80)
+        print(&#34;&#34;)
+        print(&#34;Config details &#34; + &#34;&gt;&#34; * 80)
         for key, value in self.__dict__.items():
-            logger.info(f&#34;[{key}]&#34;)
+            print(f&#34;[{key}]&#34;)
             value.print()
-        logger.info(&#34;Config ends &#34; + &#34;&lt;&#34; * 83)
-        logger.info(&#34;&#34;)
+        print(&#34;Config ends &#34; + &#34;&lt;&#34; * 83)
+        print(&#34;&#34;)
 
 
 class Hepy_Config_Section(object):
@@ -157,7 +154,11 @@ class Hepy_Config_Section(object):
         &#34;&#34;&#34;
         for key, value in cfg_dict.items():
             if type(value) is dict:
-                if key in self.__dict__.keys() and key != &#34;_config_dict&#34;:
+                if (
+                    key in self.__dict__.keys()
+                    and key != &#34;_config_dict&#34;
+                    and isinstance(getattr(self, key), Hepy_Config_Section)
+                ):
                     getattr(self, key).update(value)
                 else:
                     setattr(self, key, Hepy_Config_Section(value))
@@ -170,14 +171,14 @@ class Hepy_Config_Section(object):
         for key, value in self.__dict__.items():
             if key != &#34;_config_dict&#34;:
                 if isinstance(value, Hepy_Config_Section):
-                    logger.info(f&#34;{&#39; &#39;*4*tabs}    {key} :&#34;)
+                    print(f&#34;{&#39; &#39;*4*tabs}    {key} :&#34;)
                     value.print(tabs=tabs + 1)
                 elif isinstance(value, list):
-                    logger.info(f&#34;{&#39; &#39;*4*tabs}    {key} :&#34;)
+                    print(f&#34;{&#39; &#39;*4*tabs}    {key} :&#34;)
                     for ele in value:
-                        logger.info(f&#34;{&#39; &#39;*4*tabs}        - {ele}&#34;)
+                        print(f&#34;{&#39; &#39;*4*tabs}        - {ele}&#34;)
                 else:
-                    logger.info(f&#34;{&#39; &#39;*4*tabs}    {key} : {value}&#34;)
+                    print(f&#34;{&#39; &#39;*4*tabs}    {key} : {value}&#34;)
 
 
 def load_current_platform_meta() -&gt; dict:
@@ -194,10 +195,10 @@ def load_current_platform_meta() -&gt; dict:
             for my_platform in platform_meta[my_host]:
                 if re.match(f&#34;({my_platform})&#34;, current_platform):
                     return platform_meta[my_host][my_platform]
-    logger.critical(
+    logger.warn(
         f&#34;No meta data found for current host {current_hostname} with platform {current_platform}, please update the config at share/cross_platform/pc_meta.yaml&#34;
     )
-    exit(1)
+    return {&#34;data_path&#34;: None}
 
 
 def load_pc_meta() -&gt; dict:
@@ -206,17 +207,19 @@ def load_pc_meta() -&gt; dict:
     Returns:
         dict: meta information dictionary
     &#34;&#34;&#34;
-    pc_meta_cfg_path = f&#34;{pathlib.Path().parent}/share/cross_platform/pc_meta.yaml&#34;
+    pc_meta_cfg_path = (
+        f&#34;{pathlib.Path().parent}/share/cross_platform/pc_meta.yaml&#34;
+    )
     try:
         with open(pc_meta_cfg_path) as pc_meta_file:
             pc_meta_dict = yaml.load(pc_meta_file, Loader=yaml.FullLoader)
-            logger.debug(f&#34;pc_meta config loaded: \n {pc_meta_dict}&#34;)
+            logger.debug(f&#34;pc_meta config loaded: {pc_meta_cfg_path}&#34;)
             return pc_meta_dict
     except:
-        logger.critical(
+        logger.warn(
             &#34;Can&#39;t load pc_meta config file, please check: share/cross_platform/pc_meta.yaml&#34;
         )
-        raise FileNotFoundError
+        return {&#34;platform_meta&#34;: {}}
 
 
 def load_yaml_dict(yaml_path) -&gt; dict:
@@ -265,10 +268,10 @@ def load_yaml_dict(yaml_path) -&gt; dict:
             for my_platform in platform_meta[my_host]:
                 if re.match(f&#34;({my_platform})&#34;, current_platform):
                     return platform_meta[my_host][my_platform]
-    logger.critical(
+    logger.warn(
         f&#34;No meta data found for current host {current_hostname} with platform {current_platform}, please update the config at share/cross_platform/pc_meta.yaml&#34;
     )
-    exit(1)</code></pre>
+    return {&#34;data_path&#34;: None}</code></pre>
 </details>
 </dd>
 <dt id="hepynet.common.config_utils.load_pc_meta"><code class="name flex">
@@ -291,17 +294,19 @@ def load_yaml_dict(yaml_path) -&gt; dict:
     Returns:
         dict: meta information dictionary
     &#34;&#34;&#34;
-    pc_meta_cfg_path = f&#34;{pathlib.Path().parent}/share/cross_platform/pc_meta.yaml&#34;
+    pc_meta_cfg_path = (
+        f&#34;{pathlib.Path().parent}/share/cross_platform/pc_meta.yaml&#34;
+    )
     try:
         with open(pc_meta_cfg_path) as pc_meta_file:
             pc_meta_dict = yaml.load(pc_meta_file, Loader=yaml.FullLoader)
-            logger.debug(f&#34;pc_meta config loaded: \n {pc_meta_dict}&#34;)
+            logger.debug(f&#34;pc_meta config loaded: {pc_meta_cfg_path}&#34;)
             return pc_meta_dict
     except:
-        logger.critical(
+        logger.warn(
             &#34;Can&#39;t load pc_meta config file, please check: share/cross_platform/pc_meta.yaml&#34;
         )
-        raise FileNotFoundError</code></pre>
+        return {&#34;platform_meta&#34;: {}}</code></pre>
 </details>
 </dd>
 <dt id="hepynet.common.config_utils.load_yaml_dict"><code class="name flex">
@@ -348,6 +353,7 @@ def load_yaml_dict(yaml_path) -&gt; dict:
         self.job = Hepy_Config_Section({})
         self.input = Hepy_Config_Section({})
         self.train = Hepy_Config_Section({})
+        self.tune = Hepy_Config_Section({})
         self.apply = Hepy_Config_Section({})
         self.para_scan = Hepy_Config_Section({})
         self.run = Hepy_Config_Section({})
@@ -375,6 +381,7 @@ def load_yaml_dict(yaml_path) -&gt; dict:
         out_dict[&#34;job&#34;] = self.job.get_config_dict()
         out_dict[&#34;input&#34;] = self.input.get_config_dict()
         out_dict[&#34;train&#34;] = self.train.get_config_dict()
+        out_dict[&#34;tune&#34;] = self.tune.get_config_dict()
         out_dict[&#34;apply&#34;] = self.apply.get_config_dict()
         out_dict[&#34;para_scan&#34;] = self.para_scan.get_config_dict()
         out_dict[&#34;run&#34;] = self.run.get_config_dict()
@@ -403,13 +410,13 @@ def load_yaml_dict(yaml_path) -&gt; dict:
     def print(self) -&gt; None:
         &#34;&#34;&#34;Shows all configs
         &#34;&#34;&#34;
-        logger.info(&#34;&#34;)
-        logger.info(&#34;Config details &#34; + &#34;&gt;&#34; * 80)
+        print(&#34;&#34;)
+        print(&#34;Config details &#34; + &#34;&gt;&#34; * 80)
         for key, value in self.__dict__.items():
-            logger.info(f&#34;[{key}]&#34;)
+            print(f&#34;[{key}]&#34;)
             value.print()
-        logger.info(&#34;Config ends &#34; + &#34;&lt;&#34; * 83)
-        logger.info(&#34;&#34;)</code></pre>
+        print(&#34;Config ends &#34; + &#34;&lt;&#34; * 83)
+        print(&#34;&#34;)</code></pre>
 </details>
 <h3>Methods</h3>
 <dl>
@@ -442,6 +449,7 @@ def load_yaml_dict(yaml_path) -&gt; dict:
     out_dict[&#34;job&#34;] = self.job.get_config_dict()
     out_dict[&#34;input&#34;] = self.input.get_config_dict()
     out_dict[&#34;train&#34;] = self.train.get_config_dict()
+    out_dict[&#34;tune&#34;] = self.tune.get_config_dict()
     out_dict[&#34;apply&#34;] = self.apply.get_config_dict()
     out_dict[&#34;para_scan&#34;] = self.para_scan.get_config_dict()
     out_dict[&#34;run&#34;] = self.run.get_config_dict()
@@ -460,13 +468,13 @@ def load_yaml_dict(yaml_path) -&gt; dict:
 <pre><code class="python">def print(self) -&gt; None:
     &#34;&#34;&#34;Shows all configs
     &#34;&#34;&#34;
-    logger.info(&#34;&#34;)
-    logger.info(&#34;Config details &#34; + &#34;&gt;&#34; * 80)
+    print(&#34;&#34;)
+    print(&#34;Config details &#34; + &#34;&gt;&#34; * 80)
     for key, value in self.__dict__.items():
-        logger.info(f&#34;[{key}]&#34;)
+        print(f&#34;[{key}]&#34;)
         value.print()
-    logger.info(&#34;Config ends &#34; + &#34;&lt;&#34; * 83)
-    logger.info(&#34;&#34;)</code></pre>
+    print(&#34;Config ends &#34; + &#34;&lt;&#34; * 83)
+    print(&#34;&#34;)</code></pre>
 </details>
 </dd>
 <dt id="hepynet.common.config_utils.Hepy_Config.update"><code class="name flex">
@@ -556,7 +564,11 @@ def load_yaml_dict(yaml_path) -&gt; dict:
         &#34;&#34;&#34;
         for key, value in cfg_dict.items():
             if type(value) is dict:
-                if key in self.__dict__.keys() and key != &#34;_config_dict&#34;:
+                if (
+                    key in self.__dict__.keys()
+                    and key != &#34;_config_dict&#34;
+                    and isinstance(getattr(self, key), Hepy_Config_Section)
+                ):
                     getattr(self, key).update(value)
                 else:
                     setattr(self, key, Hepy_Config_Section(value))
@@ -569,14 +581,14 @@ def load_yaml_dict(yaml_path) -&gt; dict:
         for key, value in self.__dict__.items():
             if key != &#34;_config_dict&#34;:
                 if isinstance(value, Hepy_Config_Section):
-                    logger.info(f&#34;{&#39; &#39;*4*tabs}    {key} :&#34;)
+                    print(f&#34;{&#39; &#39;*4*tabs}    {key} :&#34;)
                     value.print(tabs=tabs + 1)
                 elif isinstance(value, list):
-                    logger.info(f&#34;{&#39; &#39;*4*tabs}    {key} :&#34;)
+                    print(f&#34;{&#39; &#39;*4*tabs}    {key} :&#34;)
                     for ele in value:
-                        logger.info(f&#34;{&#39; &#39;*4*tabs}        - {ele}&#34;)
+                        print(f&#34;{&#39; &#39;*4*tabs}        - {ele}&#34;)
                 else:
-                    logger.info(f&#34;{&#39; &#39;*4*tabs}    {key} : {value}&#34;)</code></pre>
+                    print(f&#34;{&#39; &#39;*4*tabs}    {key} : {value}&#34;)</code></pre>
 </details>
 <h3>Methods</h3>
 <dl>
@@ -629,14 +641,14 @@ def load_yaml_dict(yaml_path) -&gt; dict:
     for key, value in self.__dict__.items():
         if key != &#34;_config_dict&#34;:
             if isinstance(value, Hepy_Config_Section):
-                logger.info(f&#34;{&#39; &#39;*4*tabs}    {key} :&#34;)
+                print(f&#34;{&#39; &#39;*4*tabs}    {key} :&#34;)
                 value.print(tabs=tabs + 1)
             elif isinstance(value, list):
-                logger.info(f&#34;{&#39; &#39;*4*tabs}    {key} :&#34;)
+                print(f&#34;{&#39; &#39;*4*tabs}    {key} :&#34;)
                 for ele in value:
-                    logger.info(f&#34;{&#39; &#39;*4*tabs}        - {ele}&#34;)
+                    print(f&#34;{&#39; &#39;*4*tabs}        - {ele}&#34;)
             else:
-                logger.info(f&#34;{&#39; &#39;*4*tabs}    {key} : {value}&#34;)</code></pre>
+                print(f&#34;{&#39; &#39;*4*tabs}    {key} : {value}&#34;)</code></pre>
 </details>
 </dd>
 <dt id="hepynet.common.config_utils.Hepy_Config_Section.update"><code class="name flex">
@@ -661,7 +673,11 @@ def load_yaml_dict(yaml_path) -&gt; dict:
     &#34;&#34;&#34;
     for key, value in cfg_dict.items():
         if type(value) is dict:
-            if key in self.__dict__.keys() and key != &#34;_config_dict&#34;:
+            if (
+                key in self.__dict__.keys()
+                and key != &#34;_config_dict&#34;
+                and isinstance(getattr(self, key), Hepy_Config_Section)
+            ):
                 getattr(self, key).update(value)
             else:
                 setattr(self, key, Hepy_Config_Section(value))

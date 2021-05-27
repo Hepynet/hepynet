@@ -27,35 +27,13 @@
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">import glob
-import json
 import logging
-import math
 import platform
 import re
 import socket
-
-import numpy as np
+from typing import Any
 
 logger = logging.getLogger(&#34;hepynet&#34;)
-
-
-def dict_key_str_to_int(json_data):
-    &#34;&#34;&#34;Cast string keys to int keys&#34;&#34;&#34;
-    correctedDict = {}
-    for key, value in json_data.items():
-        if isinstance(value, list):
-            value = [
-                dict_key_str_to_int(item) if isinstance(item, dict) else item
-                for item in value
-            ]
-        elif isinstance(value, dict):
-            value = dict_key_str_to_int(value)
-        try:
-            key = int(key)
-        except:
-            pass
-        correctedDict[key] = value
-    return correctedDict
 
 
 def get_current_platform_name() -&gt; str:
@@ -76,27 +54,32 @@ def get_current_hostname() -&gt; str:
     return socket.gethostname()
 
 
-def get_default_if_none(input_var, default_value):
+def get_default_if_none(input_var: Any, default_value: Any):
     if input_var is None:
         return default_value
     else:
         return input_var
 
 
-def get_newest_file_version(path_pattern, n_digit=2, ver_num=None, use_existing=False):
+def get_newest_file_version(
+    path_pattern: str,
+    n_digit: int = 2,
+    ver_num: int = None,
+    use_existing: bool = False,
+):
     &#34;&#34;&#34;Check existed file and return last available file path with version.
 
     Version range 00 -&gt; 99 (or 999)
     If reach limit, last available version will be used. 99 (or 999)
 
     &#34;&#34;&#34;
-    # return file path if ver_num is given
+    # Return file path if ver_num is given
     if ver_num is not None:
         return {
             &#34;ver_num&#34;: ver_num,
             &#34;path&#34;: path_pattern.format(str(ver_num).zfill(n_digit)),
         }
-    # otherwise try to find ver_num
+    # Otherwise try to find ver_num
     path_list = glob.glob(path_pattern.format(&#34;*&#34;))
     path_list = sorted(path_list)
     if len(path_list) &lt; 1:
@@ -122,7 +105,7 @@ def get_newest_file_version(path_pattern, n_digit=2, ver_num=None, use_existing=
     }
 
 
-def get_significant_digits(number, n_digits):
+def get_significant_digits(number: float, n_digits: int):
     if round(number) == number:
         m = len(str(number)) - 1 - n_digits
         if number / (10 ** m) == 0.0:
@@ -132,23 +115,7 @@ def get_significant_digits(number, n_digits):
     if len(str(number)) &gt; n_digits + 1:
         return round(number, n_digits - len(str(int(number))))
     else:
-        return number
-
-
-def has_none(list):
-    &#34;&#34;&#34;Checks whether list&#39;s element has &#34;None&#34; value element.
-
-    Args:
-      list: list, input list to be checked.
-
-    Returns:
-      True, if there IS &#34;None&#34; value element.
-      False, if there ISN&#39;T &#34;None&#34; value element.
-    &#34;&#34;&#34;
-    for ele in list:
-        if ele is None:
-            return True
-    return False</code></pre>
+        return number</code></pre>
 </details>
 </section>
 <section>
@@ -158,34 +125,6 @@ def has_none(list):
 <section>
 <h2 class="section-title" id="header-functions">Functions</h2>
 <dl>
-<dt id="hepynet.common.common_utils.dict_key_str_to_int"><code class="name flex">
-<span>def <span class="ident">dict_key_str_to_int</span></span>(<span>json_data)</span>
-</code></dt>
-<dd>
-<div class="desc"><p>Cast string keys to int keys</p></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def dict_key_str_to_int(json_data):
-    &#34;&#34;&#34;Cast string keys to int keys&#34;&#34;&#34;
-    correctedDict = {}
-    for key, value in json_data.items():
-        if isinstance(value, list):
-            value = [
-                dict_key_str_to_int(item) if isinstance(item, dict) else item
-                for item in value
-            ]
-        elif isinstance(value, dict):
-            value = dict_key_str_to_int(value)
-        try:
-            key = int(key)
-        except:
-            pass
-        correctedDict[key] = value
-    return correctedDict</code></pre>
-</details>
-</dd>
 <dt id="hepynet.common.common_utils.get_current_hostname"><code class="name flex">
 <span>def <span class="ident">get_current_hostname</span></span>(<span>) ‑> str</span>
 </code></dt>
@@ -233,7 +172,7 @@ def has_none(list):
 </details>
 </dd>
 <dt id="hepynet.common.common_utils.get_default_if_none"><code class="name flex">
-<span>def <span class="ident">get_default_if_none</span></span>(<span>input_var, default_value)</span>
+<span>def <span class="ident">get_default_if_none</span></span>(<span>input_var: Any, default_value: Any)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -241,7 +180,7 @@ def has_none(list):
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def get_default_if_none(input_var, default_value):
+<pre><code class="python">def get_default_if_none(input_var: Any, default_value: Any):
     if input_var is None:
         return default_value
     else:
@@ -249,7 +188,7 @@ def has_none(list):
 </details>
 </dd>
 <dt id="hepynet.common.common_utils.get_newest_file_version"><code class="name flex">
-<span>def <span class="ident">get_newest_file_version</span></span>(<span>path_pattern, n_digit=2, ver_num=None, use_existing=False)</span>
+<span>def <span class="ident">get_newest_file_version</span></span>(<span>path_pattern: str, n_digit: int = 2, ver_num: int = None, use_existing: bool = False)</span>
 </code></dt>
 <dd>
 <div class="desc"><p>Check existed file and return last available file path with version.</p>
@@ -259,20 +198,25 @@ If reach limit, last available version will be used. 99 (or 999)</p></div>
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def get_newest_file_version(path_pattern, n_digit=2, ver_num=None, use_existing=False):
+<pre><code class="python">def get_newest_file_version(
+    path_pattern: str,
+    n_digit: int = 2,
+    ver_num: int = None,
+    use_existing: bool = False,
+):
     &#34;&#34;&#34;Check existed file and return last available file path with version.
 
     Version range 00 -&gt; 99 (or 999)
     If reach limit, last available version will be used. 99 (or 999)
 
     &#34;&#34;&#34;
-    # return file path if ver_num is given
+    # Return file path if ver_num is given
     if ver_num is not None:
         return {
             &#34;ver_num&#34;: ver_num,
             &#34;path&#34;: path_pattern.format(str(ver_num).zfill(n_digit)),
         }
-    # otherwise try to find ver_num
+    # Otherwise try to find ver_num
     path_list = glob.glob(path_pattern.format(&#34;*&#34;))
     path_list = sorted(path_list)
     if len(path_list) &lt; 1:
@@ -299,7 +243,7 @@ If reach limit, last available version will be used. 99 (or 999)</p></div>
 </details>
 </dd>
 <dt id="hepynet.common.common_utils.get_significant_digits"><code class="name flex">
-<span>def <span class="ident">get_significant_digits</span></span>(<span>number, n_digits)</span>
+<span>def <span class="ident">get_significant_digits</span></span>(<span>number: float, n_digits: int)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -307,7 +251,7 @@ If reach limit, last available version will be used. 99 (or 999)</p></div>
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def get_significant_digits(number, n_digits):
+<pre><code class="python">def get_significant_digits(number: float, n_digits: int):
     if round(number) == number:
         m = len(str(number)) - 1 - n_digits
         if number / (10 ** m) == 0.0:
@@ -318,39 +262,6 @@ If reach limit, last available version will be used. 99 (or 999)</p></div>
         return round(number, n_digits - len(str(int(number))))
     else:
         return number</code></pre>
-</details>
-</dd>
-<dt id="hepynet.common.common_utils.has_none"><code class="name flex">
-<span>def <span class="ident">has_none</span></span>(<span>list)</span>
-</code></dt>
-<dd>
-<div class="desc"><p>Checks whether list's element has "None" value element.</p>
-<h2 id="args">Args</h2>
-<dl>
-<dt><strong><code>list</code></strong></dt>
-<dd>list, input list to be checked.</dd>
-</dl>
-<h2 id="returns">Returns</h2>
-<p>True, if there IS "None" value element.
-False, if there ISN'T "None" value element.</p></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def has_none(list):
-    &#34;&#34;&#34;Checks whether list&#39;s element has &#34;None&#34; value element.
-
-    Args:
-      list: list, input list to be checked.
-
-    Returns:
-      True, if there IS &#34;None&#34; value element.
-      False, if there ISN&#39;T &#34;None&#34; value element.
-    &#34;&#34;&#34;
-    for ele in list:
-        if ele is None:
-            return True
-    return False</code></pre>
 </details>
 </dd>
 </dl>
@@ -371,13 +282,11 @@ False, if there ISN'T "None" value element.</p></div>
 </li>
 <li><h3><a href="#header-functions">Functions</a></h3>
 <ul class="">
-<li><code><a title="hepynet.common.common_utils.dict_key_str_to_int" href="#hepynet.common.common_utils.dict_key_str_to_int">dict_key_str_to_int</a></code></li>
 <li><code><a title="hepynet.common.common_utils.get_current_hostname" href="#hepynet.common.common_utils.get_current_hostname">get_current_hostname</a></code></li>
 <li><code><a title="hepynet.common.common_utils.get_current_platform_name" href="#hepynet.common.common_utils.get_current_platform_name">get_current_platform_name</a></code></li>
 <li><code><a title="hepynet.common.common_utils.get_default_if_none" href="#hepynet.common.common_utils.get_default_if_none">get_default_if_none</a></code></li>
 <li><code><a title="hepynet.common.common_utils.get_newest_file_version" href="#hepynet.common.common_utils.get_newest_file_version">get_newest_file_version</a></code></li>
 <li><code><a title="hepynet.common.common_utils.get_significant_digits" href="#hepynet.common.common_utils.get_significant_digits">get_significant_digits</a></code></li>
-<li><code><a title="hepynet.common.common_utils.has_none" href="#hepynet.common.common_utils.has_none">has_none</a></code></li>
 </ul>
 </li>
 </ul>

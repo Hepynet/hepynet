@@ -26,426 +26,346 @@
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">import copy
+<pre><code class="python">import itertools
 import logging
 
+import atlas_mpl_style as ampl
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 
-from hepynet.evaluate import evaluate_utils
-from hepynet.common.common_utils import get_default_if_none
-
-try:
-    import ROOT
-    root_available = True
-    from easy_atlas_plot.plot_utils import plot_utils_root, th1_tools
-except ImportError:
-    root_available = False
+import hepynet.common.hepy_type as ht
 
 logger = logging.getLogger(&#34;hepynet&#34;)
 
 
-def plot_mva_scores(model_wrapper, job_config, file_name=&#34;mva_scores&#34;):
+def plot_mva_scores(
+    df_raw: pd.DataFrame,
+    df: pd.DataFrame,
+    job_config: ht.config,
+    save_dir: ht.pathlike,
+    file_name: str = &#34;mva_scores&#34;,
+):
     # initialize
     logger.info(&#34;Plotting MVA scores&#34;)
-    plot_config = job_config.apply.cfg_mva_scores_data_mc.clone()
-    model = model_wrapper.get_model()
-    feedbox = model_wrapper.feedbox
-
+    tc = job_config.train.clone()
+    ac = job_config.apply.clone()
+    plot_config = ac.cfg_mva_scores_data_mc.clone()
     # prepare signal
     sig_scores_dict = {}
     sig_weights_dict = {}
     for sig_key in plot_config.sig_list:
-        predict_arr, predict_weight_arr = feedbox.get_reshape(&#34;xs&#34;, array_key=sig_key)
-        sig_scores_dict[sig_key] = model.predict(predict_arr)
-        sig_weights_dict[sig_key] = predict_weight_arr.flatten()
-
+        sig_score = df.loc[df[&#34;sample_name&#34;] == sig_key, &#34;y_pred&#34;].values
+        if sig_score.ndim == 1:
+            sig_score = sig_score.reshape((-1, 1))
+        sig_scores_dict[sig_key] = sig_score
+        sig_weight = df_raw.loc[df[&#34;sample_name&#34;] == sig_key, &#34;weight&#34;].values
+        sig_weights_dict[sig_key] = sig_weight
     # prepare background
     bkg_scores_dict = {}
     bkg_weights_dict = {}
     for bkg_key in plot_config.bkg_list:
-        predict_arr, predict_weight_arr = feedbox.get_reshape(&#34;xb&#34;, array_key=bkg_key)
-        bkg_scores_dict[bkg_key] = model.predict(predict_arr)
-        bkg_weights_dict[bkg_key] = predict_weight_arr.flatten()
-
+        bkg_score = df.loc[df[&#34;sample_name&#34;] == bkg_key, &#34;y_pred&#34;].values
+        if bkg_score.ndim == 1:
+            bkg_score = bkg_score.reshape((-1, 1))
+        bkg_scores_dict[bkg_key] = bkg_score
+        bkg_weight = df_raw.loc[df[&#34;sample_name&#34;] == bkg_key, &#34;weight&#34;].values
+        bkg_weights_dict[bkg_key] = bkg_weight
     # prepare data
-    data_scores = np.array([])
-    data_weights = np.array([])
+    # TODO: support data plots
     if plot_config.apply_data:
         data_key = plot_config.data_key
-        data_arr_temp, data_weights = feedbox.get_reshape(&#34;xd&#34;, array_key=data_key)
-        data_scores = model.predict(data_arr_temp)
-        data_weights = data_weights.flatten()
+        data_scores = df.loc[df[&#34;sample_name&#34;] == data_key, &#34;y_pred&#34;].values
+        if data_scores.ndim == 1:
+            data_scores = data_scores.reshape((-1, 1))
+        data_weights = df_raw.loc[
+            df[&#34;sample_name&#34;] == data_key, &#34;weight&#34;
+        ].values
 
     # make plots
-    save_dir = job_config.run.save_dir
-    if plot_config.use_root:
-        if plot_utils_root.HAS_ROOT:
-            pass
+    all_nodes = [&#34;sig&#34;] + tc.output_bkg_node_names
+    for node_id, node in enumerate(all_nodes):
+        if plot_config.show_ratio:
+            fig = plt.figure(figsize=(50 / 3, 50 / 3))
+            gs = mpl.gridspec.GridSpec(4, 1, hspace=0.0, wspace=0.0)
+            ax = fig.add_subplot(gs[0:3])
+            ax.tick_params(labelbottom=False)
+            ratio_ax = fig.add_subplot(gs[3], sharex=ax)
+            # ratio_ax.yaxis.set_major_locator(
+            #    mpl.ticker.MaxNLocator(
+            #        symmetric=True, prune=&#34;both&#34;, min_n_ticks=5, nbins=4
+            #    )
+            # )
+            ratio_ax.autoscale(axis=&#34;x&#34;, tight=True)
+            plt.sca(ax)
         else:
-            logger.error(&#34;Can&#39;t import ROOT, try to use matplotlib as backend.&#34;)
-    else:
-        all_nodes = [&#34;sig&#34;] + job_config.train.output_bkg_node_names
-        for node_id, node in enumerate(all_nodes):
-            fig, ax = plt.subplots(figsize=(8, 6))
-            sig_node_dict = {}
-            for key, value in sig_scores_dict.items():
-                sig_node_dict[key] = value[:, node_id]
-                print(&#34;#### node shape&#34;, value[:, node_id].shape)
-            bkg_node_dict = {}
-            for key, value in bkg_scores_dict.items():
-                bkg_node_dict[key] = value[:, node_id]
-            plot_scores_plt(
-                ax,
-                plot_config,
-                sig_node_dict,
-                sig_weights_dict,
-                bkg_node_dict,
-                bkg_weights_dict,
-                data_scores,
-                data_weights,
+            fig, ax = plt.subplots(figsize=(50 / 3, 100 / 9))
+        colors = plt.rcParams[&#34;axes.prop_cycle&#34;].by_key()[&#34;color&#34;]
+        color_cycle = itertools.cycle(colors)
+        # plot bkg
+        bkg_collect = list()
+        bkg_scores_all = None
+        bkg_weights_all = None
+        for key, value in bkg_scores_dict.items():
+            node_score = value[:, node_id].flatten()
+            node_weight = bkg_weights_dict[key] * plot_config.bkg_scale
+            bkg_bins, _ = np.histogram(
+                node_score,
+                bins=plot_config.bins,
+                range=(0, 1),
+                weights=node_weight,
+                density=plot_config.density,
             )
-            fig.savefig(f&#34;{save_dir}/{file_name}_node_{node}.{plot_config.save_format}&#34;)
+            if plot_config.bkg_scale != 1:
+                bkg_label = f&#34;{key} x{plot_config.bkg_scale}&#34;
+            else:
+                bkg_label = key
+            bkg = ampl.plot.Background(
+                bkg_label, bkg_bins, color=next(color_cycle)
+            )
+            bkg_collect.append(bkg)
+            if bkg_scores_all is None:
+                bkg_scores_all = node_score
+                bkg_weights_all = node_weight
+            else:
+                bkg_scores_all = np.concatenate((bkg_scores_all, node_score))
+                bkg_weights_all = np.concatenate(
+                    (bkg_weights_all, node_weight)
+                )
+        bkg_all_bins, bkg_edges = np.histogram(
+            bkg_scores_all,
+            bins=plot_config.bins,
+            range=(0, 1),
+            weights=bkg_weights_all,
+            density=plot_config.density,
+        )
+        sumw2, _ = np.histogram(
+            bkg_scores_all,
+            bins=plot_config.bins,
+            range=(0, 1),
+            weights=np.power(bkg_weights_all, 2),
+        )
+        bkg_stats_errs = np.sqrt(sumw2)
+        if plot_config.density:
+            norm_sum = np.sum(bkg_weights_all) * (1 / plot_config.bins)
+            bkg_stats_errs /= norm_sum
+        ampl.plot.plot_backgrounds(bkg_collect, bkg_edges, ax=ax)
+        # plot sig
+        for key, value in sig_scores_dict.items():
+            sig_bins, sig_edges = np.histogram(
+                value[:, node_id].flatten(),
+                bins=plot_config.bins,
+                range=(0, 1),
+                weights=sig_weights_dict[key] * plot_config.sig_scale,
+                density=plot_config.density,
+            )
+            if plot_config.sig_scale != 1:
+                sig_label = f&#34;{key} x{plot_config.sig_scale}&#34;
+            else:
+                sig_label = key
+            ampl.plot.plot_signal(
+                sig_label, sig_edges, sig_bins, color=next(color_cycle), ax=ax
+            )
+        # plot data
+        if plot_config.apply_data:
+            data_bins, data_edges = np.histogram(
+                data_scores[:, node_id].flatten(),
+                bins=plot_config.bins,
+                range=(0, 1),
+                weights=data_weights * plot_config.data_scale,
+                density=plot_config.density,
+            )
+            sumw2, _ = np.histogram(
+                data_scores[:, node_id].flatten(),
+                bins=plot_config.bins,
+                range=(0, 1),
+                weights=np.power(data_weights * plot_config.data_scale, 2),
+            )
+            data_stats_errs = np.sqrt(sumw2)
+            if plot_config.density:
+                norm_sum = np.sum(data_weights * plot_config.data_scale) * (
+                    1 / plot_config.bins
+                )
+                data_stats_errs /= norm_sum
+            if plot_config.data_scale != 1:
+                data_label = f&#34;data x{plot_config.data_scale}&#34;
+            else:
+                data_label = &#34;data&#34;
+            ampl.plot.plot_data(
+                data_edges,
+                data_bins,
+                stat_errs=data_stats_errs,
+                label=data_label,
+                ax=ax,
+            )
+            # plot ratio
+            if plot_config.show_ratio:
+                ampl.plot.plot_ratio(
+                    data_edges,
+                    data_bins,
+                    data_stats_errs,
+                    bkg_all_bins,
+                    bkg_stats_errs,
+                    ratio_ax,
+                    plottype=&#34;raw&#34;,
+                )
+            ratio_ax.set_ylim(0, 2)
+        ax.set_xlim(0, 1)
+        ax.legend(loc=&#34;upper right&#34;, ncol=2)
+        if ac.plot_atlas_label:
+            ampl.plot.draw_atlas_label(
+                0.05, 0.95, ax=ax, **(ac.atlas_label.get_config_dict())
+            )
+        # Save lin/log plots
+        _, y_max = ax.get_ylim()
+        ## save lin
+        ax.set_ylim(0, y_max * 1.4)
+        fig.savefig(
+            f&#34;{save_dir}/{file_name}_node_{node}_lin.{plot_config.save_format}&#34;
+        )
+        ## save log
+        ax.set_yscale(&#34;log&#34;)
+        ax.set_ylim(
+            plot_config.logy_min,
+            y_max * np.power(10, np.log10(y_max / plot_config.logy_min) / 2),
+        )
+        fig.savefig(
+            f&#34;{save_dir}/{file_name}_node_{node}_log.{plot_config.save_format}&#34;
+        )
 
     return 0  # success run
 
 
-def plot_scores_plt(
-    ax,
-    plot_config,
-    sig_scores_dict,
-    sig_weights_dict,
-    bkg_scores_dict,
-    bkg_weights_dict,
-    data_scores=None,
-    data_weights=None,
+def plot_train_test_compare(
+    df: pd.DataFrame, job_config: ht.config, save_dir: ht.pathlike
 ):
-    &#34;&#34;&#34;Plots training score distribution for different background with matplotlib.
-    &#34;&#34;&#34;
-    logger.debug(&#34;Plotting scores with matplotlib backend&#34;)
-    config = plot_config.clone()
-    if config.sig_list is None:
-        config.sig_list = list(sig_scores_dict.keys())
-    if config.bkg_list is None:
-        config.bkg_list = list(bkg_scores_dict.keys())
-    # plot background
-    a = list(bkg_scores_dict.values())
-    print(&#34;#### len&#34;, len(a), &#34; shape &#34;, a[0].shape)
-    print(&#34;#### input shape:&#34;, np.transpose(a).shape)
-    print(&#34;#### weight shape:&#34;, np.transpose(list(bkg_weights_dict.values())).shape)
-    ax.hist(
-        np.transpose(list(bkg_scores_dict.values())),
-        bins=config.bins,
-        range=config.range,
-        weights=np.transpose(list(bkg_weights_dict.values())),
-        histtype=&#34;bar&#34;,
-        label=config.bkg_list,
-        density=config.density,
-        stacked=True,
-    )
-    # plot signal
-    print(&#34;#### input shape:&#34;, np.transpose(list(sig_scores_dict.values())).shape)
-    print(&#34;#### weight shape:&#34;, np.transpose(list(sig_weights_dict.values())).shape)
-    ax.hist(
-        np.transpose(list(sig_scores_dict.values())),
-        bins=config.bins,
-        range=config.range,
-        weights=np.transpose(list(sig_weights_dict.values())),
-        histtype=&#34;step&#34;,
-        label=config.sig_list,
-        density=config.density,
-    )
-    # plot data
-    if config.apply_data:
-        evaluate_utils.paint_bars(
-            ax,
-            data_scores,
-            &#34;data&#34;,
-            weights=data_weights,
-            bins=config.bins,
-            range=config.range,
-            density=config.density,
-            use_error=False,
-        )
-    ax.set_title(config.plot_title)
-    ax.legend(loc=&#34;upper center&#34;)
-    ax.set_xlabel(&#34;output score&#34;)
-    ax.set_ylabel(&#34;arb. unit&#34;)
-    ax.grid()
-    if config.log:
-        ax.set_yscale(&#34;log&#34;)
-        ax.set_title(f&#34;{config.plot_title}(log)&#34;)
-    else:
-        ax.set_title(f&#34;{config.plot_title}(lin)&#34;)
-
-
-def plot_scores_root(
-    model_wrapper,
-    sig_key,
-    bkg_plot_key_list,
-    apply_data=False,
-    apply_data_range=None,
-    plot_title=&#34;all input scores&#34;,
-    bins=50,
-    x_range=(-0.25, 1.25),
-    scale_sig=False,
-    density=True,
-    save_plot=False,
-    save_dir=None,
-    save_file_name=None,
-):
-    &#34;&#34;&#34;Plots training score distribution for different background with ROOT
-
-    Note:
-        bkg_plot_key_list can be used to adjust order of background sample 
-        stacking. For example, if bkg_plot_key_list = [&#39;top&#39;, &#39;zll&#39;, &#39;diboson&#39;]
-        &#39;top&#39; will be put at bottom &amp; &#39;zll&#39; in the middle &amp; &#39;diboson&#39; on the top
-
-    &#34;&#34;&#34;
-    logger.info(&#34;Plotting scores with bkg separated with ROOT.&#34;)
-    all_nodes = [&#34;sig&#34;] + model_wrapper.model_hypers[&#34;output_bkg_node_names&#34;]
-    num_nodes = len(all_nodes)
-
-    model = model_wrapper.get_model()
-    feedbox = model_wrapper.feedbox
-    model_meta = model_wrapper.model_meta
-    bkg_dict = feedbox.xb_dict
-
-    # prepare background
-    if (type(bkg_plot_key_list) is not list) or len(bkg_plot_key_list) == 0:
-        # prepare plot key list sort with total weight by default
-        original_keys = list(bkg_dict.keys())
-        total_weight_list = []
-        for key in original_keys:
-            _, weights = feedbox.get_raw(&#34;xb&#34;, array_key=key)
-            total_weight = np.sum(weights)
-            total_weight_list.append(total_weight)
-        sort_indexes = np.argsort(np.array(total_weight_list))
-        bkg_plot_key_list = [original_keys[index] for index in sort_indexes]
-    bkg_predict_dict = {}
-    bkg_weight_dict = {}
-    for arr_key in bkg_plot_key_list:
-        predict_arr, predict_weight_arr = feedbox.get_reshape(&#34;xb&#34;, array_key=arr_key)
-        bkg_predict_dict[arr_key] = model.predict(predict_arr)
-        bkg_weight_dict[arr_key] = predict_weight_arr
-    # prepare signal
-    # sig_key = model_meta[&#34;sig_key&#34;]
-    sig_arr_temp, sig_weight = feedbox.get_reshape(&#34;xs&#34;, array_key=sig_key)
-    sig_predict = model.predict(sig_arr_temp)
-    # prepare data
-    if apply_data:
-        data_key = model_meta[&#34;data_key&#34;]
-        data_arr_temp, data_weight = feedbox.get_reshape(&#34;xd&#34;, array_key=data_key)
-        data_predict = model.predict(data_arr_temp)
-
-    # plot
-    for node_num in range(num_nodes):
-        plot_canvas = ROOT.TCanvas(plot_title, plot_title, 600, 600)
-        plot_pad_score = ROOT.TPad(&#34;pad1&#34;, &#34;pad1&#34;, 0, 0.3, 1, 1.0)
-        plot_pad_score.SetBottomMargin(0)
-        plot_pad_score.SetGridx()
-        plot_pad_score.Draw()
-        plot_pad_score.cd()
-        hist_list = []
-        # plot background
-        for arr_key in bkg_plot_key_list:
-            th1_temp = th1_tools.TH1FTool(
-                arr_key, arr_key, nbin=bins, xlow=x_range[0], xup=x_range[1]
-            )
-            th1_temp.fill_hist(
-                bkg_predict_dict[arr_key][:, node_num], bkg_weight_dict[arr_key]
-            )
-            hist_list.append(th1_temp)
-        hist_stacked_bkgs = th1_tools.THStackTool(
-            &#34;bkg stack plot&#34;, plot_title, hist_list, canvas=plot_pad_score
-        )
-        hist_stacked_bkgs.set_palette(&#34;kPastel&#34;)
-        hist_stacked_bkgs.draw(&#34;pfc hist&#34;)
-        hist_stacked_bkgs.get_hstack().GetYaxis().SetTitle(&#34;events/bin&#34;)
-        hist_stacked_bkgs.get_hstack().GetXaxis().SetTitle(&#34;dnn score&#34;)
-        hist_bkg_total = hist_stacked_bkgs.get_added_hist()
-        total_weight_bkg = hist_bkg_total.get_hist().GetSumOfWeights()
-        # plot signal
-        if scale_sig:
-            sig_title = &#34;sig-scaled&#34;
-        else:
-            sig_title = &#34;sig&#34;
-        hist_sig = th1_tools.TH1FTool(
-            &#34;sig added&#34;,
-            sig_title,
-            nbin=bins,
-            xlow=x_range[0],
-            xup=x_range[1],
-            canvas=plot_pad_score,
-        )
-        hist_sig.fill_hist(sig_predict[:, node_num], sig_weight)
-        total_weight_sig = hist_sig.get_hist().GetSumOfWeights()
-        if scale_sig:
-            total_weight = hist_stacked_bkgs.get_total_weights()
-            scale_factor = total_weight / hist_sig.get_hist().GetSumOfWeights()
-            hist_sig.get_hist().Scale(scale_factor)
-        hist_sig.update_config(&#34;hist&#34;, &#34;SetLineColor&#34;, ROOT.kRed)
-        # set proper y range
-        maximum_y = max(
-            plot_utils_root.get_highest_bin_value(hist_list),
-            plot_utils_root.get_highest_bin_value(hist_sig),
-        )
-        hist_stacked_bkgs.get_hstack().SetMaximum(1.2 * maximum_y)
-        hist_stacked_bkgs.get_hstack().SetMinimum(0.1)
-        hist_stacked_bkgs.get_hstack().GetYaxis().SetLabelFont(43)
-        hist_stacked_bkgs.get_hstack().GetYaxis().SetLabelSize(15)
-        hist_sig.draw(&#34;same hist&#34;)
-        # plot data if required
-        total_weight_data = 0
-        if apply_data:
-            hist_data = th1_tools.TH1FTool(
-                &#34;data added&#34;,
-                &#34;data&#34;,
-                nbin=bins,
-                xlow=x_range[0],
-                xup=x_range[1],
-                canvas=plot_pad_score,
-            )
-            hist_data.fill_hist(data_predict[:, node_num], data_weight)
-            hist_data.update_config(&#34;hist&#34;, &#34;SetMarkerStyle&#34;, ROOT.kFullCircle)
-            hist_data.update_config(&#34;hist&#34;, &#34;SetMarkerColor&#34;, ROOT.kBlack)
-            hist_data.update_config(&#34;hist&#34;, &#34;SetMarkerSize&#34;, 0.8)
-            if apply_data_range is not None:
-                hist_data.get_hist().GetXaxis().SetRangeUser(
-                    apply_data_range[0], apply_data_range[1]
-                )
-            hist_data.draw(&#34;same e1&#34;)
-            total_weight_data = hist_data.get_hist().GetSumOfWeights()
-            hist_data.build_legend(0.4, 0.7, 0.6, 0.9)
-        else:
-            total_weight_data = 0
-
-        # ratio plot
-        plot_canvas.cd()
-        plot_pad_ratio = ROOT.TPad(&#34;pad2&#34;, &#34;pad2&#34;, 0, 0.05, 1, 0.25)
-        plot_pad_ratio.SetTopMargin(0)
-        plot_pad_ratio.SetGridx()
-        plot_pad_ratio.Draw()
-        if apply_data:
-            hist_numerator = hist_data
-            hist_denominator = hist_bkg_total
-        else:
-            hist_numerator = hist_bkg_total
-            hist_denominator = hist_bkg_total
-        ratio_plot = th1_tools.RatioPlot(
-            hist_numerator,
-            hist_denominator,
-            x_title=&#34;DNN Score&#34;,
-            y_title=&#34;data/bkg&#34;,
-            canvas=plot_pad_ratio,
-        )
-        ratio_plot.draw()
-
-        # show &amp; save total weight info
-        model_wrapper.total_weight_sig = total_weight_sig
-        logger.debug(f&#34;sig total weight: {total_weight_sig}&#34;)
-        model_wrapper.total_weight_bkg = total_weight_bkg
-        logger.debug(f&#34;bkg total weight: {total_weight_bkg}&#34;)
-        model_wrapper.total_weight_data = total_weight_data
-        logger.debug(f&#34;data total weight: {total_weight_data}&#34;)
-        # save plot
-        if save_plot:
-            plot_canvas.SaveAs(
-                save_dir + &#34;/&#34; + save_file_name + &#34;_&#34; + all_nodes[node_num] + &#34;_lin.png&#34;
-            )
-            plot_pad_score.SetLogy(2)
-            plot_canvas.SaveAs(
-                save_dir + &#34;/&#34; + save_file_name + &#34;_&#34; + all_nodes[node_num] + &#34;_log.png&#34;
-            )
-
-
-def plot_train_test_compare(model_wrapper, job_config):
-    &#34;&#34;&#34;Plots train/test scores distribution to check overtrain&#34;&#34;&#34;
+    &#34;&#34;&#34;Plots train/test datasets&#39; cores distribution comparison&#34;&#34;&#34;
     # initialize
-    logger.info(&#34;Plotting train/test scores (original mass).&#34;)
-    ic = job_config.input
-    tc = job_config.train
+    logger.info(&#34;Plotting train/test scores.&#34;)
+    tc = job_config.train.clone()
+    ac = job_config.apply.clone()
     plot_config = job_config.apply.cfg_train_test_compare
-    model = model_wrapper.get_model()
-    feedbox = model_wrapper.feedbox
-    sig_key = get_default_if_none(plot_config.sig_key, ic.sig_key)
-    bkg_key = get_default_if_none(plot_config.bkg_key, ic.bkg_key)
     all_nodes = [&#34;sig&#34;] + tc.output_bkg_node_names
+    # get inputs
+    train_index = df[&#34;is_train&#34;] == True
+    test_index = df[&#34;is_train&#34;] == False
+    sig_index = (df[&#34;is_sig&#34;] == True) &amp; (df[&#34;is_mc&#34;] == True)
+    bkg_index = (df[&#34;is_sig&#34;] == False) &amp; (df[&#34;is_mc&#34;] == True)
+    xs_train_scores = df.loc[sig_index &amp; train_index, [&#34;y_pred&#34;]].values
+    xs_test_scores = df.loc[sig_index &amp; test_index, [&#34;y_pred&#34;]].values
+    xs_train_weight = df.loc[sig_index &amp; train_index, [&#34;weight&#34;]].values
+    xs_test_weight = df.loc[sig_index &amp; test_index, [&#34;weight&#34;]].values
+    xb_train_scores = df.loc[bkg_index &amp; train_index, [&#34;y_pred&#34;]].values
+    xb_test_scores = df.loc[bkg_index &amp; test_index, [&#34;y_pred&#34;]].values
+    xb_train_weight = df.loc[bkg_index &amp; train_index, [&#34;weight&#34;]].values
+    xb_test_weight = df.loc[bkg_index &amp; test_index, [&#34;weight&#34;]].values
 
-    train_test_dict = feedbox.get_train_test_arrays(
-        sig_key=sig_key,
-        bkg_key=bkg_key,
-        multi_class_bkgs=tc.output_bkg_node_names,
-        reset_mass=feedbox.get_job_config().input.reset_mass,
-        output_keys=[
-            &#34;xs_train&#34;,
-            &#34;xs_test&#34;,
-            &#34;wts_train&#34;,
-            &#34;wts_test&#34;,
-            &#34;xb_train&#34;,
-            &#34;xb_test&#34;,
-            &#34;wtb_train&#34;,
-            &#34;wtb_test&#34;,
-        ],
-    )
-    xs_train = train_test_dict[&#34;xs_train&#34;]
-    xs_test = train_test_dict[&#34;xs_test&#34;]
-    xs_train_weight = train_test_dict[&#34;wts_train&#34;]
-    xs_test_weight = train_test_dict[&#34;wts_test&#34;]
-    xb_train = train_test_dict[&#34;xb_train&#34;]
-    xb_test = train_test_dict[&#34;xb_test&#34;]
-    xb_train_weight = train_test_dict[&#34;wtb_train&#34;]
-    xb_test_weight = train_test_dict[&#34;wtb_test&#34;]
     # plot for each nodes
     num_nodes = len(all_nodes)
-    xb_train_scores = model.predict(xb_train)
-    xs_train_scores = model.predict(xs_train)
-    xb_test_scores = model.predict(xb_test)
-    xs_test_scores = model.predict(xs_test)
     for node_num in range(num_nodes):
-        fig, ax = plt.subplots(figsize=(8, 6))
-        # plot scores
-        ## plot train scores
-        plot_scores_plt(
-            ax,
-            plot_config,
-            {&#34;s-test&#34;: xs_test_scores[:, node_num].flatten()},
-            {&#34;s-test&#34;: xs_test_weight.flatten()},
-            {&#34;b-test&#34;: xb_test_scores[:, node_num].flatten()},
-            {&#34;b-test&#34;: xb_test_weight.flatten()},
+        fig, ax = plt.subplots()
+        # plot test scores
+        bkg_bins, bkg_edges = np.histogram(
+            xb_test_scores,
+            bins=plot_config.bins,
+            range=(0, 1),
+            weights=xb_test_weight,
+            density=plot_config.density,
         )
-        ## plot test scores
-        evaluate_utils.paint_bars(
-            ax,
-            xb_train_scores[:, node_num],
-            &#34;b-train&#34;,
+        bkg = ampl.plot.Background(
+            &#34;background (test)&#34;, bkg_bins, color=plot_config.bkg_color
+        )
+        ampl.plot.plot_backgrounds([bkg], bkg_edges, ax=ax)
+        sig_bins, sig_edges = np.histogram(
+            xs_test_scores,
+            bins=plot_config.bins,
+            range=(0, 1),
+            weights=xs_test_weight,
+            density=plot_config.density,
+        )
+        ampl.plot.plot_signal(
+            &#34;signal (test)&#34;, sig_edges, sig_bins, color=plot_config.sig_color
+        )
+        # plot train scores
+        ## bkg
+        bkg_bins, bkg_edges = np.histogram(
+            xb_train_scores,
+            bins=plot_config.bins,
+            range=(0, 1),
             weights=xb_train_weight,
-            bins=plot_config.bins,
-            range=plot_config.range,
             density=plot_config.density,
-            use_error=True,
-            color=&#34;darkblue&#34;,
-            fmt=&#34;.&#34;,
         )
-        evaluate_utils.paint_bars(
-            ax,
-            xs_train_scores[:, node_num],
-            &#34;s-train&#34;,
+        sumw2, _ = np.histogram(
+            xb_train_scores,
+            bins=plot_config.bins,
+            range=(0, 1),
+            weights=np.power(xb_train_weight, 2),
+        )
+        bkg_stats_errs = np.sqrt(sumw2)
+        if plot_config.density:
+            norm_sum = np.sum(xb_train_weight) * (1 / plot_config.bins)
+            bkg_stats_errs /= norm_sum
+        err_x = 0.5 * (bkg_edges[:-1] + bkg_edges[1:])
+        ax.errorbar(
+            err_x,
+            bkg_bins,
+            bkg_stats_errs,
+            0.5 / plot_config.bins,
+            fmt=&#34;.k&#34;,
+            mfc=plot_config.bkg_color,
+            ms=10,
+            label=&#34;background (train)&#34;,
+        )
+        ## sig
+        sig_bins, sig_edges = np.histogram(
+            xs_train_scores,
+            bins=plot_config.bins,
+            range=(0, 1),
             weights=xs_train_weight,
-            bins=plot_config.bins,
-            range=plot_config.range,
             density=plot_config.density,
-            use_error=True,
-            color=&#34;maroon&#34;,
-            fmt=&#34;.&#34;,
         )
-        ax.legend(loc=&#34;upper center&#34;)
-        # Make and show plots
-        if feedbox.get_job_config().input.reset_mass:
-            file_name = f&#34;/mva_scores_overtrain_original_mass_{all_nodes[node_num]}&#34;
-        else:
-            file_name = f&#34;/mva_scores_overtrain_reset_mass_{all_nodes[node_num]}&#34;
-        fig.savefig(f&#34;{job_config.run.save_dir}/{file_name}.{plot_config.save_format}&#34;)</code></pre>
+        sumw2, _ = np.histogram(
+            xs_train_scores,
+            bins=plot_config.bins,
+            range=(0, 1),
+            weights=np.power(xs_train_weight, 2),
+        )
+        sig_stats_errs = np.sqrt(sumw2)
+        if plot_config.density:
+            norm_sum = np.sum(xs_train_weight) * (1 / plot_config.bins)
+            sig_stats_errs /= norm_sum
+        err_x = 0.5 * (sig_edges[:-1] + sig_edges[1:])
+        ax.errorbar(
+            err_x,
+            sig_bins,
+            sig_stats_errs,
+            0.5 / plot_config.bins,
+            fmt=&#34;.k&#34;,
+            mfc=plot_config.sig_color,
+            ms=10,
+            label=&#34;signal (train)&#34;,
+        )
+        # final adjustments
+        ax.set_xlim(0, 1)
+        ax.legend(loc=&#34;upper right&#34;)
+        if ac.plot_atlas_label:
+            ampl.plot.draw_atlas_label(
+                0.05, 0.95, ax=ax, **(ac.atlas_label.get_config_dict())
+            )
+        ax.set_xlabel(&#34;DNN score&#34;)
+        # Save lin/log plots
+        file_name = f&#34;mva_scores_{all_nodes[node_num]}&#34;
+        _, y_max = ax.get_ylim()
+        ## save lin
+        ax.set_ylim(0, y_max * 1.4)
+        fig.savefig(save_dir / f&#34;{file_name}_lin.{plot_config.save_format}&#34;)
+        ## save log
+        ax.set_yscale(&#34;log&#34;)
+        ax.set_ylim(
+            plot_config.logy_min, y_max * np.power(10, np.log10(y_max) / 2)
+        )
+        fig.savefig(save_dir / f&#34;{file_name}_log.{plot_config.save_format}&#34;)</code></pre>
 </details>
 </section>
 <section>
@@ -456,7 +376,7 @@ def plot_train_test_compare(model_wrapper, job_config):
 <h2 class="section-title" id="header-functions">Functions</h2>
 <dl>
 <dt id="hepynet.evaluate.mva_scores.plot_mva_scores"><code class="name flex">
-<span>def <span class="ident">plot_mva_scores</span></span>(<span>model_wrapper, job_config, file_name='mva_scores')</span>
+<span>def <span class="ident">plot_mva_scores</span></span>(<span>df_raw: pandas.core.frame.DataFrame, df: pandas.core.frame.DataFrame, job_config: <a title="hepynet.common.config_utils.Hepy_Config" href="../common/config_utils.html#hepynet.common.config_utils.Hepy_Config">Hepy_Config</a>, save_dir: Union[str, os.PathLike], file_name: str = 'mva_scores')</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -464,438 +384,341 @@ def plot_train_test_compare(model_wrapper, job_config):
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def plot_mva_scores(model_wrapper, job_config, file_name=&#34;mva_scores&#34;):
+<pre><code class="python">def plot_mva_scores(
+    df_raw: pd.DataFrame,
+    df: pd.DataFrame,
+    job_config: ht.config,
+    save_dir: ht.pathlike,
+    file_name: str = &#34;mva_scores&#34;,
+):
     # initialize
     logger.info(&#34;Plotting MVA scores&#34;)
-    plot_config = job_config.apply.cfg_mva_scores_data_mc.clone()
-    model = model_wrapper.get_model()
-    feedbox = model_wrapper.feedbox
-
+    tc = job_config.train.clone()
+    ac = job_config.apply.clone()
+    plot_config = ac.cfg_mva_scores_data_mc.clone()
     # prepare signal
     sig_scores_dict = {}
     sig_weights_dict = {}
     for sig_key in plot_config.sig_list:
-        predict_arr, predict_weight_arr = feedbox.get_reshape(&#34;xs&#34;, array_key=sig_key)
-        sig_scores_dict[sig_key] = model.predict(predict_arr)
-        sig_weights_dict[sig_key] = predict_weight_arr.flatten()
-
+        sig_score = df.loc[df[&#34;sample_name&#34;] == sig_key, &#34;y_pred&#34;].values
+        if sig_score.ndim == 1:
+            sig_score = sig_score.reshape((-1, 1))
+        sig_scores_dict[sig_key] = sig_score
+        sig_weight = df_raw.loc[df[&#34;sample_name&#34;] == sig_key, &#34;weight&#34;].values
+        sig_weights_dict[sig_key] = sig_weight
     # prepare background
     bkg_scores_dict = {}
     bkg_weights_dict = {}
     for bkg_key in plot_config.bkg_list:
-        predict_arr, predict_weight_arr = feedbox.get_reshape(&#34;xb&#34;, array_key=bkg_key)
-        bkg_scores_dict[bkg_key] = model.predict(predict_arr)
-        bkg_weights_dict[bkg_key] = predict_weight_arr.flatten()
-
+        bkg_score = df.loc[df[&#34;sample_name&#34;] == bkg_key, &#34;y_pred&#34;].values
+        if bkg_score.ndim == 1:
+            bkg_score = bkg_score.reshape((-1, 1))
+        bkg_scores_dict[bkg_key] = bkg_score
+        bkg_weight = df_raw.loc[df[&#34;sample_name&#34;] == bkg_key, &#34;weight&#34;].values
+        bkg_weights_dict[bkg_key] = bkg_weight
     # prepare data
-    data_scores = np.array([])
-    data_weights = np.array([])
+    # TODO: support data plots
     if plot_config.apply_data:
         data_key = plot_config.data_key
-        data_arr_temp, data_weights = feedbox.get_reshape(&#34;xd&#34;, array_key=data_key)
-        data_scores = model.predict(data_arr_temp)
-        data_weights = data_weights.flatten()
+        data_scores = df.loc[df[&#34;sample_name&#34;] == data_key, &#34;y_pred&#34;].values
+        if data_scores.ndim == 1:
+            data_scores = data_scores.reshape((-1, 1))
+        data_weights = df_raw.loc[
+            df[&#34;sample_name&#34;] == data_key, &#34;weight&#34;
+        ].values
 
     # make plots
-    save_dir = job_config.run.save_dir
-    if plot_config.use_root:
-        if plot_utils_root.HAS_ROOT:
-            pass
+    all_nodes = [&#34;sig&#34;] + tc.output_bkg_node_names
+    for node_id, node in enumerate(all_nodes):
+        if plot_config.show_ratio:
+            fig = plt.figure(figsize=(50 / 3, 50 / 3))
+            gs = mpl.gridspec.GridSpec(4, 1, hspace=0.0, wspace=0.0)
+            ax = fig.add_subplot(gs[0:3])
+            ax.tick_params(labelbottom=False)
+            ratio_ax = fig.add_subplot(gs[3], sharex=ax)
+            # ratio_ax.yaxis.set_major_locator(
+            #    mpl.ticker.MaxNLocator(
+            #        symmetric=True, prune=&#34;both&#34;, min_n_ticks=5, nbins=4
+            #    )
+            # )
+            ratio_ax.autoscale(axis=&#34;x&#34;, tight=True)
+            plt.sca(ax)
         else:
-            logger.error(&#34;Can&#39;t import ROOT, try to use matplotlib as backend.&#34;)
-    else:
-        all_nodes = [&#34;sig&#34;] + job_config.train.output_bkg_node_names
-        for node_id, node in enumerate(all_nodes):
-            fig, ax = plt.subplots(figsize=(8, 6))
-            sig_node_dict = {}
-            for key, value in sig_scores_dict.items():
-                sig_node_dict[key] = value[:, node_id]
-                print(&#34;#### node shape&#34;, value[:, node_id].shape)
-            bkg_node_dict = {}
-            for key, value in bkg_scores_dict.items():
-                bkg_node_dict[key] = value[:, node_id]
-            plot_scores_plt(
-                ax,
-                plot_config,
-                sig_node_dict,
-                sig_weights_dict,
-                bkg_node_dict,
-                bkg_weights_dict,
-                data_scores,
-                data_weights,
+            fig, ax = plt.subplots(figsize=(50 / 3, 100 / 9))
+        colors = plt.rcParams[&#34;axes.prop_cycle&#34;].by_key()[&#34;color&#34;]
+        color_cycle = itertools.cycle(colors)
+        # plot bkg
+        bkg_collect = list()
+        bkg_scores_all = None
+        bkg_weights_all = None
+        for key, value in bkg_scores_dict.items():
+            node_score = value[:, node_id].flatten()
+            node_weight = bkg_weights_dict[key] * plot_config.bkg_scale
+            bkg_bins, _ = np.histogram(
+                node_score,
+                bins=plot_config.bins,
+                range=(0, 1),
+                weights=node_weight,
+                density=plot_config.density,
             )
-            fig.savefig(f&#34;{save_dir}/{file_name}_node_{node}.{plot_config.save_format}&#34;)
+            if plot_config.bkg_scale != 1:
+                bkg_label = f&#34;{key} x{plot_config.bkg_scale}&#34;
+            else:
+                bkg_label = key
+            bkg = ampl.plot.Background(
+                bkg_label, bkg_bins, color=next(color_cycle)
+            )
+            bkg_collect.append(bkg)
+            if bkg_scores_all is None:
+                bkg_scores_all = node_score
+                bkg_weights_all = node_weight
+            else:
+                bkg_scores_all = np.concatenate((bkg_scores_all, node_score))
+                bkg_weights_all = np.concatenate(
+                    (bkg_weights_all, node_weight)
+                )
+        bkg_all_bins, bkg_edges = np.histogram(
+            bkg_scores_all,
+            bins=plot_config.bins,
+            range=(0, 1),
+            weights=bkg_weights_all,
+            density=plot_config.density,
+        )
+        sumw2, _ = np.histogram(
+            bkg_scores_all,
+            bins=plot_config.bins,
+            range=(0, 1),
+            weights=np.power(bkg_weights_all, 2),
+        )
+        bkg_stats_errs = np.sqrt(sumw2)
+        if plot_config.density:
+            norm_sum = np.sum(bkg_weights_all) * (1 / plot_config.bins)
+            bkg_stats_errs /= norm_sum
+        ampl.plot.plot_backgrounds(bkg_collect, bkg_edges, ax=ax)
+        # plot sig
+        for key, value in sig_scores_dict.items():
+            sig_bins, sig_edges = np.histogram(
+                value[:, node_id].flatten(),
+                bins=plot_config.bins,
+                range=(0, 1),
+                weights=sig_weights_dict[key] * plot_config.sig_scale,
+                density=plot_config.density,
+            )
+            if plot_config.sig_scale != 1:
+                sig_label = f&#34;{key} x{plot_config.sig_scale}&#34;
+            else:
+                sig_label = key
+            ampl.plot.plot_signal(
+                sig_label, sig_edges, sig_bins, color=next(color_cycle), ax=ax
+            )
+        # plot data
+        if plot_config.apply_data:
+            data_bins, data_edges = np.histogram(
+                data_scores[:, node_id].flatten(),
+                bins=plot_config.bins,
+                range=(0, 1),
+                weights=data_weights * plot_config.data_scale,
+                density=plot_config.density,
+            )
+            sumw2, _ = np.histogram(
+                data_scores[:, node_id].flatten(),
+                bins=plot_config.bins,
+                range=(0, 1),
+                weights=np.power(data_weights * plot_config.data_scale, 2),
+            )
+            data_stats_errs = np.sqrt(sumw2)
+            if plot_config.density:
+                norm_sum = np.sum(data_weights * plot_config.data_scale) * (
+                    1 / plot_config.bins
+                )
+                data_stats_errs /= norm_sum
+            if plot_config.data_scale != 1:
+                data_label = f&#34;data x{plot_config.data_scale}&#34;
+            else:
+                data_label = &#34;data&#34;
+            ampl.plot.plot_data(
+                data_edges,
+                data_bins,
+                stat_errs=data_stats_errs,
+                label=data_label,
+                ax=ax,
+            )
+            # plot ratio
+            if plot_config.show_ratio:
+                ampl.plot.plot_ratio(
+                    data_edges,
+                    data_bins,
+                    data_stats_errs,
+                    bkg_all_bins,
+                    bkg_stats_errs,
+                    ratio_ax,
+                    plottype=&#34;raw&#34;,
+                )
+            ratio_ax.set_ylim(0, 2)
+        ax.set_xlim(0, 1)
+        ax.legend(loc=&#34;upper right&#34;, ncol=2)
+        if ac.plot_atlas_label:
+            ampl.plot.draw_atlas_label(
+                0.05, 0.95, ax=ax, **(ac.atlas_label.get_config_dict())
+            )
+        # Save lin/log plots
+        _, y_max = ax.get_ylim()
+        ## save lin
+        ax.set_ylim(0, y_max * 1.4)
+        fig.savefig(
+            f&#34;{save_dir}/{file_name}_node_{node}_lin.{plot_config.save_format}&#34;
+        )
+        ## save log
+        ax.set_yscale(&#34;log&#34;)
+        ax.set_ylim(
+            plot_config.logy_min,
+            y_max * np.power(10, np.log10(y_max / plot_config.logy_min) / 2),
+        )
+        fig.savefig(
+            f&#34;{save_dir}/{file_name}_node_{node}_log.{plot_config.save_format}&#34;
+        )
 
     return 0  # success run</code></pre>
 </details>
 </dd>
-<dt id="hepynet.evaluate.mva_scores.plot_scores_plt"><code class="name flex">
-<span>def <span class="ident">plot_scores_plt</span></span>(<span>ax, plot_config, sig_scores_dict, sig_weights_dict, bkg_scores_dict, bkg_weights_dict, data_scores=None, data_weights=None)</span>
-</code></dt>
-<dd>
-<div class="desc"><p>Plots training score distribution for different background with matplotlib.</p></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def plot_scores_plt(
-    ax,
-    plot_config,
-    sig_scores_dict,
-    sig_weights_dict,
-    bkg_scores_dict,
-    bkg_weights_dict,
-    data_scores=None,
-    data_weights=None,
-):
-    &#34;&#34;&#34;Plots training score distribution for different background with matplotlib.
-    &#34;&#34;&#34;
-    logger.debug(&#34;Plotting scores with matplotlib backend&#34;)
-    config = plot_config.clone()
-    if config.sig_list is None:
-        config.sig_list = list(sig_scores_dict.keys())
-    if config.bkg_list is None:
-        config.bkg_list = list(bkg_scores_dict.keys())
-    # plot background
-    a = list(bkg_scores_dict.values())
-    print(&#34;#### len&#34;, len(a), &#34; shape &#34;, a[0].shape)
-    print(&#34;#### input shape:&#34;, np.transpose(a).shape)
-    print(&#34;#### weight shape:&#34;, np.transpose(list(bkg_weights_dict.values())).shape)
-    ax.hist(
-        np.transpose(list(bkg_scores_dict.values())),
-        bins=config.bins,
-        range=config.range,
-        weights=np.transpose(list(bkg_weights_dict.values())),
-        histtype=&#34;bar&#34;,
-        label=config.bkg_list,
-        density=config.density,
-        stacked=True,
-    )
-    # plot signal
-    print(&#34;#### input shape:&#34;, np.transpose(list(sig_scores_dict.values())).shape)
-    print(&#34;#### weight shape:&#34;, np.transpose(list(sig_weights_dict.values())).shape)
-    ax.hist(
-        np.transpose(list(sig_scores_dict.values())),
-        bins=config.bins,
-        range=config.range,
-        weights=np.transpose(list(sig_weights_dict.values())),
-        histtype=&#34;step&#34;,
-        label=config.sig_list,
-        density=config.density,
-    )
-    # plot data
-    if config.apply_data:
-        evaluate_utils.paint_bars(
-            ax,
-            data_scores,
-            &#34;data&#34;,
-            weights=data_weights,
-            bins=config.bins,
-            range=config.range,
-            density=config.density,
-            use_error=False,
-        )
-    ax.set_title(config.plot_title)
-    ax.legend(loc=&#34;upper center&#34;)
-    ax.set_xlabel(&#34;output score&#34;)
-    ax.set_ylabel(&#34;arb. unit&#34;)
-    ax.grid()
-    if config.log:
-        ax.set_yscale(&#34;log&#34;)
-        ax.set_title(f&#34;{config.plot_title}(log)&#34;)
-    else:
-        ax.set_title(f&#34;{config.plot_title}(lin)&#34;)</code></pre>
-</details>
-</dd>
-<dt id="hepynet.evaluate.mva_scores.plot_scores_root"><code class="name flex">
-<span>def <span class="ident">plot_scores_root</span></span>(<span>model_wrapper, sig_key, bkg_plot_key_list, apply_data=False, apply_data_range=None, plot_title='all input scores', bins=50, x_range=(-0.25, 1.25), scale_sig=False, density=True, save_plot=False, save_dir=None, save_file_name=None)</span>
-</code></dt>
-<dd>
-<div class="desc"><p>Plots training score distribution for different background with ROOT</p>
-<h2 id="note">Note</h2>
-<p>bkg_plot_key_list can be used to adjust order of background sample
-stacking. For example, if bkg_plot_key_list = ['top', 'zll', 'diboson']
-'top' will be put at bottom &amp; 'zll' in the middle &amp; 'diboson' on the top</p></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def plot_scores_root(
-    model_wrapper,
-    sig_key,
-    bkg_plot_key_list,
-    apply_data=False,
-    apply_data_range=None,
-    plot_title=&#34;all input scores&#34;,
-    bins=50,
-    x_range=(-0.25, 1.25),
-    scale_sig=False,
-    density=True,
-    save_plot=False,
-    save_dir=None,
-    save_file_name=None,
-):
-    &#34;&#34;&#34;Plots training score distribution for different background with ROOT
-
-    Note:
-        bkg_plot_key_list can be used to adjust order of background sample 
-        stacking. For example, if bkg_plot_key_list = [&#39;top&#39;, &#39;zll&#39;, &#39;diboson&#39;]
-        &#39;top&#39; will be put at bottom &amp; &#39;zll&#39; in the middle &amp; &#39;diboson&#39; on the top
-
-    &#34;&#34;&#34;
-    logger.info(&#34;Plotting scores with bkg separated with ROOT.&#34;)
-    all_nodes = [&#34;sig&#34;] + model_wrapper.model_hypers[&#34;output_bkg_node_names&#34;]
-    num_nodes = len(all_nodes)
-
-    model = model_wrapper.get_model()
-    feedbox = model_wrapper.feedbox
-    model_meta = model_wrapper.model_meta
-    bkg_dict = feedbox.xb_dict
-
-    # prepare background
-    if (type(bkg_plot_key_list) is not list) or len(bkg_plot_key_list) == 0:
-        # prepare plot key list sort with total weight by default
-        original_keys = list(bkg_dict.keys())
-        total_weight_list = []
-        for key in original_keys:
-            _, weights = feedbox.get_raw(&#34;xb&#34;, array_key=key)
-            total_weight = np.sum(weights)
-            total_weight_list.append(total_weight)
-        sort_indexes = np.argsort(np.array(total_weight_list))
-        bkg_plot_key_list = [original_keys[index] for index in sort_indexes]
-    bkg_predict_dict = {}
-    bkg_weight_dict = {}
-    for arr_key in bkg_plot_key_list:
-        predict_arr, predict_weight_arr = feedbox.get_reshape(&#34;xb&#34;, array_key=arr_key)
-        bkg_predict_dict[arr_key] = model.predict(predict_arr)
-        bkg_weight_dict[arr_key] = predict_weight_arr
-    # prepare signal
-    # sig_key = model_meta[&#34;sig_key&#34;]
-    sig_arr_temp, sig_weight = feedbox.get_reshape(&#34;xs&#34;, array_key=sig_key)
-    sig_predict = model.predict(sig_arr_temp)
-    # prepare data
-    if apply_data:
-        data_key = model_meta[&#34;data_key&#34;]
-        data_arr_temp, data_weight = feedbox.get_reshape(&#34;xd&#34;, array_key=data_key)
-        data_predict = model.predict(data_arr_temp)
-
-    # plot
-    for node_num in range(num_nodes):
-        plot_canvas = ROOT.TCanvas(plot_title, plot_title, 600, 600)
-        plot_pad_score = ROOT.TPad(&#34;pad1&#34;, &#34;pad1&#34;, 0, 0.3, 1, 1.0)
-        plot_pad_score.SetBottomMargin(0)
-        plot_pad_score.SetGridx()
-        plot_pad_score.Draw()
-        plot_pad_score.cd()
-        hist_list = []
-        # plot background
-        for arr_key in bkg_plot_key_list:
-            th1_temp = th1_tools.TH1FTool(
-                arr_key, arr_key, nbin=bins, xlow=x_range[0], xup=x_range[1]
-            )
-            th1_temp.fill_hist(
-                bkg_predict_dict[arr_key][:, node_num], bkg_weight_dict[arr_key]
-            )
-            hist_list.append(th1_temp)
-        hist_stacked_bkgs = th1_tools.THStackTool(
-            &#34;bkg stack plot&#34;, plot_title, hist_list, canvas=plot_pad_score
-        )
-        hist_stacked_bkgs.set_palette(&#34;kPastel&#34;)
-        hist_stacked_bkgs.draw(&#34;pfc hist&#34;)
-        hist_stacked_bkgs.get_hstack().GetYaxis().SetTitle(&#34;events/bin&#34;)
-        hist_stacked_bkgs.get_hstack().GetXaxis().SetTitle(&#34;dnn score&#34;)
-        hist_bkg_total = hist_stacked_bkgs.get_added_hist()
-        total_weight_bkg = hist_bkg_total.get_hist().GetSumOfWeights()
-        # plot signal
-        if scale_sig:
-            sig_title = &#34;sig-scaled&#34;
-        else:
-            sig_title = &#34;sig&#34;
-        hist_sig = th1_tools.TH1FTool(
-            &#34;sig added&#34;,
-            sig_title,
-            nbin=bins,
-            xlow=x_range[0],
-            xup=x_range[1],
-            canvas=plot_pad_score,
-        )
-        hist_sig.fill_hist(sig_predict[:, node_num], sig_weight)
-        total_weight_sig = hist_sig.get_hist().GetSumOfWeights()
-        if scale_sig:
-            total_weight = hist_stacked_bkgs.get_total_weights()
-            scale_factor = total_weight / hist_sig.get_hist().GetSumOfWeights()
-            hist_sig.get_hist().Scale(scale_factor)
-        hist_sig.update_config(&#34;hist&#34;, &#34;SetLineColor&#34;, ROOT.kRed)
-        # set proper y range
-        maximum_y = max(
-            plot_utils_root.get_highest_bin_value(hist_list),
-            plot_utils_root.get_highest_bin_value(hist_sig),
-        )
-        hist_stacked_bkgs.get_hstack().SetMaximum(1.2 * maximum_y)
-        hist_stacked_bkgs.get_hstack().SetMinimum(0.1)
-        hist_stacked_bkgs.get_hstack().GetYaxis().SetLabelFont(43)
-        hist_stacked_bkgs.get_hstack().GetYaxis().SetLabelSize(15)
-        hist_sig.draw(&#34;same hist&#34;)
-        # plot data if required
-        total_weight_data = 0
-        if apply_data:
-            hist_data = th1_tools.TH1FTool(
-                &#34;data added&#34;,
-                &#34;data&#34;,
-                nbin=bins,
-                xlow=x_range[0],
-                xup=x_range[1],
-                canvas=plot_pad_score,
-            )
-            hist_data.fill_hist(data_predict[:, node_num], data_weight)
-            hist_data.update_config(&#34;hist&#34;, &#34;SetMarkerStyle&#34;, ROOT.kFullCircle)
-            hist_data.update_config(&#34;hist&#34;, &#34;SetMarkerColor&#34;, ROOT.kBlack)
-            hist_data.update_config(&#34;hist&#34;, &#34;SetMarkerSize&#34;, 0.8)
-            if apply_data_range is not None:
-                hist_data.get_hist().GetXaxis().SetRangeUser(
-                    apply_data_range[0], apply_data_range[1]
-                )
-            hist_data.draw(&#34;same e1&#34;)
-            total_weight_data = hist_data.get_hist().GetSumOfWeights()
-            hist_data.build_legend(0.4, 0.7, 0.6, 0.9)
-        else:
-            total_weight_data = 0
-
-        # ratio plot
-        plot_canvas.cd()
-        plot_pad_ratio = ROOT.TPad(&#34;pad2&#34;, &#34;pad2&#34;, 0, 0.05, 1, 0.25)
-        plot_pad_ratio.SetTopMargin(0)
-        plot_pad_ratio.SetGridx()
-        plot_pad_ratio.Draw()
-        if apply_data:
-            hist_numerator = hist_data
-            hist_denominator = hist_bkg_total
-        else:
-            hist_numerator = hist_bkg_total
-            hist_denominator = hist_bkg_total
-        ratio_plot = th1_tools.RatioPlot(
-            hist_numerator,
-            hist_denominator,
-            x_title=&#34;DNN Score&#34;,
-            y_title=&#34;data/bkg&#34;,
-            canvas=plot_pad_ratio,
-        )
-        ratio_plot.draw()
-
-        # show &amp; save total weight info
-        model_wrapper.total_weight_sig = total_weight_sig
-        logger.debug(f&#34;sig total weight: {total_weight_sig}&#34;)
-        model_wrapper.total_weight_bkg = total_weight_bkg
-        logger.debug(f&#34;bkg total weight: {total_weight_bkg}&#34;)
-        model_wrapper.total_weight_data = total_weight_data
-        logger.debug(f&#34;data total weight: {total_weight_data}&#34;)
-        # save plot
-        if save_plot:
-            plot_canvas.SaveAs(
-                save_dir + &#34;/&#34; + save_file_name + &#34;_&#34; + all_nodes[node_num] + &#34;_lin.png&#34;
-            )
-            plot_pad_score.SetLogy(2)
-            plot_canvas.SaveAs(
-                save_dir + &#34;/&#34; + save_file_name + &#34;_&#34; + all_nodes[node_num] + &#34;_log.png&#34;
-            )</code></pre>
-</details>
-</dd>
 <dt id="hepynet.evaluate.mva_scores.plot_train_test_compare"><code class="name flex">
-<span>def <span class="ident">plot_train_test_compare</span></span>(<span>model_wrapper, job_config)</span>
+<span>def <span class="ident">plot_train_test_compare</span></span>(<span>df: pandas.core.frame.DataFrame, job_config: <a title="hepynet.common.config_utils.Hepy_Config" href="../common/config_utils.html#hepynet.common.config_utils.Hepy_Config">Hepy_Config</a>, save_dir: Union[str, os.PathLike])</span>
 </code></dt>
 <dd>
-<div class="desc"><p>Plots train/test scores distribution to check overtrain</p></div>
+<div class="desc"><p>Plots train/test datasets' cores distribution comparison</p></div>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def plot_train_test_compare(model_wrapper, job_config):
-    &#34;&#34;&#34;Plots train/test scores distribution to check overtrain&#34;&#34;&#34;
+<pre><code class="python">def plot_train_test_compare(
+    df: pd.DataFrame, job_config: ht.config, save_dir: ht.pathlike
+):
+    &#34;&#34;&#34;Plots train/test datasets&#39; cores distribution comparison&#34;&#34;&#34;
     # initialize
-    logger.info(&#34;Plotting train/test scores (original mass).&#34;)
-    ic = job_config.input
-    tc = job_config.train
+    logger.info(&#34;Plotting train/test scores.&#34;)
+    tc = job_config.train.clone()
+    ac = job_config.apply.clone()
     plot_config = job_config.apply.cfg_train_test_compare
-    model = model_wrapper.get_model()
-    feedbox = model_wrapper.feedbox
-    sig_key = get_default_if_none(plot_config.sig_key, ic.sig_key)
-    bkg_key = get_default_if_none(plot_config.bkg_key, ic.bkg_key)
     all_nodes = [&#34;sig&#34;] + tc.output_bkg_node_names
+    # get inputs
+    train_index = df[&#34;is_train&#34;] == True
+    test_index = df[&#34;is_train&#34;] == False
+    sig_index = (df[&#34;is_sig&#34;] == True) &amp; (df[&#34;is_mc&#34;] == True)
+    bkg_index = (df[&#34;is_sig&#34;] == False) &amp; (df[&#34;is_mc&#34;] == True)
+    xs_train_scores = df.loc[sig_index &amp; train_index, [&#34;y_pred&#34;]].values
+    xs_test_scores = df.loc[sig_index &amp; test_index, [&#34;y_pred&#34;]].values
+    xs_train_weight = df.loc[sig_index &amp; train_index, [&#34;weight&#34;]].values
+    xs_test_weight = df.loc[sig_index &amp; test_index, [&#34;weight&#34;]].values
+    xb_train_scores = df.loc[bkg_index &amp; train_index, [&#34;y_pred&#34;]].values
+    xb_test_scores = df.loc[bkg_index &amp; test_index, [&#34;y_pred&#34;]].values
+    xb_train_weight = df.loc[bkg_index &amp; train_index, [&#34;weight&#34;]].values
+    xb_test_weight = df.loc[bkg_index &amp; test_index, [&#34;weight&#34;]].values
 
-    train_test_dict = feedbox.get_train_test_arrays(
-        sig_key=sig_key,
-        bkg_key=bkg_key,
-        multi_class_bkgs=tc.output_bkg_node_names,
-        reset_mass=feedbox.get_job_config().input.reset_mass,
-        output_keys=[
-            &#34;xs_train&#34;,
-            &#34;xs_test&#34;,
-            &#34;wts_train&#34;,
-            &#34;wts_test&#34;,
-            &#34;xb_train&#34;,
-            &#34;xb_test&#34;,
-            &#34;wtb_train&#34;,
-            &#34;wtb_test&#34;,
-        ],
-    )
-    xs_train = train_test_dict[&#34;xs_train&#34;]
-    xs_test = train_test_dict[&#34;xs_test&#34;]
-    xs_train_weight = train_test_dict[&#34;wts_train&#34;]
-    xs_test_weight = train_test_dict[&#34;wts_test&#34;]
-    xb_train = train_test_dict[&#34;xb_train&#34;]
-    xb_test = train_test_dict[&#34;xb_test&#34;]
-    xb_train_weight = train_test_dict[&#34;wtb_train&#34;]
-    xb_test_weight = train_test_dict[&#34;wtb_test&#34;]
     # plot for each nodes
     num_nodes = len(all_nodes)
-    xb_train_scores = model.predict(xb_train)
-    xs_train_scores = model.predict(xs_train)
-    xb_test_scores = model.predict(xb_test)
-    xs_test_scores = model.predict(xs_test)
     for node_num in range(num_nodes):
-        fig, ax = plt.subplots(figsize=(8, 6))
-        # plot scores
-        ## plot train scores
-        plot_scores_plt(
-            ax,
-            plot_config,
-            {&#34;s-test&#34;: xs_test_scores[:, node_num].flatten()},
-            {&#34;s-test&#34;: xs_test_weight.flatten()},
-            {&#34;b-test&#34;: xb_test_scores[:, node_num].flatten()},
-            {&#34;b-test&#34;: xb_test_weight.flatten()},
+        fig, ax = plt.subplots()
+        # plot test scores
+        bkg_bins, bkg_edges = np.histogram(
+            xb_test_scores,
+            bins=plot_config.bins,
+            range=(0, 1),
+            weights=xb_test_weight,
+            density=plot_config.density,
         )
-        ## plot test scores
-        evaluate_utils.paint_bars(
-            ax,
-            xb_train_scores[:, node_num],
-            &#34;b-train&#34;,
+        bkg = ampl.plot.Background(
+            &#34;background (test)&#34;, bkg_bins, color=plot_config.bkg_color
+        )
+        ampl.plot.plot_backgrounds([bkg], bkg_edges, ax=ax)
+        sig_bins, sig_edges = np.histogram(
+            xs_test_scores,
+            bins=plot_config.bins,
+            range=(0, 1),
+            weights=xs_test_weight,
+            density=plot_config.density,
+        )
+        ampl.plot.plot_signal(
+            &#34;signal (test)&#34;, sig_edges, sig_bins, color=plot_config.sig_color
+        )
+        # plot train scores
+        ## bkg
+        bkg_bins, bkg_edges = np.histogram(
+            xb_train_scores,
+            bins=plot_config.bins,
+            range=(0, 1),
             weights=xb_train_weight,
-            bins=plot_config.bins,
-            range=plot_config.range,
             density=plot_config.density,
-            use_error=True,
-            color=&#34;darkblue&#34;,
-            fmt=&#34;.&#34;,
         )
-        evaluate_utils.paint_bars(
-            ax,
-            xs_train_scores[:, node_num],
-            &#34;s-train&#34;,
+        sumw2, _ = np.histogram(
+            xb_train_scores,
+            bins=plot_config.bins,
+            range=(0, 1),
+            weights=np.power(xb_train_weight, 2),
+        )
+        bkg_stats_errs = np.sqrt(sumw2)
+        if plot_config.density:
+            norm_sum = np.sum(xb_train_weight) * (1 / plot_config.bins)
+            bkg_stats_errs /= norm_sum
+        err_x = 0.5 * (bkg_edges[:-1] + bkg_edges[1:])
+        ax.errorbar(
+            err_x,
+            bkg_bins,
+            bkg_stats_errs,
+            0.5 / plot_config.bins,
+            fmt=&#34;.k&#34;,
+            mfc=plot_config.bkg_color,
+            ms=10,
+            label=&#34;background (train)&#34;,
+        )
+        ## sig
+        sig_bins, sig_edges = np.histogram(
+            xs_train_scores,
+            bins=plot_config.bins,
+            range=(0, 1),
             weights=xs_train_weight,
-            bins=plot_config.bins,
-            range=plot_config.range,
             density=plot_config.density,
-            use_error=True,
-            color=&#34;maroon&#34;,
-            fmt=&#34;.&#34;,
         )
-        ax.legend(loc=&#34;upper center&#34;)
-        # Make and show plots
-        if feedbox.get_job_config().input.reset_mass:
-            file_name = f&#34;/mva_scores_overtrain_original_mass_{all_nodes[node_num]}&#34;
-        else:
-            file_name = f&#34;/mva_scores_overtrain_reset_mass_{all_nodes[node_num]}&#34;
-        fig.savefig(f&#34;{job_config.run.save_dir}/{file_name}.{plot_config.save_format}&#34;)</code></pre>
+        sumw2, _ = np.histogram(
+            xs_train_scores,
+            bins=plot_config.bins,
+            range=(0, 1),
+            weights=np.power(xs_train_weight, 2),
+        )
+        sig_stats_errs = np.sqrt(sumw2)
+        if plot_config.density:
+            norm_sum = np.sum(xs_train_weight) * (1 / plot_config.bins)
+            sig_stats_errs /= norm_sum
+        err_x = 0.5 * (sig_edges[:-1] + sig_edges[1:])
+        ax.errorbar(
+            err_x,
+            sig_bins,
+            sig_stats_errs,
+            0.5 / plot_config.bins,
+            fmt=&#34;.k&#34;,
+            mfc=plot_config.sig_color,
+            ms=10,
+            label=&#34;signal (train)&#34;,
+        )
+        # final adjustments
+        ax.set_xlim(0, 1)
+        ax.legend(loc=&#34;upper right&#34;)
+        if ac.plot_atlas_label:
+            ampl.plot.draw_atlas_label(
+                0.05, 0.95, ax=ax, **(ac.atlas_label.get_config_dict())
+            )
+        ax.set_xlabel(&#34;DNN score&#34;)
+        # Save lin/log plots
+        file_name = f&#34;mva_scores_{all_nodes[node_num]}&#34;
+        _, y_max = ax.get_ylim()
+        ## save lin
+        ax.set_ylim(0, y_max * 1.4)
+        fig.savefig(save_dir / f&#34;{file_name}_lin.{plot_config.save_format}&#34;)
+        ## save log
+        ax.set_yscale(&#34;log&#34;)
+        ax.set_ylim(
+            plot_config.logy_min, y_max * np.power(10, np.log10(y_max) / 2)
+        )
+        fig.savefig(save_dir / f&#34;{file_name}_log.{plot_config.save_format}&#34;)</code></pre>
 </details>
 </dd>
 </dl>
@@ -917,8 +740,6 @@ stacking. For example, if bkg_plot_key_list = ['top', 'zll', 'diboson']
 <li><h3><a href="#header-functions">Functions</a></h3>
 <ul class="">
 <li><code><a title="hepynet.evaluate.mva_scores.plot_mva_scores" href="#hepynet.evaluate.mva_scores.plot_mva_scores">plot_mva_scores</a></code></li>
-<li><code><a title="hepynet.evaluate.mva_scores.plot_scores_plt" href="#hepynet.evaluate.mva_scores.plot_scores_plt">plot_scores_plt</a></code></li>
-<li><code><a title="hepynet.evaluate.mva_scores.plot_scores_root" href="#hepynet.evaluate.mva_scores.plot_scores_root">plot_scores_root</a></code></li>
 <li><code><a title="hepynet.evaluate.mva_scores.plot_train_test_compare" href="#hepynet.evaluate.mva_scores.plot_train_test_compare">plot_train_test_compare</a></code></li>
 </ul>
 </li>
