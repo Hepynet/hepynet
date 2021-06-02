@@ -8,7 +8,6 @@ from typing import Dict, Iterable, Optional, Tuple
 
 import keras
 import numpy as np
-import ray
 import tensorflow as tf
 import yaml
 from keras import backend as K
@@ -17,8 +16,6 @@ from keras.layers import Dense, Dropout
 from keras.models import Sequential
 from keras.optimizers import SGD, Adagrad, Adam, RMSprop
 from ray import tune
-from ray.tune.integration.keras import TuneReportCallback
-from sklearn.metrics import roc_auc_score
 
 import hepynet.common.hepy_type as ht
 from hepynet.data_io import feed_box
@@ -512,49 +509,19 @@ class Model_Sequential_Flat(Model_Sequential_Base):
             weighted_metrics=weighted_metrics,
         )
 
-    def get_hypers_tune(self):
-        """Gets a dict of hyperparameter (space) for auto-tuning"""
-        ic = self._job_config.input.clone()
-        rc = self._job_config.run.clone()
-        model_cfg = self._job_config.tune.clone().model
-        gs = train_utils.get_single_hyper
-        hypers = {
-            # hypers for building model
-            "layers": gs(model_cfg.layers),
-            "nodes": gs(model_cfg.nodes),
-            "dropout_rate": gs(model_cfg.dropout_rate),
-            "output_bkg_node_names": model_cfg.output_bkg_node_names,
-            "tune_metrics": model_cfg.tune_metrics,
-            "tune_metrics_weighted": model_cfg.tune_metrics_weighted,
-            "learn_rate": gs(model_cfg.learn_rate),
-            "learn_rate_decay": gs(model_cfg.learn_rate_decay),
-            "momentum": gs(model_cfg.momentum),
-            "nesterov": gs(model_cfg.nesterov),
-            # hypers for training
-            "batch_size": gs(model_cfg.batch_size),
-            "epochs": gs(model_cfg.epochs),
-            "sig_class_weight": gs(model_cfg.sig_class_weight),
-            "bkg_class_weight": gs(model_cfg.bkg_class_weight),
-            "use_early_stop": model_cfg.use_early_stop,
-            "early_stop_paras": model_cfg.early_stop_paras.get_config_dict(),
-            # job config
-            "input_dim": len(ic.selected_features),
-            # input dir
-            "input_dir": str(pathlib.Path(rc.tune_input_cache).resolve()),
-        }
-        return hypers
-
 
 # tuning functions for ray.tune
 
 ## Note: such functions take one config argument and report the score
 
 
-def tune_Model_Sequential_Flat(config, checkpoint_dir=None):
+def tune_Model_Sequential_Flat(
+    config, checkpoint_dir=None
+):  # checkpoint_dir is needed for ray.tune
     """Trainable function for ray-tune"""
     input_dir = pathlib.Path(config["input_dir"])
     x_train = np.load(input_dir / "x_train.npy")
-    x_train_unreset = np.load(input_dir / "x_train_unreset.npy")
+    # x_train_unreset = np.load(input_dir / "x_train_unreset.npy")
     y_train = np.load(input_dir / "y_train.npy")
     wt_train = np.load(input_dir / "wt_train.npy")
     x_val = np.load(input_dir / "x_val.npy")
@@ -615,10 +582,8 @@ def tune_Model_Sequential_Flat(config, checkpoint_dir=None):
 
     # set callbacks
     callbacks = list()
-    report_dict = {
-        "auc": "auc",
-        "val_auc": "val_auc",
-    }  # default includes AUC of ROC
+    report_dict = dict()
+    ## include built-in metrics
     for metric in config["tune_metrics"] + config["tune_metrics_weighted"]:
         report_dict[metric] = metric
         report_dict["val_" + metric] = "val_" + metric
@@ -628,22 +593,6 @@ def tune_Model_Sequential_Flat(config, checkpoint_dir=None):
         es_config = config["early_stop_paras"]
         early_stop_callback = tf.keras.callbacks.EarlyStopping(**es_config)
         callbacks.append(early_stop_callback)
-
-    # train
-    # history_obj = model.fit(
-    #    x_train,
-    #    y_train,
-    #    batch_size=config["batch_size"],
-    #    epochs=config["epochs"],
-    #    validation_data=(x_val, y_val, wt_val),
-    #    shuffle=True,
-    #    class_weight={
-    #        1: config["sig_class_weight"],
-    #        0: config["bkg_class_weight"],
-    #    },
-    #    sample_weight=wt_train,
-    #    callbacks=callbacks,
-    # )
 
     last_auc_unreset = 0
     for epoch_id in range(int(config["epochs"])):
@@ -666,27 +615,17 @@ def tune_Model_Sequential_Flat(config, checkpoint_dir=None):
             metric = str(key)
             epoch_report[metric] = history_obj.history[metric][-1]
 
-        # y_pred = model.predict(x_val)
-        # auc = roc_auc_score(y_val, y_pred, sample_weight=wt_val)
-        # epoch_report["val_auc2"] = auc
-
-        y_pred_unreset = model.predict(x_val_unreset)
-        auc_unreset = roc_auc_score(
-            y_val, y_pred_unreset, sample_weight=wt_val
+        train_utils.calculate_custom_tune_metrics(
+            model,
+            epoch_report,
+            metrics=config["custom_tune_metrics"],
+            metrics_weighted=config["custom_tune_metrics_weighted"],
+            x_val_unreset=x_val_unreset,
+            y_val=y_val,
+            wt_val=wt_val,
+            last_auc_unreset=last_auc_unreset,
         )
-        epoch_report["auc_unreset"] = auc_unreset
-
-        auc_unreset_improvement = auc_unreset - last_auc_unreset
-        epoch_report["auc_unreset_improvement"] = auc_unreset_improvement
-        last_auc_unreset = auc_unreset
 
         epoch_report["epoch_num"] = epoch_id + 1
 
         tune.report(**epoch_report)
-
-    # evaluate metric
-    # final_report = dict()
-    # for key in report_dict.keys():
-    #    metric = str(key)
-    #    final_report[metric] = history_obj.history[metric][-1]
-    # tune.report(**final_report)

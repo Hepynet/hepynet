@@ -97,6 +97,8 @@ DEFAULT_CFG = {
             },
             "tune_metrics": [],
             "tune_metrics_weighted": [],
+            "custom_tune_metrics": [],
+            "custom_tune_metrics_weighted": [],
         },
         "tmp_dir": "run/tmp_log",
         "rm_tmp_log": False,

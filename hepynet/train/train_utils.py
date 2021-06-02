@@ -3,19 +3,72 @@ import logging
 import math
 import os
 import pathlib
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import numpy as np
+import pyhf
 import ray
 import yaml
 from ray import tune
 from ray.tune import schedulers, stopper
+from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import StratifiedKFold
 
 import hepynet.common.hepy_type as ht
 from hepynet.train import hep_model
 
 logger = logging.getLogger("hepynet")
+
+
+def calculate_custom_tune_metrics(
+    model,
+    epoch_report: dict,
+    metrics: List[str] = list(),
+    metrics_weighted: List[str] = list(),
+    x_val_unreset: Optional[np.ndarray] = None,
+    y_val: Optional[np.ndarray] = None,
+    wt_val: Optional[np.ndarray] = None,
+    last_auc_unreset: Optional[float] = None,
+):
+    # calculate customized metrics
+
+    # calculate customized weighted metrics
+    if "auc_unreset" in metrics_weighted:
+        y_pred_unreset = model.predict(x_val_unreset)
+        auc_unreset = roc_auc_score(
+            y_val, y_pred_unreset, sample_weight=wt_val
+        )
+        epoch_report["auc_unreset"] = auc_unreset
+    if "auc_unreset_improvement" in metrics_weighted:
+        if ("auc_unreset" in metrics_weighted) and (
+            last_auc_unreset is not None
+        ):
+            auc_unreset_improvement = auc_unreset - last_auc_unreset
+            epoch_report["auc_unreset_improvement"] = auc_unreset_improvement
+            last_auc_unreset = auc_unreset
+        else:
+            logger.error(
+                f"auc_unrest not in custom_tune_metrics_weighted, cant' calculate auc_unreset_improvement!"
+            )
+    if "limit" in metrics_weighted:
+        pass
+
+
+def get_hypers_tune(job_config: ht.config):
+    """Gets a dict of hyperparameter (space) for auto-tuning"""
+    logger.info("Collecting configs for hyperparameter tuning")
+    ic = job_config.input.clone()
+    rc = job_config.run.clone()
+    model_cfg = job_config.tune.clone().model
+    gs = get_single_hyper
+    hypers = dict()
+    for hyper_key in model_cfg.get_config_dict().keys():
+        logger.info(f"> > Processing: {hyper_key}")
+        hypers[hyper_key] = gs(getattr(model_cfg, hyper_key))
+    hypers["input_dim"] = len(ic.selected_features)
+    hypers["input_dir"] = str(pathlib.Path(rc.tune_input_cache).resolve())
+
+    return hypers
 
 
 def get_model_class(model_class: str):
@@ -41,7 +94,7 @@ def get_mean_var(
 
 def get_single_hyper(hyper_config: ht.sub_config):
     """Determines one hyperparameter
-    
+
     Note:
         If the hyper-parameter is a tuning dimension (with spacer specified), 
         spacer from ray.tune will be used to set up the dimension.
@@ -49,8 +102,16 @@ def get_single_hyper(hyper_config: ht.sub_config):
 
     """
     if hasattr(hyper_config, "spacer"):
-        paras = hyper_config.paras.get_config_dict()
-        return getattr(tune, hyper_config.spacer)(**paras)
+        paras = hyper_config.paras
+        if isinstance(paras, ht.sub_config):
+            paras_dict = hyper_config.paras.get_config_dict()
+            return getattr(tune, hyper_config.spacer)(**paras_dict)
+        else:
+            logger.warn(
+                f"Dimension spacer specified but invalid paras detected: {paras}"
+            )
+            logger.warn(f"Ignoring current dimension")
+            return None
     else:
         return hyper_config
 
@@ -134,14 +195,9 @@ def ray_tune(model_wrapper, job_config: ht.config, resume: bool = False):
     tuner = job_config.tune.clone().tuner
     log_dir = pathlib.Path(job_config.run.save_sub_dir) / "tmp_log"
     log_dir.mkdir(parents=True, exist_ok=True)
-    if os.name == "posix":
-        logger.info(f"Ignoring tune.tmp.tmp_dir setting on Unix OS")
-        ray.init(**(tuner.init.get_config_dict()))
-    else:
-        ray.init(
-            _temp_dir=str(job_config.tune.tmp_dir),
-            **(tuner.init.get_config_dict()),
-        )
+
+    # set up config
+    config = get_hypers_tune(job_config)
     # set up scheduler
     sched_class = getattr(schedulers, tuner.scheduler_class)
     logger.info(f"Setting up scheduler: {tuner.scheduler_class}")
@@ -174,18 +230,28 @@ def ray_tune(model_wrapper, job_config: ht.config, resume: bool = False):
         stop = None
     else:
         stop = getattr(stopper, tuner.stopper_class)(**tuner.stopper)
-    # run
+    # set up extra run configs
     run_config = (
         tuner.run.get_config_dict()
     )  # important: convert Hepy_Config class to dict
     tune_func = getattr(hep_model, model_wrapper._tune_fun_name)
+
+    # start tuning jobs
+    if os.name == "posix":
+        logger.info(f"Ignoring tune.tmp.tmp_dir setting on Unix OS")
+        ray.init(**(tuner.init.get_config_dict()))
+    else:
+        ray.init(
+            _temp_dir=str(job_config.tune.tmp_dir),
+            **(tuner.init.get_config_dict()),
+        )
     analysis = tune.run(
         tune_func,
         name="ray_tunes",
         stop=stop,
         search_alg=algo,
         scheduler=sched,
-        config=model_wrapper.get_hypers_tune(),
+        config=config,
         local_dir=job_config.run.save_sub_dir,
         resume=resume,
         **run_config,
