@@ -594,7 +594,7 @@ def tune_Model_Sequential_Flat(
         early_stop_callback = tf.keras.callbacks.EarlyStopping(**es_config)
         callbacks.append(early_stop_callback)
 
-    last_auc_unreset = 0
+    last_report = {"auc_unreset": 0, "min_limit": 100000}
     for epoch_id in range(int(config["epochs"])):
         history_obj = model.fit(
             x_train,
@@ -616,16 +616,9 @@ def tune_Model_Sequential_Flat(
             epoch_report[metric] = history_obj.history[metric][-1]
 
         train_utils.calculate_custom_tune_metrics(
-            model,
-            epoch_report,
-            metrics=config["custom_tune_metrics"],
-            metrics_weighted=config["custom_tune_metrics_weighted"],
-            x_val_unreset=x_val_unreset,
-            y_val=y_val,
-            wt_val=wt_val,
-            last_auc_unreset=last_auc_unreset,
+            model, config, epoch_report, last_report=last_report,
         )
 
         epoch_report["epoch_num"] = epoch_id + 1
-
         tune.report(**epoch_report)
+        last_report = epoch_report

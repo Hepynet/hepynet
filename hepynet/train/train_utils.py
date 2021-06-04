@@ -21,37 +21,129 @@ logger = logging.getLogger("hepynet")
 
 
 def calculate_custom_tune_metrics(
-    model,
-    epoch_report: dict,
-    metrics: List[str] = list(),
-    metrics_weighted: List[str] = list(),
-    x_val_unreset: Optional[np.ndarray] = None,
-    y_val: Optional[np.ndarray] = None,
-    wt_val: Optional[np.ndarray] = None,
-    last_auc_unreset: Optional[float] = None,
+    model, config, epoch_report: dict, last_report: Optional[dict] = None,
 ):
+    metrics = config["custom_tune_metrics"]
+    metrics_weighted = config["custom_tune_metrics_weighted"]
+    input_dir = pathlib.Path(config["input_dir"])
+    if last_report is None:
+        last_report = dict()
+
     # calculate customized metrics
 
     # calculate customized weighted metrics
     if "auc_unreset" in metrics_weighted:
+        x_val_unreset = np.load(input_dir / "x_val_unreset.npy")
+        y_val = np.load(input_dir / "y_val.npy")
+        wt_val = np.load(input_dir / "wt_val.npy")
         y_pred_unreset = model.predict(x_val_unreset)
         auc_unreset = roc_auc_score(
             y_val, y_pred_unreset, sample_weight=wt_val
         )
         epoch_report["auc_unreset"] = auc_unreset
-    if "auc_unreset_improvement" in metrics_weighted:
+    if "auc_unreset_delta" in metrics_weighted:
         if ("auc_unreset" in metrics_weighted) and (
-            last_auc_unreset is not None
+            "auc_unreset" in last_report
         ):
-            auc_unreset_improvement = auc_unreset - last_auc_unreset
-            epoch_report["auc_unreset_improvement"] = auc_unreset_improvement
-            last_auc_unreset = auc_unreset
+            epoch_report["auc_unreset_delta"] = (
+                auc_unreset - last_report["auc_unreset"]
+            )
         else:
             logger.error(
-                f"auc_unrest not in custom_tune_metrics_weighted, cant' calculate auc_unreset_improvement!"
+                f"auc_unrest not in custom_tune_metrics_weighted, cant' calculate auc_unreset_delta!"
             )
-    if "limit" in metrics_weighted:
-        pass
+    if "min_limit" in metrics_weighted:
+        logger.debug("Calculating limit for tuning")
+        limit_cfg = config["metric_min_limit"]
+        x_sig = np.load(input_dir / "fit_x_unreset_sig.npy")
+        x_bkg = np.load(input_dir / "fit_x_unreset_bkg.npy")
+        wt_sig = np.load(input_dir / "fit_wt_sig.npy")
+        wt_bkg = np.load(input_dir / "fit_wt_bkg.npy")
+        fit_var_sig = np.load(input_dir / "fit_var_sig.npy")
+        fit_var_bkg = np.load(input_dir / "fit_var_bkg.npy")
+        y_sig = model.predict(x_sig)
+        y_bkg = model.predict(x_bkg)
+        limits = [100000]  # default limit set to a large number
+        for cut_ratio in np.linspace(*limit_cfg["dnn_scan_space"]):
+            cut = cut_ratio / 10.0
+            logger.debug(f"> checking cut")
+            sig_arr = fit_var_sig[np.where(y_sig.flatten() > cut)]
+            sig_wt = wt_sig[np.where(y_sig.flatten() > cut)]
+            bkg_arr = fit_var_bkg[np.where(y_bkg.flatten() > cut)]
+            bkg_wt = wt_bkg[np.where(y_bkg.flatten() > cut)]
+            # prepare limit inputs
+            sig_bins, _ = np.histogram(
+                sig_arr,
+                bins=limit_cfg["bins"],
+                range=limit_cfg["range"],
+                weights=sig_wt,
+            )
+            bkg_bins, _ = np.histogram(
+                bkg_arr,
+                bins=limit_cfg["bins"],
+                range=limit_cfg["range"],
+                weights=bkg_wt,
+            )
+            logger.debug(f"> sig_bins", sig_bins)
+            logger.debug(f"> bkg_bins", bkg_bins)
+            # calculate limit
+            spec = {
+                "channels": [
+                    {
+                        "name": "signal",
+                        "samples": [
+                            {
+                                "name": "sig",
+                                "data": sig_bins.tolist(),
+                                "modifiers": [
+                                    {
+                                        "name": "mu",
+                                        "type": "normfactor",
+                                        "data": None,
+                                    }
+                                ],
+                            },
+                            {
+                                "name": "bkg",
+                                "data": bkg_bins.tolist(),
+                                "modifiers": [],
+                            },
+                        ],
+                    },
+                ]
+            }
+            pdf = pyhf.Model(spec)
+            init_pars = pdf.config.suggested_init()
+            data = pdf.expected_data(init_pars)
+            pdf.config.suggested_bounds()
+            try:
+                _, exp_limits, (_, _) = pyhf.infer.intervals.upperlimit(
+                    data,
+                    pdf,
+                    np.linspace(*limit_cfg["poi_scan_space"]),
+                    level=0.05,
+                    return_results=True,
+                )
+                scan_limit = exp_limits[2]
+                if np.isfinite(scan_limit):
+                    limits.append(scan_limit)
+                logger.debug(f"> limit {scan_limit}")
+            except:
+                logger.debug("> fitting failed")
+                pass
+        min_limit = min(limits)
+        epoch_report["min_limit"] = min_limit
+    if "min_limit_delta" in metrics_weighted:
+        if ("min_limit" in metrics_weighted) and (
+            "min_limit" in last_report
+        ):
+            epoch_report["min_limit_delta"] = (
+                min_limit - last_report["min_limit"]
+            )
+        else:
+            logger.error(
+                f"min_limit not in custom_tune_metrics_weighted, cant' calculate min_limit_delta!"
+            )
 
 
 def get_hypers_tune(job_config: ht.config):
@@ -67,6 +159,9 @@ def get_hypers_tune(job_config: ht.config):
         hypers[hyper_key] = gs(getattr(model_cfg, hyper_key))
     hypers["input_dim"] = len(ic.selected_features)
     hypers["input_dir"] = str(pathlib.Path(rc.tune_input_cache).resolve())
+    hypers[
+        "metric_min_limit"
+    ] = job_config.tune.metric_min_limit.get_config_dict()
 
     return hypers
 
@@ -229,7 +324,9 @@ def ray_tune(model_wrapper, job_config: ht.config, resume: bool = False):
     if tuner.stopper_class is None:
         stop = None
     else:
-        stop = getattr(stopper, tuner.stopper_class)(**tuner.stopper)
+        stop_class = getattr(ray.tune.stopper, tuner.stopper_class)
+        stop_config = tuner.stopper.get_config_dict()
+        stop = stop_class(**stop_config)
     # set up extra run configs
     run_config = (
         tuner.run.get_config_dict()

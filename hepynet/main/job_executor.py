@@ -156,6 +156,8 @@ class job_executor(object):
         if ic.rm_negative_weight_events == True:
             wt_train = wt_train.clip(min=0)
         tune_input_dir = pathlib.Path(rc.tune_input_cache)
+        logger.info(f"Temporary tuning input files saved to: {tune_input_dir}")
+        ## save training inputs
         np.save(tune_input_dir / "x_train.npy", x_train)
         np.save(tune_input_dir / "x_train_unreset.npy", x_train_unreset)
         np.save(tune_input_dir / "y_train.npy", y_train)
@@ -164,7 +166,33 @@ class job_executor(object):
         np.save(tune_input_dir / "x_val_unreset.npy", x_val_unreset)
         np.save(tune_input_dir / "y_val.npy", y_val)
         np.save(tune_input_dir / "wt_val.npy", wt_val)
-        logger.info(f"Temporary tuning input files saved to: {tune_input_dir}")
+        ## save fitting inputs
+        if "min_limit" in uc.model.custom_tune_metrics_weighted:
+            limit_cfg = uc.metric_min_limit
+            raw_df = feedbox.get_raw_df()
+            fit_var = limit_cfg.fit_var
+            # still should only look at validation dataset
+            fit_var_train = raw_df.loc[train_index, fit_var].values
+            fit_var_val = fit_var_train[val_ids]
+            fit_wt_train = raw_df.loc[train_index, "weight"].values
+            fit_wt_val = fit_wt_train[val_ids]
+            fit_sample_name_train = input_df.loc[train_index, "sample_name"].values
+            fit_sample_name_val = fit_sample_name_train[val_ids]
+            # prepare arrays for limit metric
+            bkg_id = np.where(np.isin(fit_sample_name_val, limit_cfg.bkg_list))
+            sig_id = np.where(np.isin(fit_sample_name_val, limit_cfg.sig_list))
+            bkg_arr = fit_var_val[bkg_id]
+            bkg_wt = fit_wt_val[bkg_id]
+            bkg_wt *= limit_cfg.bkg_scale
+            sig_arr = fit_var_val[sig_id]
+            sig_wt = fit_wt_val[sig_id]
+            sig_wt *= limit_cfg.sig_scale
+            np.save(tune_input_dir / "fit_x_unreset_sig.npy", x_val_unreset[sig_id])
+            np.save(tune_input_dir / "fit_x_unreset_bkg.npy", x_val_unreset[bkg_id])
+            np.save(tune_input_dir / "fit_wt_sig.npy", sig_wt)
+            np.save(tune_input_dir / "fit_wt_bkg.npy", bkg_wt)
+            np.save(tune_input_dir / "fit_var_sig.npy", sig_arr)
+            np.save(tune_input_dir / "fit_var_bkg.npy", bkg_arr)
 
         # Tuning hypers
         analysis = train_utils.ray_tune(
