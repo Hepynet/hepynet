@@ -131,7 +131,7 @@ def calculate_custom_tune_metrics(
             except:
                 logger.debug("> fitting failed")
                 pass
-        min_limit = min(limits)
+        min_limit = float(min(limits))
         epoch_report["min_limit"] = min_limit
     if "min_limit_delta" in metrics_weighted:
         if ("min_limit" in metrics_weighted) and (
@@ -324,6 +324,7 @@ def ray_tune(model_wrapper, job_config: ht.config, resume: bool = False):
     if tuner.stopper_class is None:
         stop = None
     else:
+        logger.info(f"Setting up stopper: {tuner.stopper_class}")
         stop_class = getattr(ray.tune.stopper, tuner.stopper_class)
         stop_config = tuner.stopper.get_config_dict()
         stop = stop_class(**stop_config)
@@ -353,7 +354,8 @@ def ray_tune(model_wrapper, job_config: ht.config, resume: bool = False):
         resume=resume,
         **run_config,
     )
-    logger.info("Best hyperparameters found were:")
+    print("#### Best hyperparameters found were:")
+    print(analysis.best_config)
     print(yaml.dump(analysis.best_config))
 
     return analysis
