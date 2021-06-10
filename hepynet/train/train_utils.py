@@ -332,6 +332,8 @@ def ray_tune(model_wrapper, job_config: ht.config, resume: bool = False):
     run_config = (
         tuner.run.get_config_dict()
     )  # important: convert Hepy_Config class to dict
+    if not "raise_on_failed_trial" in run_config:
+        run_config["raise_on_failed_trial"] = False
     tune_func = getattr(hep_model, model_wrapper._tune_fun_name)
 
     # start tuning jobs
