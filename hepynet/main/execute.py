@@ -59,14 +59,22 @@ def execute():
         if args.time:
             logging_format = "%(asctime)s,%(msecs)03d " + logging_format
         logging.basicConfig(
-            format=logging_format, datefmt="%Y-%m-%d:%H:%M:%S",
+            format=logging_format,
+            datefmt="%Y-%m-%d:%H:%M:%S",
         )
 
         from hepynet.main import job_executor
 
-        for yaml_cfg in args.yaml_configs:
+        config_list = args.yaml_configs
+        logger.info("Configs in queue:")
+        for config in config_list:
+            logger.info(config)
+        time.sleep(3)
+
+        for yaml_cfg in config_list:
             logger.info("#" * 80)
             logger.info(f"Executing: {yaml_cfg}")
+            time.sleep(2)
             job_start_time = time.perf_counter()
             executor = job_executor.job_executor(yaml_cfg)
             executor.execute_jobs(resume=args.resume)
