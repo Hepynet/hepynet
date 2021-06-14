@@ -136,10 +136,10 @@ def plot_input(
             label="background",
             **(hist_kwargs),
         )
-        modify_hist(ax, feature_cfg, plot_range)
-        ax.set_xlabel(feature)
+        ax.set_title(feature)
         # decide wether plot in same place
         if plot_cfg.separate_bkg_sig:
+            modify_hist(ax, feature_cfg, plot_range)
             if ac.plot_atlas_label:
                 ampl.plot.draw_atlas_label(
                     0.05, 0.95, ax=ax, **(ac.atlas_label.get_config_dict())
@@ -161,8 +161,8 @@ def plot_input(
             label="signal",
             **(hist_kwargs),
         )
+        ax.set_title(feature)
         modify_hist(ax, feature_cfg, plot_range)
-        ax.set_xlabel(feature)
         if ac.plot_atlas_label:
             ampl.plot.draw_atlas_label(
                 0.05, 0.95, ax=ax, **(ac.atlas_label.get_config_dict())
@@ -377,8 +377,10 @@ def remove_hist_kwargs_duplicates(hist_kwargs: dict):
 
 
 def modify_hist(ax: ht.ax, feature_cfg: ht.sub_config, plot_range: ht.bound):
-    ax.set_xlabel(feature_cfg.x_label)
-    ax.set_ylabel(feature_cfg.y_label)
+    if feature_cfg.x_label:
+        ax.set_xlabel(feature_cfg.x_label)
+    if feature_cfg.y_label:
+        ax.set_ylabel(feature_cfg.y_label)
     log_minor_locator = LogLocator(
         base=10, subs=np.arange(1.0, 10.0) * 0.1, numticks=10
     )
