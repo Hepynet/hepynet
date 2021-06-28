@@ -179,13 +179,14 @@ def plot_input_dnn(
     df_raw: pd.DataFrame,
     df: pd.DataFrame,
     job_config: ht.config,
-    dnn_cut: float = None,
+    dnn_cut_down: float = None,
+    dnn_cut_up: float = 1,
     multi_class_cut_branch: int = 0,
     save_dir: ht.pathlike = None,
 ):
     """Plots input distributions comparision plots with DNN cuts applied"""
     logger.info(
-        f"Plotting input distributions with DNN cuts {dnn_cut} applied."
+        f"Plotting input distributions with DNN cuts [{dnn_cut_down}, {dnn_cut_up}] applied."
     )
     # prepare
     ic = job_config.input.clone()
@@ -194,41 +195,45 @@ def plot_input_dnn(
     # get sig/bkg DataFrame and weights
     bkg_df_raw = array_utils.extract_bkg_df(df_raw)
     sig_df_raw = array_utils.extract_sig_df(df_raw)
-    bkg_weights = bkg_df_raw["weight"].to_numpy("float32")
-    sig_weights = sig_df_raw["weight"].to_numpy("float32")
+    bkg_wt = bkg_df_raw["weight"].to_numpy("float32")
+    sig_wt = sig_df_raw["weight"].to_numpy("float32")
     # get predictions
-    bkg_predictions = array_utils.extract_bkg_df(df)[["y_pred"]].to_numpy(
-        "float32"
-    )
-    sig_predictions = array_utils.extract_sig_df(df)[["y_pred"]].to_numpy(
-        "float32"
-    )
+    bkg_pred = array_utils.extract_bkg_df(df)[["y_pred"]].to_numpy("float32")
+    sig_pred = array_utils.extract_sig_df(df)[["y_pred"]].to_numpy("float32")
     # normalize
     if plot_cfg.density:
-        bkg_weights = bkg_weights / np.sum(bkg_weights)
-        sig_weights = sig_weights / np.sum(sig_weights)
+        bkg_wt = bkg_wt / np.sum(bkg_wt)
+        sig_wt = sig_wt / np.sum(sig_wt)
     # plot kinematics with dnn cuts
-    if dnn_cut < 0 or dnn_cut > 1:
-        logger.error(f"DNN cut {dnn_cut} is out of range [0, 1]!")
+    if dnn_cut_down < 0 or dnn_cut_down > 1:
+        logger.error(f"DNN cut {dnn_cut_down} is out of range [0, 1]!")
         return
-    # prepare signal
-    sig_predictions = sig_predictions[:, multi_class_cut_branch]
-    sig_cut_index = array_utils.get_cut_index(
-        sig_predictions, [dnn_cut], ["<"]
+    if dnn_cut_up < 0 or dnn_cut_up > 1:
+        logger.error(f"DNN cut {dnn_cut_down} is out of range [0, 1]!")
+        return
+    if dnn_cut_down > dnn_cut_up:
+        logger.error(
+            f"DNN cut lower cut {dnn_cut_down} has higher value than {dnn_cut_up}!"
+        )
+        return
+    # get signal weights with dnn applied
+    sig_pred = sig_pred[:, multi_class_cut_branch]
+    sig_cut_id = np.argwhere(
+        (sig_pred < dnn_cut_down) | (sig_pred > dnn_cut_up)
     )
-    sig_weights_dnn = sig_weights.copy()
-    sig_weights_dnn[sig_cut_index] = 0
-    # prepare background
-    bkg_predictions = bkg_predictions[:, multi_class_cut_branch]
-    bkg_cut_index = array_utils.get_cut_index(
-        bkg_predictions, [dnn_cut], ["<"]
+    sig_wt_dnn = sig_wt.copy()
+    sig_wt_dnn[sig_cut_id] = 0
+    # get background weights with dnn applied
+    bkg_pred = bkg_pred[:, multi_class_cut_branch]
+    bkg_cut_id = np.argwhere(
+        (bkg_pred < dnn_cut_down) | (bkg_pred > dnn_cut_up)
     )
-    bkg_weights_dnn = bkg_weights.copy()
-    bkg_weights_dnn[bkg_cut_index] = 0
+    bkg_wt_dnn = bkg_wt.copy()
+    bkg_wt_dnn[bkg_cut_id] = 0
     # normalize weights for density plots
     if plot_cfg.density:
-        bkg_weights_dnn = bkg_weights_dnn / np.sum(bkg_weights)
-        sig_weights_dnn = sig_weights_dnn / np.sum(sig_weights)
+        bkg_wt_dnn = bkg_wt_dnn / np.sum(bkg_wt)
+        sig_wt_dnn = sig_wt_dnn / np.sum(sig_wt)
     # plot
     plot_feature_list = ic.selected_features + ic.validation_features
     for feature in plot_feature_list:
@@ -236,126 +241,125 @@ def plot_input_dnn(
         bkg_array = bkg_df_raw[feature].to_numpy("float32")
         sig_array = sig_df_raw[feature].to_numpy("float32")
 
-        feature_cfg = plot_cfg.clone()
-        if feature in plot_cfg.__dict__.keys():
-            feature_cfg_tmp = getattr(plot_cfg, feature)
-            feature_cfg.update(feature_cfg_tmp.get_config_dict())
-        plot_range = feature_cfg.range_processed
-
+        note = f"DNN cut: [{dnn_cut_down}, {dnn_cut_up}]"
         # plot sig
-        fig, main_ax, ratio_ax = ampl.ratio_axes()
-        main_ax.hist(
+        plot_input_dnn_single(
+            job_config,
+            feature,
+            "sig",
             sig_array,
-            bins=feature_cfg.bins,
-            range=plot_range,
-            weights=sig_weights,
-            histtype="step",
-            color=feature_cfg.sig_color,
-            label="before DNN cut",
+            sig_wt,
+            sig_wt_dnn,
+            save_dir,
+            note=note,
         )
-        main_ax.hist(
-            sig_array,
-            bins=feature_cfg.bins,
-            range=plot_range,
-            weights=sig_weights_dnn,
-            histtype="stepfilled",
-            color=feature_cfg.sig_color,
-            label="after DNN cut",
-        )
-        sig_bins, sig_edges = np.histogram(
-            sig_array, bins=feature_cfg.bins, weights=sig_weights,
-        )
-        sig_bins_dnn, _ = np.histogram(
-            sig_array, bins=feature_cfg.bins, weights=sig_weights_dnn,
-        )
-        ampl.plot.plot_ratio(
-            sig_edges,
-            sig_bins_dnn,
-            np.zeros(len(sig_bins)),
-            sig_bins,
-            np.zeros(len(sig_bins)),
-            ratio_ax,
-            plottype="raw",
-        )
-        if plot_range:
-            main_ax.set_xlim(plot_range[0], plot_range[1])
-            ratio_ax.set_xlim(plot_range[0], plot_range[1])
-        if feature_cfg.log:
-            main_ax.set_yscale("log")
-            _, y_max = main_ax.get_ylim()
-            main_ax.set_ylim(
-                feature_cfg.logy_min, y_max * np.power(10, np.log10(y_max) / 2)
-            )
-        else:
-            _, y_max = main_ax.get_ylim()
-            main_ax.set_ylim(0, y_max * 1.4)
-        main_ax.legend(loc="upper right")
-        # main_ax.set_ylabel(feature_cfg.y_label)
-        ratio_ax.set_xlabel(feature)
-        if ac.plot_atlas_label:
-            ampl.plot.draw_atlas_label(
-                0.05, 0.95, ax=main_ax, **(ac.atlas_label.get_config_dict())
-            )
-        fig.suptitle(f"{feature} (signal)")
-        fig.savefig(f"{save_dir}/{feature}(sig).{plot_cfg.save_format}")
-        plt.close()
         # plot bkg
-        fig, main_ax, ratio_ax = ampl.ratio_axes()
-        main_ax.hist(
+        plot_input_dnn_single(
+            job_config,
+            feature,
+            "bkg",
             bkg_array,
-            bins=feature_cfg.bins,
-            range=plot_range,
-            weights=bkg_weights,
-            histtype="step",
-            color=feature_cfg.bkg_color,
-            label="before DNN cut",
+            bkg_wt,
+            bkg_wt_dnn,
+            save_dir,
+            note=note,
         )
-        main_ax.hist(
-            bkg_array,
-            bins=feature_cfg.bins,
-            range=plot_range,
-            weights=bkg_weights_dnn,
-            histtype="stepfilled",
-            color=feature_cfg.bkg_color,
-            label="after DNN cut",
+
+
+def plot_input_dnn_single(
+    job_config: ht.config,
+    feature,
+    event_type,
+    kine,
+    wt,
+    wt_dnn,
+    save_dir,
+    note="",
+):
+    ac = job_config.apply.clone()
+    plot_cfg = ac.cfg_cut_kine_study
+    feature_cfg = plot_cfg.clone()
+    if feature in plot_cfg.__dict__.keys():
+        feature_cfg_tmp = getattr(plot_cfg, feature)
+        feature_cfg.update(feature_cfg_tmp.get_config_dict())
+    plot_range = feature_cfg.range_processed
+    if event_type == "sig":
+        color = feature_cfg.sig_color
+    elif event_type == "bkg":
+        color = feature_cfg.bkg_color
+    else:
+        color = None
+
+    # plot with/without dnn cuts
+    fig, main_ax, ratio_ax = ampl.ratio_axes()
+    main_ax.hist(
+        kine,
+        bins=feature_cfg.bins,
+        range=plot_range,
+        weights=wt,
+        histtype="step",
+        color=color,
+        label="before DNN cut",
+    )
+    main_ax.hist(
+        kine,
+        bins=feature_cfg.bins,
+        range=plot_range,
+        weights=wt_dnn,
+        histtype="stepfilled",
+        color=color,
+        label="after DNN cut",
+    )
+    hist_bins, edges = np.histogram(
+        kine,
+        bins=feature_cfg.bins,
+        weights=wt,
+    )
+    hist_bins_dnn, _ = np.histogram(
+        kine,
+        bins=feature_cfg.bins,
+        weights=wt_dnn,
+    )
+    ampl.plot.plot_ratio(
+        edges,
+        hist_bins_dnn,
+        np.zeros(len(hist_bins)),
+        hist_bins,
+        np.zeros(len(hist_bins)),
+        ratio_ax,
+        plottype="raw",
+    )
+    if plot_range:
+        main_ax.set_xlim(plot_range[0], plot_range[1])
+        ratio_ax.set_xlim(plot_range[0], plot_range[1])
+    if feature_cfg.log:
+        main_ax.set_yscale("log")
+        _, y_max = main_ax.get_ylim()
+        main_ax.set_ylim(
+            feature_cfg.logy_min, y_max * np.power(10, np.log10(y_max) / 2)
         )
-        bkg_bins, bkg_edges = np.histogram(
-            bkg_array, bins=feature_cfg.bins, weights=bkg_weights,
+    else:
+        _, y_max = main_ax.get_ylim()
+        main_ax.set_ylim(0, y_max * 1.4)
+    main_ax.legend(loc="upper right")
+    # main_ax.set_ylabel(feature_cfg.y_label)
+    ratio_ax.set_xlabel(feature)
+    if ac.plot_atlas_label:
+        ampl.plot.draw_atlas_label(
+            0.05, 0.95, ax=main_ax, **(ac.atlas_label.get_config_dict())
         )
-        bkg_bins_dnn, _ = np.histogram(
-            bkg_array, bins=feature_cfg.bins, weights=bkg_weights_dnn,
-        )
-        ampl.plot.plot_ratio(
-            bkg_edges,
-            bkg_bins_dnn,
-            np.zeros(len(bkg_bins)),
-            bkg_bins,
-            np.zeros(len(bkg_bins)),
-            ratio_ax,
-            plottype="raw",
-        )
-        if plot_range:
-            main_ax.set_xlim(plot_range[0], plot_range[1])
-            ratio_ax.set_xlim(plot_range[0], plot_range[1])
-        if feature_cfg.log:
-            main_ax.set_yscale("log")
-            _, y_max = main_ax.get_ylim()
-            main_ax.set_ylim(
-                feature_cfg.logy_min, y_max * np.power(10, np.log10(y_max) / 2)
-            )
-        else:
-            _, y_max = main_ax.get_ylim()
-            main_ax.set_ylim(0, y_max * 1.4)
-        main_ax.legend(loc="upper right")
-        # main_ax.set_ylabel(feature_cfg.y_label)
-        ratio_ax.set_xlabel(feature)
-        if ac.plot_atlas_label:
-            ampl.plot.draw_atlas_label(
-                0.05, 0.95, ax=main_ax, **(ac.atlas_label.get_config_dict())
-            )
-        fig.suptitle(f"{feature} (background)")
-        fig.savefig(f"{save_dir}/{feature}(bkg).{plot_cfg.save_format}")
-        plt.close()
+    main_ax.text(
+        1,
+        1,
+        note,
+        color="royalblue",
+        horizontalalignment="right",
+        verticalalignment="bottom",
+        transform=main_ax.transAxes,
+    )
+    fig.suptitle(f"{feature} ({event_type})")
+    fig.savefig(f"{save_dir}/{feature}({event_type}).{plot_cfg.save_format}")
+    plt.close()
 
 
 def remove_hist_kwargs_duplicates(hist_kwargs: dict):

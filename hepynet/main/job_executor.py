@@ -176,7 +176,9 @@ class job_executor(object):
             fit_var_val = fit_var_train[val_ids]
             fit_wt_train = raw_df.loc[train_index, "weight"].values
             fit_wt_val = fit_wt_train[val_ids]
-            fit_sample_name_train = input_df.loc[train_index, "sample_name"].values
+            fit_sample_name_train = input_df.loc[
+                train_index, "sample_name"
+            ].values
             fit_sample_name_val = fit_sample_name_train[val_ids]
             # prepare arrays for limit metric
             bkg_id = np.where(np.isin(fit_sample_name_val, limit_cfg.bkg_list))
@@ -187,8 +189,12 @@ class job_executor(object):
             sig_arr = fit_var_val[sig_id]
             sig_wt = fit_wt_val[sig_id]
             sig_wt *= limit_cfg.sig_scale
-            np.save(tune_input_dir / "fit_x_unreset_sig.npy", x_val_unreset[sig_id])
-            np.save(tune_input_dir / "fit_x_unreset_bkg.npy", x_val_unreset[bkg_id])
+            np.save(
+                tune_input_dir / "fit_x_unreset_sig.npy", x_val_unreset[sig_id]
+            )
+            np.save(
+                tune_input_dir / "fit_x_unreset_bkg.npy", x_val_unreset[bkg_id]
+            )
             np.save(tune_input_dir / "fit_wt_sig.npy", sig_wt)
             np.save(tune_input_dir / "fit_wt_bkg.npy", bkg_wt)
             np.save(tune_input_dir / "fit_var_sig.npy", sig_arr)
@@ -341,7 +347,10 @@ class job_executor(object):
             # data/mc scores comparison
             if ac.book_mva_scores_data_mc:
                 mva_scores.plot_mva_scores(
-                    df_raw, df, self.job_config, epoch_subdir,
+                    df_raw,
+                    df,
+                    self.job_config,
+                    epoch_subdir,
                 )
             # Make significance scan plot
             if ac.book_significance_scan:
@@ -351,15 +360,23 @@ class job_executor(object):
             # kinematics with DNN cuts
             if ac.book_cut_kine_study:
                 for dnn_cut in ac.cfg_cut_kine_study.dnn_cut_list:
+                    if isinstance(dnn_cut, list):
+                        dnn_cut_down = dnn_cut[0]
+                        dnn_cut_up = dnn_cut[1]
+                    else:
+                        dnn_cut_down = dnn_cut
+                        dnn_cut_up = 1
                     dnn_kine_path = (
-                        epoch_subdir / f"kine_cut_dnn_p{dnn_cut * 100}"
+                        epoch_subdir
+                        / f"kine_cut_dnn_p{dnn_cut_down * 100}_p{dnn_cut_up * 100}"
                     )
                     dnn_kine_path.mkdir(parents=True, exist_ok=True)
                     kinematics.plot_input_dnn(
                         df_raw,
                         df,
                         self.job_config,
-                        dnn_cut=dnn_cut,
+                        dnn_cut_down=dnn_cut_down,
+                        dnn_cut_up=dnn_cut_up,
                         save_dir=dnn_kine_path,
                     )
             # feature permuted importance
@@ -380,8 +397,8 @@ class job_executor(object):
             https://keras.io/getting_started/faq/#how-can-i-obtain-reproducible-results-using-keras-during-development
 
         Note:
-            The seed setting funcions called in this function shouldn't be set 
-            again in later code, otherwise extra randomness will be introduced 
+            The seed setting funcions called in this function shouldn't be set
+            again in later code, otherwise extra randomness will be introduced
             (even if set same seed). The reason is unknown yet.
 
         """
