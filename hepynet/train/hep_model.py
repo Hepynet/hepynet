@@ -393,8 +393,13 @@ class Model_Sequential_Base(Model_Base):
             val_y_fold = y_train[val_index]
             val_wt_fold = wt_train[val_index]
             val_fold = (val_x_fold, val_y_fold, val_wt_fold)
+            unique, counts = np.unique(y_fold, return_counts=True)
             logger.info(
-                f"> Training on {len(y_fold)}, validating on {len(val_y_fold)} events."
+                f"> Training on {len(y_fold)} events -> composition: {dict(zip(unique, counts))}"
+            )
+            unique, counts = np.unique(val_y_fold, return_counts=True)
+            logger.info(
+                f"> Validating on {len(val_y_fold)} events -> composition: {dict(zip(unique, counts))}"
             )
             history_obj = fold_model.fit(
                 x_fold,
