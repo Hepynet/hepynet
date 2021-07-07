@@ -85,7 +85,7 @@ def plot_mva_scores(
             bkg_bins, _ = np.histogram(
                 node_score,
                 bins=plot_config.bins,
-                range=(0, 1),
+                range=plot_config.range,
                 weights=node_weight,
                 density=plot_config.density,
             )
@@ -108,14 +108,14 @@ def plot_mva_scores(
         bkg_all_bins, bkg_edges = np.histogram(
             bkg_scores_all,
             bins=plot_config.bins,
-            range=(0, 1),
+            range=plot_config.range,
             weights=bkg_weights_all,
             density=plot_config.density,
         )
         sumw2, _ = np.histogram(
             bkg_scores_all,
             bins=plot_config.bins,
-            range=(0, 1),
+            range=plot_config.range,
             weights=np.power(bkg_weights_all, 2),
         )
         bkg_stats_errs = np.sqrt(sumw2)
@@ -128,7 +128,7 @@ def plot_mva_scores(
             sig_bins, sig_edges = np.histogram(
                 value[:, node_id].flatten(),
                 bins=plot_config.bins,
-                range=(0, 1),
+                range=plot_config.range,
                 weights=sig_weights_dict[key] * plot_config.sig_scale,
                 density=plot_config.density,
             )
@@ -144,14 +144,14 @@ def plot_mva_scores(
             data_bins, data_edges = np.histogram(
                 data_scores[:, node_id].flatten(),
                 bins=plot_config.bins,
-                range=(0, 1),
+                range=plot_config.range,
                 weights=data_weights * plot_config.data_scale,
                 density=plot_config.density,
             )
             sumw2, _ = np.histogram(
                 data_scores[:, node_id].flatten(),
                 bins=plot_config.bins,
-                range=(0, 1),
+                range=plot_config.range,
                 weights=np.power(data_weights * plot_config.data_scale, 2),
             )
             data_stats_errs = np.sqrt(sumw2)
@@ -183,7 +183,7 @@ def plot_mva_scores(
                     plottype="raw",
                 )
             ratio_ax.set_ylim(0, 2)
-        ax.set_xlim(0, 1)
+        ax.set_xlim(plot_config.range[0], plot_config.range[1])
         ax.legend(loc="upper right", ncol=2)
         if ac.plot_atlas_label:
             ampl.plot.draw_atlas_label(
