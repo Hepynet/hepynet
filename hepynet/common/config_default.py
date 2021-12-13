@@ -206,6 +206,8 @@ DEFAULT_CFG = {
         "jump_model_studies": False,
         "book_fit_inputs": False,
         "fit_df": {"region": "", "branches": [], "save_dir": "",},
+        "sample_large_inputs": True,
+        "metric_max_events": 1000000,
         "book_confusion_matrix": False,
         "cfg_confusion_matrix": {"dnn_cut": 0.5},
         "book_roc": False,

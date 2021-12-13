@@ -181,6 +181,7 @@ def plot_mva_scores(
                     bkg_stats_errs,
                     ratio_ax,
                     plottype="raw",
+                    offscale_errs=True,  # TODO: add as an option?
                 )
             ratio_ax.set_ylim(0, 2)
         ax.set_xlim(plot_config.range[0], plot_config.range[1])
