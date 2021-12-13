@@ -29,11 +29,12 @@ def make_metrics_plot(
 ):
     """Plots PR curve."""
     ac = job_config.apply.clone()
-    if df.shape[0] > 1000000:
+    if ac.sample_large_inputs and df.shape[0] > ac.metric_max_events:
         logger.warn(
-            f"Too large input detected ({df.shape[0]} rows), randomly sampling 1000000 rows for metrics calculation"
+            f"Too large input detected ({df.shape[0]} rows), randomly sampling {ac.metric_max_events} rows for metrics calculation"
         )
-        df = df.sample(n=1000000)
+        df = df.sample(n=ac.metric_max_events)
+        df_raw =df_raw.loc[df.index]
     train_index = df["is_train"] == True
     test_index = df["is_train"] == False
     y_train = df.loc[train_index, ["y"]].values
