@@ -27,25 +27,48 @@ def plot_mva_scores(
     # prepare signal
     sig_scores_dict = {}
     sig_weights_dict = {}
-    for sig_key in plot_config.sig_list:
-        sig_score = df.loc[df["sample_name"] == sig_key, "y_pred"].values
+    for sig_item in plot_config.sig_list:
+        item_info = sig_item.split(":")
+        item_info = [x.strip() for x in item_info]
+        sig_samples = item_info[0].split("+")
+        sig_samples = [x.strip() for x in sig_samples]
+        if len(item_info) > 1:
+            sig_name = item_info[1]
+        else:
+            sig_name = item_info[0]
+        sig_score = df.loc[
+            df["sample_name"].isin(sig_samples), "y_pred"
+        ].values
         if sig_score.ndim == 1:
             sig_score = sig_score.reshape((-1, 1))
-        sig_scores_dict[sig_key] = sig_score
-        sig_weight = df_raw.loc[df["sample_name"] == sig_key, "weight"].values
-        sig_weights_dict[sig_key] = sig_weight
+        sig_scores_dict[sig_name] = sig_score
+        sig_weight = df_raw.loc[
+            df["sample_name"].isin(sig_samples), "weight"
+        ].values
+        sig_weights_dict[sig_name] = sig_weight
     # prepare background
     bkg_scores_dict = {}
     bkg_weights_dict = {}
-    for bkg_key in plot_config.bkg_list:
-        bkg_score = df.loc[df["sample_name"] == bkg_key, "y_pred"].values
+    for bkg_item in plot_config.bkg_list:
+        item_info = bkg_item.split(":")
+        item_info = [x.strip() for x in item_info]
+        bkg_samples = item_info[0].split("+")
+        bkg_samples = [x.strip() for x in bkg_samples]
+        if len(item_info) > 1:
+            bkg_name = item_info[1]
+        else:
+            bkg_name = item_info[0]
+        bkg_score = df.loc[
+            df["sample_name"].isin(bkg_samples), "y_pred"
+        ].values
         if bkg_score.ndim == 1:
             bkg_score = bkg_score.reshape((-1, 1))
-        bkg_scores_dict[bkg_key] = bkg_score
-        bkg_weight = df_raw.loc[df["sample_name"] == bkg_key, "weight"].values
-        bkg_weights_dict[bkg_key] = bkg_weight
+        bkg_scores_dict[bkg_name] = bkg_score
+        bkg_weight = df_raw.loc[
+            df["sample_name"].isin(bkg_samples), "weight"
+        ].values
+        bkg_weights_dict[bkg_name] = bkg_weight
     # prepare data
-    # TODO: support data plots
     if plot_config.apply_data:
         data_key = plot_config.data_key
         data_scores = df.loc[df["sample_name"] == data_key, "y_pred"].values
@@ -59,7 +82,10 @@ def plot_mva_scores(
     all_nodes = ["sig"] + tc.output_bkg_node_names
     for node_id, node in enumerate(all_nodes):
         if plot_config.show_ratio:
-            fig = plt.figure(figsize=(50 / 3, 50 / 3))
+            if plot_config.fig_size:
+                fig = plt.figure(figsize=plot_config.fig_size)
+            else:
+                fig = plt.figure(figsize=(50 / 3, 50 / 3))
             gs = mpl.gridspec.GridSpec(4, 1, hspace=0.0, wspace=0.0)
             ax = fig.add_subplot(gs[0:3])
             ax.tick_params(labelbottom=False)
@@ -72,7 +98,10 @@ def plot_mva_scores(
             ratio_ax.autoscale(axis="x", tight=True)
             plt.sca(ax)
         else:
-            fig, ax = plt.subplots(figsize=(50 / 3, 100 / 9))
+            if plot_config.fig_size:
+                fig = plt.figure(figsize=plot_config.fig_size)
+            else:
+                fig, ax = plt.subplots(figsize=(50 / 3, 100 / 9))
         colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
         color_cycle = itertools.cycle(colors)
         # plot bkg
@@ -161,9 +190,9 @@ def plot_mva_scores(
                 )
                 data_stats_errs /= norm_sum
             if plot_config.data_scale != 1:
-                data_label = f"data x{plot_config.data_scale}"
+                data_label = f"Data x{plot_config.data_scale}"
             else:
-                data_label = "data"
+                data_label = "Data"
             ampl.plot.plot_data(
                 data_edges,
                 data_bins,
@@ -183,9 +212,20 @@ def plot_mva_scores(
                     plottype="raw",
                     offscale_errs=True,  # TODO: add as an option?
                 )
-            ratio_ax.set_ylim(0, 2)
+                ratio_ax.set_ylim(0, 2)
         ax.set_xlim(plot_config.range[0], plot_config.range[1])
-        ax.legend(loc="upper right", ncol=2)
+
+        # reorder legends, data on top, background at bottom
+        n_bkg = len(bkg_scores_dict)
+        n_sig = len(sig_scores_dict)
+        order = [-1] + list(range(n_bkg, n_bkg + n_sig)) + list(range(n_bkg))
+        handles, labels = ax.get_legend_handles_labels()
+        handles = [handles[i] for i in order]
+        labels = [labels[i] for i in order]
+        ax.legend(
+            handles, labels, **(plot_config.legend_paras.get_config_dict())
+        )
+
         if ac.plot_atlas_label:
             ampl.plot.draw_atlas_label(
                 0.05, 0.95, ax=ax, **(ac.atlas_label.get_config_dict())
@@ -201,8 +241,9 @@ def plot_mva_scores(
         ax.set_yscale("log")
         ax.set_ylim(
             plot_config.logy_min,
-            y_max * np.power(10, np.log10(y_max / plot_config.logy_min) / 2),
+            y_max * np.power(10, np.log10(y_max / plot_config.logy_min) * 0.8),
         )
+        ax.set_xlabel("DNN score")
         fig.savefig(
             f"{save_dir}/{file_name}_node_{node}_log.{plot_config.save_format}"
         )
