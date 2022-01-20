@@ -99,7 +99,7 @@ def plot_mva_scores(
             plt.sca(ax)
         else:
             if plot_config.fig_size:
-                fig = plt.figure(figsize=plot_config.fig_size)
+                fig, ax = plt.subplots(figsize=plot_config.fig_size)
             else:
                 fig, ax = plt.subplots(figsize=(50 / 3, 100 / 9))
         colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
