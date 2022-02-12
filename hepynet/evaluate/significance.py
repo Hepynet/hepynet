@@ -73,6 +73,7 @@ def calculate_significance(
 
 def get_significances(
     df: pd.DataFrame,
+    df_raw: pd.DataFrame,
     job_config: ht.config,
     significance_algo: str = "asimov",
     multi_class_cut_branch: int = 0,
@@ -91,10 +92,12 @@ def get_significances(
     ic = job_config.input.clone()
     # prepare signal
     sig_df = array_utils.extract_sig_df(df)
+    sig_df_raw = array_utils.extract_sig_df(df_raw)
     sig_predictions = sig_df[["y_pred"]].values
     sig_predictions = sig_predictions[:, multi_class_cut_branch]
     # prepare background
     bkg_df = array_utils.extract_bkg_df(df)
+    bkg_df_raw = array_utils.extract_bkg_df(df_raw)
     bkg_predictions = bkg_df[["y_pred"]].values
     bkg_predictions = bkg_predictions[:, multi_class_cut_branch]
     # prepare thresholds
@@ -106,8 +109,8 @@ def get_significances(
     plot_thresholds = []
     sig_above_threshold = []
     bkg_above_threshold = []
-    sig_weights = sig_df["weight"]
-    bkg_weights = bkg_df["weight"]
+    sig_weights = sig_df_raw["weight"]
+    bkg_weights = bkg_df_raw["weight"]
     total_sig_weight = np.sum(sig_weights)
     total_bkg_weight = np.sum(bkg_weights)
     for dnn_cut in thresholds:
@@ -139,7 +142,7 @@ def get_significances(
 
 
 def plot_significance_scan(
-    df: pd.DataFrame, job_config: ht.config, save_dir: ht.pathlike
+    df: pd.DataFrame, df_raw: pd.DataFrame, job_config: ht.config, save_dir: ht.pathlike
 ) -> None:
     """Shows significance change with threshold.
 
@@ -154,7 +157,7 @@ def plot_significance_scan(
         significances,
         sig_above_threshold,
         bkg_above_threshold,
-    ) = get_significances(df, job_config, significance_algo=significance_algo)
+    ) = get_significances(df, df_raw, job_config, significance_algo=significance_algo)
 
     significances_no_nan = np.nan_to_num(significances)
     max_significance = np.amax(significances_no_nan)
