@@ -39,6 +39,7 @@ DEFAULT_CFG = {
         "sig_list": [],
         "bkg_key": "all",
         "bkg_list": [],
+        "custom_sample_scale": {},
         "data_key": "all",
         "data_list": [],
         "selected_features": [],
@@ -190,7 +191,7 @@ DEFAULT_CFG = {
                 "logx": False,
                 "logy": False,
                 "histtype": "step",
-                #"histtype": "stepfilled",
+                # "histtype": "stepfilled",
                 "alpha": 0.4,
                 "density": False,
                 "facecolor": "#5fb3b3",  # cyan
@@ -209,7 +210,11 @@ DEFAULT_CFG = {
         # model dependent studies
         "jump_model_studies": False,
         "book_fit_inputs": False,
-        "fit_df": {"region": "", "branches": [], "save_dir": "",},
+        "fit_df": {
+            "region": "",
+            "branches": [],
+            "save_dir": "",
+        },
         "sample_large_inputs": True,
         "metric_max_events": 1000000,
         "book_confusion_matrix": False,
@@ -248,12 +253,15 @@ DEFAULT_CFG = {
             "range": [0, 1],
             "density": False,
             "log": False,
-            "logy_min": 0.001,
+            "logy_min": 0.0005,
+            "legend_paras": {"loc": "upper right", "ncol": 1},
             "save_format": "png",
+            "fig_size": [8.333, 8.333],
         },
         "book_significance_scan": False,
-        "significance_raw_weight": False,
-        "cfg_significance_scan": {"significance_algo": "s_sqrt_b_rel",},
+        "cfg_significance_scan": {
+            "significance_algo": "s_sqrt_b_rel",
+        },
         "book_cut_kine_study": False,
         "cfg_cut_kine_study": {
             "separate_sig_bkg": False,
@@ -271,5 +279,9 @@ DEFAULT_CFG = {
         "book_importance_study": False,
         "cfg_importance_study": {"log": False},
     },
-    "run": {"datestr": "", "config_collected": False, "input_dim": None,},
+    "run": {
+        "datestr": "",
+        "config_collected": False,
+        "input_dim": None,
+    },
 }
