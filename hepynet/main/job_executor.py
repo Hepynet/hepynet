@@ -120,7 +120,8 @@ class job_executor(object):
         # Prepare tmp inputs
         feedbox = feed_box.Feedbox(self.job_config.clone())
         ## get input
-        input_df = feedbox.get_processed_df(keep_unreset=True)
+        #input_df = feedbox.get_processed_df(keep_unreset=True) #KeyError: 'RESET_FEATURE_NAME_DEF' from out_df
+        input_df = feedbox.get_processed_df()
         cols = ic.selected_features
         ## load and save train/test
         train_index = (
@@ -354,9 +355,14 @@ class job_executor(object):
                 )
             # Make significance scan plot
             if ac.book_significance_scan:
-                significance.plot_significance_scan(
-                    df, self.job_config, epoch_subdir
-                )
+                if ac.significance_raw_weight:
+                    significance.plot_significance_scan(
+                        df, df_raw, self.job_config, epoch_subdir #Use df_raw for s_b calculation
+                    )
+                else:
+                    significance.plot_significance_scan(
+                        df, df, self.job_config, epoch_subdir #Use df_raw for s_b calculation
+                    )
             # kinematics with DNN cuts
             if ac.book_cut_kine_study:
                 for dnn_cut in ac.cfg_cut_kine_study.dnn_cut_list:

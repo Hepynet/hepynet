@@ -11,11 +11,15 @@ import ray
 import yaml
 from ray import tune
 from ray.tune import schedulers, stopper
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import (
+    roc_auc_score,
+    roc_curve,
+)
 from sklearn.model_selection import StratifiedKFold
 
 import hepynet.common.hepy_type as ht
 from hepynet.train import hep_model
+from hepynet.evaluate import metrics as hep_mtx
 
 logger = logging.getLogger("hepynet")
 
@@ -37,10 +41,21 @@ def calculate_custom_tune_metrics(
         y_val = np.load(input_dir / "y_val.npy")
         wt_val = np.load(input_dir / "wt_val.npy")
         y_pred_unreset = model.predict(x_val_unreset)
-        auc_unreset = roc_auc_score(
+#        auc_unreset = roc_auc_score(
+#            y_val, y_pred_unreset, sample_weight=wt_val
+#        )
+#        auc_unreset = hep_mtx.my_roc_auc(
+#            y_val, y_pred_unreset, wt_val
+#        )
+        fpr, tpr, _ = roc_curve(
             y_val, y_pred_unreset, sample_weight=wt_val
         )
-        epoch_report["auc_unreset"] = auc_unreset
+        fpr = np.concatenate(([0], fpr, [1]))
+        tpr = np.concatenate(([0], tpr, [1]))
+        auc_unreset = np.trapz(
+            y=tpr, x=fpr
+        )
+    epoch_report["auc_unreset"] = auc_unreset
     if "auc_unreset_delta" in metrics_weighted:
         if ("auc_unreset" in metrics_weighted) and (
             "auc_unreset" in last_report

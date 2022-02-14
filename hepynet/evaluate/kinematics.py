@@ -117,7 +117,7 @@ def plot_input(
                 feature_cfg.bins,
             )
         else:
-            plot_bins = feature_cfg.bins
+            plot_bins = feature_cfg.dup_bins
         # plot bkg
         # bkg_df = array_utils.extract_bkg_df(df)
         bkg_wt = df.loc[
@@ -161,6 +161,8 @@ def plot_input(
             label="signal",
             **(hist_kwargs),
         )
+        # plot sig + bkg
+
         ax.set_title(feature)
         modify_hist(ax, feature_cfg, plot_range)
         if ac.plot_atlas_label:
