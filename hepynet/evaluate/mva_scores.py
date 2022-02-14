@@ -218,7 +218,10 @@ def plot_mva_scores(
         # reorder legends, data on top, background at bottom
         n_bkg = len(bkg_scores_dict)
         n_sig = len(sig_scores_dict)
-        order = [-1] + list(range(n_bkg, n_bkg + n_sig)) + list(range(n_bkg))
+        if plot_config.apply_data:
+            order = [-1] + list(range(n_bkg, n_bkg + n_sig)) + list(range(n_bkg))
+        else:
+            order = list(range(n_bkg, n_bkg + n_sig)) + list(range(n_bkg))
         handles, labels = ax.get_legend_handles_labels()
         handles = [handles[i] for i in order]
         labels = [labels[i] for i in order]
@@ -227,9 +230,14 @@ def plot_mva_scores(
         )
 
         if ac.plot_atlas_label:
+            if plot_config.density:
+                desc = "Density Plot"
+            else:
+                desc = None
             ampl.plot.draw_atlas_label(
-                0.05, 0.95, ax=ax, **(ac.atlas_label.get_config_dict())
+                0.05, 0.95, ax=ax, **(ac.atlas_label.get_config_dict()), desc=desc
             )
+        ax.set_xlabel("DNN score")
         # Save lin/log plots
         _, y_max = ax.get_ylim()
         ## save lin
@@ -243,7 +251,6 @@ def plot_mva_scores(
             plot_config.logy_min,
             y_max * np.power(10, np.log10(y_max / plot_config.logy_min) * 0.8),
         )
-        ax.set_xlabel("DNN score")
         fig.savefig(
             f"{save_dir}/{file_name}_node_{node}_log.{plot_config.save_format}"
         )
@@ -364,8 +371,12 @@ def plot_train_test_compare(
         ax.set_xlim(0, 1)
         ax.legend(loc="upper right")
         if ac.plot_atlas_label:
+            if plot_config.density:
+                desc = "Density Plot"
+            else:
+                desc = None
             ampl.plot.draw_atlas_label(
-                0.05, 0.95, ax=ax, **(ac.atlas_label.get_config_dict())
+                0.05, 0.95, ax=ax, **(ac.atlas_label.get_config_dict()), desc=desc
             )
         ax.set_xlabel("DNN score")
         # Save lin/log plots
@@ -373,6 +384,7 @@ def plot_train_test_compare(
         _, y_max = ax.get_ylim()
         ## save lin
         ax.set_ylim(0, y_max * 1.4)
+        ax.set_xlabel("DNN score")
         fig.savefig(save_dir / f"{file_name}_lin.{plot_config.save_format}")
         ## save log
         ax.set_yscale("log")
