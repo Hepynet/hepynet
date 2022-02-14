@@ -168,16 +168,17 @@ DEFAULT_CFG = {
         "book_kine": False,
         "cfg_kine": {
             "separate_bkg_sig": False,
-            "dup_bins": 80,
+            "bins": 40,
             "bkg_scale_raw": 1,
             "bkg_scale_processed": 1,
             "sig_scale_raw": 1,
             "sig_scale_processed": 1,
-            "hist_kwargs_sig": {  # kwargs of plt.hist
-                "bins": 80,
-                "logbin": False,
-                "logx": False,
-                "logy": False,
+            "logbin": False,
+            "logx": False,
+            "logy": False,
+            # args of plt.hist
+            "hist_kwargs_sig": {
+                "bins": 40,
                 "histtype": "step",
                 "alpha": 0.4,
                 "density": False,
@@ -186,12 +187,8 @@ DEFAULT_CFG = {
                 "lw": 2,
             },
             "hist_kwargs_bkg": {
-                "bins": 80,
-                "logbin": False,
-                "logx": False,
-                "logy": False,
-                "histtype": "step",
-                # "histtype": "stepfilled",
+                "bins": 40,
+                "histtype": "stepfilled",
                 "alpha": 0.4,
                 "density": False,
                 "facecolor": "#5fb3b3",  # cyan
@@ -261,6 +258,7 @@ DEFAULT_CFG = {
         "book_significance_scan": False,
         "cfg_significance_scan": {
             "significance_algo": "s_sqrt_b_rel",
+            "use_raw_weight": True,
         },
         "book_cut_kine_study": False,
         "cfg_cut_kine_study": {

@@ -148,7 +148,7 @@ class Feedbox(object):
             logger.info(f"> Reweighting inputs with key {ic.bkg_key}")
             # custom scale
             if ic.custom_sample_scale:
-                logger.info(f"> Scaling process with factor: {ic.custom_sample_scale}")
+                logger.info(f"> Scaling process with factor: {ic.custom_sample_scale.get_config_dict()}")
                 for sample, scale_factor in ic.custom_sample_scale.get_config_dict().items():
                     out_df.loc[out_df["sample_name"] == sample, "weight"] *= scale_factor
             # reweight signal

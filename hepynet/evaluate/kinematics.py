@@ -91,85 +91,66 @@ def plot_input(
     ac = job_config.apply.clone()
     plot_cfg = ac.cfg_kine
     # prepare
-    plot_feature_list = list(
-        set(ic.selected_features + ic.validation_features)
-    )
+    plot_features = list(set(ic.selected_features + ic.validation_features))
     save_dir = pathlib.Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
+    # get bkg/sig dataframes and weights (to be reused)
+    bkg_df = array_utils.extract_bkg_df(df)
+    bkg_wt = bkg_df["weight"]
+    sig_df = array_utils.extract_sig_df(df)
+    sig_wt = sig_df["weight"]
     # plot
-    for feature in plot_feature_list:
-        feature_cfg = plot_cfg.clone()
+    for feature in plot_features:
+        # overwrite with sub-level settings if any
+        f_cfg = plot_cfg.clone()
         if feature in plot_cfg.__dict__.keys():
-            feature_cfg_tmp = getattr(plot_cfg, feature)
-            feature_cfg.update(feature_cfg_tmp.get_config_dict())
+            f_cfg_tmp = getattr(plot_cfg, feature)
+            f_cfg.update(f_cfg_tmp.get_config_dict())
+        # get hist setting for bkg/sig plot
+        bkg_args = {"label": "background"}
+        sig_args = {"label": "signal"}
         if is_raw:
-            plot_range = feature_cfg.range_raw
-            bkg_scale = feature_cfg.bkg_scale_raw
-            sig_scale = feature_cfg.sig_scale_raw
+            bkg_args["range"] = f_cfg.range_raw
+            bkg_args["weights"] = bkg_wt * f_cfg.bkg_scale_raw
+            sig_args["range"] = f_cfg.range_raw
+            sig_args["weights"] = sig_wt * f_cfg.sig_scale_raw
         else:
-            plot_range = feature_cfg.range_processed
-            bkg_scale = feature_cfg.bkg_scale_processed
-            sig_scale = feature_cfg.sig_scale_processed
-        if feature_cfg.logbin and plot_range:
+            bkg_args["range"] = f_cfg.range_processed
+            bkg_args["weights"] = bkg_wt * f_cfg.bkg_scale_processed
+            sig_args["range"] = f_cfg.range_processed
+            sig_args["weights"] = sig_wt * f_cfg.sig_scale_processed
+        if f_cfg.logbin and bkg_args["range"]:
             plot_bins = np.logspace(
-                np.log10(plot_range[0]),
-                np.log10(plot_range[1]),
-                feature_cfg.bins,
+                np.log10(bkg_args["range"][0]),
+                np.log10(bkg_args["range"][1]),
+                f_cfg.bins,
             )
         else:
-            plot_bins = feature_cfg.dup_bins
-        # plot bkg
-        # bkg_df = array_utils.extract_bkg_df(df)
-        bkg_wt = df.loc[
-            (df["is_mc"] == True) & (df["is_sig"] == False), "weight"
-        ].to_numpy("float32")
+            plot_bins = f_cfg.bins
+        bkg_args["bins"] = plot_bins
+        sig_args["bins"] = plot_bins
+        # overwrite settings with sub-level configs
+        bkg_args.update(f_cfg.hist_kwargs_bkg.get_config_dict())
+        sig_args.update(f_cfg.hist_kwargs_sig.get_config_dict())
+        # make plot
         fig, ax = plt.subplots()
-        hist_kwargs = feature_cfg.hist_kwargs_bkg.get_config_dict()
-        remove_hist_kwargs_duplicates(hist_kwargs)
-        ax.hist(
-            df.loc[
-                (df["is_mc"] == True) & (df["is_sig"] == False), feature
-            ].to_numpy("float32"),
-            bins=plot_bins,
-            range=plot_range,
-            weights=bkg_wt * bkg_scale,
-            label="background",
-            **(hist_kwargs),
-        )
+        f_bkg = bkg_df[feature]
+        f_sig = sig_df[feature]
+        ax.hist(f_bkg, **(bkg_args))
         ax.set_title(feature)
-        # decide wether plot in same place
+        # decide wether plot signal in same place as background
         if plot_cfg.separate_bkg_sig:
-            modify_hist(ax, feature_cfg, plot_range)
-            if ac.plot_atlas_label:
-                ampl.plot.draw_atlas_label(
-                    0.05, 0.95, ax=ax, **(ac.atlas_label.get_config_dict())
-                )
-            # fig.suptitle(feature)
+            modify_hist(ax, f_cfg)
+            update_atlas_label(ax, ac)
             fig.savefig(f"{save_dir}/{feature}_bkg.{plot_cfg.save_format}")
             plt.close()
+            # prepare a new ax
             fig, ax = plt.subplots()
-        # plot sig
-        sig_df = array_utils.extract_sig_df(df)
-        sig_wt = sig_df["weight"].to_numpy("float32")
-        hist_kwargs = feature_cfg.hist_kwargs_sig.get_config_dict()
-        remove_hist_kwargs_duplicates(hist_kwargs)
-        ax.hist(
-            sig_df[feature].to_numpy("float32"),
-            bins=plot_bins,
-            range=plot_range,
-            weights=sig_wt * sig_scale,
-            label="signal",
-            **(hist_kwargs),
-        )
-        # plot sig + bkg
-
+        # sig
+        ax.hist(f_sig, **(sig_args))
         ax.set_title(feature)
-        modify_hist(ax, feature_cfg, plot_range)
-        if ac.plot_atlas_label:
-            ampl.plot.draw_atlas_label(
-                0.05, 0.95, ax=ax, **(ac.atlas_label.get_config_dict())
-            )
-        # fig.suptitle(feature)
+        modify_hist(ax, f_cfg)
+        update_atlas_label(ax, ac)
         if plot_cfg.separate_bkg_sig:
             fig.savefig(f"{save_dir}/{feature}_sig.{plot_cfg.save_format}")
         else:
@@ -364,25 +345,7 @@ def plot_input_dnn_single(
     plt.close()
 
 
-def remove_hist_kwargs_duplicates(hist_kwargs: dict):
-    if "bins" in hist_kwargs:
-        del hist_kwargs["bins"]
-    if "logbin" in hist_kwargs:
-        del hist_kwargs["logbin"]
-    if "logx" in hist_kwargs:
-        del hist_kwargs["logx"]
-    if "logy" in hist_kwargs:
-        del hist_kwargs["logy"]
-    if "range" in hist_kwargs:
-        del hist_kwargs["range"]
-    if "weights" in hist_kwargs:
-        del hist_kwargs["weights"]
-    if "label" in hist_kwargs:
-        del hist_kwargs["label"]
-    return hist_kwargs
-
-
-def modify_hist(ax: ht.ax, feature_cfg: ht.sub_config, plot_range: ht.bound):
+def modify_hist(ax: ht.ax, feature_cfg: ht.sub_config):
     if feature_cfg.x_label:
         ax.set_xlabel(feature_cfg.x_label)
     if feature_cfg.y_label:
@@ -393,8 +356,6 @@ def modify_hist(ax: ht.ax, feature_cfg: ht.sub_config, plot_range: ht.bound):
     if feature_cfg.logx:
         ax.set_xscale("symlog")
         ax.xaxis.set_minor_locator(log_minor_locator)
-    if plot_range:
-        ax.set_xlim(plot_range[0], plot_range[1])
     y_min, y_max = ax.get_ylim()
     if feature_cfg.logy:
         ax.set_yscale("symlog")
@@ -406,3 +367,10 @@ def modify_hist(ax: ht.ax, feature_cfg: ht.sub_config, plot_range: ht.bound):
         ax.set_ylim(y_min, y_max * 1.4)
         ax.yaxis.set_minor_locator(AutoMinorLocator())
     ax.legend(loc="upper right")
+
+
+def update_atlas_label(ax: ht.ax, apply_config: ht.sub_config):
+    if apply_config.plot_atlas_label:
+        ampl.plot.draw_atlas_label(
+            0.05, 0.95, ax=ax, **(apply_config.atlas_label.get_config_dict())
+        )
