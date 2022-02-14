@@ -22,6 +22,8 @@ test/*
 *.root
 *.xml
 TRexFitter/*/*
+**/.DS_Store
+
 
 # Output data (local only)
 *.json
