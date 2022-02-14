@@ -39,6 +39,7 @@ DEFAULT_CFG = {
         "sig_list": [],
         "bkg_key": "all",
         "bkg_list": [],
+        "custom_sample_scale": {},
         "data_key": "all",
         "data_list": [],
         "selected_features": [],
