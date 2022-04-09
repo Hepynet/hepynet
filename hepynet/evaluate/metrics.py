@@ -6,15 +6,11 @@ from typing import Tuple
 import atlas_mpl_style as ampl
 import matplotlib.pyplot as plt
 import numpy as np
-from numpy.lib import save
 import pandas as pd
+import yaml
 from seaborn.matrix import heatmap
-from sklearn.metrics import (
-    classification_report,
-    confusion_matrix,
-    precision_recall_curve,
-    roc_curve,
-)
+from sklearn.metrics import (classification_report, confusion_matrix,
+                             precision_recall_curve, roc_curve)
 
 import hepynet.common.hepy_type as ht
 
@@ -55,7 +51,11 @@ def make_metrics_plot(
     if ac.book_pr:
         make_pr_curve_plot(train_inputs, test_inputs, job_config, save_dir)
     if ac.book_roc:
-        make_roc_curve_plot(train_inputs, test_inputs, job_config, save_dir)
+        roc_auc = make_roc_curve_plot(train_inputs, test_inputs, job_config, save_dir)
+        #roc_auc = {ky: int(val) for ky, val in roc_auc.items()}
+        with open(save_dir / "roc_auc.yaml", "w") as f:
+            yaml.dump({"roc_auc": roc_auc}, f, default_flow_style=False)
+
 
 
 def make_confusion_matrix_plot(
@@ -186,8 +186,8 @@ def make_pr_curve_plot(
     ax.grid()
     # collect meta data
     auc_dict = {}
-    auc_dict["auc_train_original"] = auc_train
-    auc_dict["auc_test_original"] = auc_test
+    auc_dict["auc_train_original"] = float(auc_train)
+    auc_dict["auc_test_original"] = float(auc_test)
     # make plots
     ax.set_ylim(0, 1.4)
     ax.set_yscale("linear")
@@ -259,8 +259,8 @@ def make_roc_curve_plot(
     ax.grid()
     # collect meta data
     auc_dict = {}
-    auc_dict["auc_train_original"] = auc_train
-    auc_dict["auc_test_original"] = auc_test
+    auc_dict["auc_train_original"] = float(auc_train)
+    auc_dict["auc_test_original"] = float(auc_test)
     # make plots
     ax.set_ylim(0, 1.4)
     ax.set_yscale("linear")

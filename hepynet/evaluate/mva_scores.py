@@ -291,6 +291,30 @@ def plot_mva_scores(
         )
         for fm in formats:
             fig.savefig(f"{save_dir}/{file_name}_node_{node}_log.{fm}")
+        if plot_config.symlog_x:
+            ax.set_xscale(
+                "symlog",
+                linthresh=plot_config.linthresh,
+                linscale=plot_config.linscale,
+            )
+            ## save lin
+            ax.set_yscale("linear")
+            ax.set_ylim(0, y_max * 1.4)
+            for fm in formats:
+                fig.savefig(
+                    f"{save_dir}/{file_name}_node_{node}_lin_symlog_x.{fm}"
+                )
+            ## save log
+            ax.set_yscale("log")
+            ax.set_ylim(
+                plot_config.logy_min,
+                y_max
+                * np.power(10, np.log10(y_max / plot_config.logy_min) * 0.8),
+            )
+            for fm in formats:
+                fig.savefig(
+                    f"{save_dir}/{file_name}_node_{node}_log_symlog_x.{fm}"
+                )
 
     return 0  # success run
 
