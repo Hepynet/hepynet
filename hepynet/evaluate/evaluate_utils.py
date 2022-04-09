@@ -36,9 +36,7 @@ def dump_fit_df(
     tc = job_config.train.clone()
     ac = job_config.apply.clone()
 
-    sample_list = ic.sig_list + ic.bkg_list
-    if ic.apply_data:
-        sample_list += ic.data_list
+    sample_list = ic.sig_list + ic.bkg_list + ic.data_list
 
     platform_meta = config_utils.load_current_platform_meta()
     data_path = platform_meta["data_path"]
@@ -163,9 +161,9 @@ def paint_bars(
 ) -> None:
     """Plot with vertical bar, can be used for data display.
 
-        Note:
-        According to ROOT:
-        "The error per bin will be computed as sqrt(sum of squares of weight) for each bin."
+    Note:
+    According to ROOT:
+    "The error per bin will be computed as sqrt(sum of squares of weight) for each bin."
 
     """
     plt.ioff()
@@ -262,3 +260,34 @@ def paint_bars(
     if range is not None:
         ax.axis(xmin=range[0], xmax=range[1])
     ax.legend(loc="upper right")
+
+
+def get_input_statistics(df_raw, job_config):
+    ic = job_config.input.clone()
+    # Bkg
+    logger.info("# Background #")
+    total_bkg = 0
+    for bkg in ic.bkg_list:
+        wt = df_raw.loc[df_raw["sample_name"] == bkg, "weight"]
+        sum_wt = sum(wt)
+        total_bkg += sum_wt
+        logger.info(f"> {bkg}: {sum_wt}")
+    logger.info(f"> TOTAL: {total_bkg}")
+    # Sig
+    logger.info("# Signal #")
+    total_sig = 0
+    for sig in ic.sig_list:
+        wt = df_raw.loc[df_raw["sample_name"] == sig, "weight"]
+        sum_wt = sum(wt)
+        total_sig += sum_wt
+        logger.info(f"> {sig}: {sum_wt}")
+    logger.info(f"> TOTAL: {total_sig}")
+    # Data
+    logger.info("# Data #")
+    total_data = 0
+    for data in ic.data_list:
+        wt = df_raw.loc[df_raw["sample_name"] == data, "weight"]
+        sum_wt = sum(wt)
+        total_data += sum_wt
+        logger.info(f"> {data}: {sum_wt}")
+    logger.info(f"> TOTAL: {total_data}")

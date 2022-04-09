@@ -161,6 +161,7 @@ DEFAULT_CFG = {
         ],
         "plot_atlas_label": False,
         "atlas_label": {},
+        "show_input_stats": False,
         "check_model_epoch": False,
         "epoch_check_interval": 5,
         "book_history": False,
@@ -246,6 +247,7 @@ DEFAULT_CFG = {
             "sig_scale": 1.0,
             "bkg_scale": 1.0,
             "data_scale": 1.0,
+            "label_scale": True,
             "bins": 25,
             "range": [0, 1],
             "density": False,
@@ -254,6 +256,7 @@ DEFAULT_CFG = {
             "legend_paras": {"loc": "upper right", "ncol": 1},
             "save_format": "png",
             "fig_size": [8.333, 8.333],
+            "plot_patch": {},
         },
         "book_significance_scan": False,
         "cfg_significance_scan": {

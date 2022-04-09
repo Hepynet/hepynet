@@ -110,7 +110,18 @@ def plot_mva_scores(
         bkg_weights_all = None
         for key, value in bkg_scores_dict.items():
             node_score = value[:, node_id].flatten()
-            node_weight = bkg_weights_dict[key] * plot_config.bkg_scale
+            bkg_scale = 1
+            if not type(plot_config.bkg_scale) in (float, int):
+                scale_dict = plot_config.bkg_scale.get_config_dict()
+                if key in scale_dict:
+                    bkg_scale = scale_dict[key]
+                else:
+                    logger.error(
+                        f"Missing bkg_scale for {key}, will not scale this process"
+                    )
+            else:
+                bkg_scale = plot_config.bkg_scale
+            node_weight = bkg_weights_dict[key] * bkg_scale
             bkg_bins, _ = np.histogram(
                 node_score,
                 bins=plot_config.bins,
@@ -118,8 +129,8 @@ def plot_mva_scores(
                 weights=node_weight,
                 density=plot_config.density,
             )
-            if plot_config.bkg_scale != 1:
-                bkg_label = f"{key} x{plot_config.bkg_scale}"
+            if plot_config.label_scale and bkg_scale != 1:
+                bkg_label = f"{key} x{bkg_scale}"
             else:
                 bkg_label = key
             bkg = ampl.plot.Background(
@@ -154,15 +165,26 @@ def plot_mva_scores(
         ampl.plot.plot_backgrounds(bkg_collect, bkg_edges, ax=ax)
         # plot sig
         for key, value in sig_scores_dict.items():
+            sig_scale = 1
+            if not type(plot_config.sig_scale) in (float, int):
+                scale_dict = plot_config.sig_scale.get_config_dict()
+                if key in scale_dict:
+                    sig_scale = scale_dict[key]
+                else:
+                    logger.error(
+                        f"Missing sig_scale for {key}, will not scale this process"
+                    )
+            else:
+                sig_scale = plot_config.sig_scale
             sig_bins, sig_edges = np.histogram(
                 value[:, node_id].flatten(),
                 bins=plot_config.bins,
                 range=plot_config.range,
-                weights=sig_weights_dict[key] * plot_config.sig_scale,
+                weights=sig_weights_dict[key] * sig_scale,
                 density=plot_config.density,
             )
-            if plot_config.sig_scale != 1:
-                sig_label = f"{key} x{plot_config.sig_scale}"
+            if plot_config.label_scale and sig_scale != 1:
+                sig_label = f"{key} x{sig_scale}"
             else:
                 sig_label = key
             ampl.plot.plot_signal(
@@ -189,7 +211,7 @@ def plot_mva_scores(
                     1 / plot_config.bins
                 )
                 data_stats_errs /= norm_sum
-            if plot_config.data_scale != 1:
+            if plot_config.label_scale and plot_config.data_scale != 1:
                 data_label = f"Data x{plot_config.data_scale}"
             else:
                 data_label = "Data"
@@ -219,7 +241,9 @@ def plot_mva_scores(
         n_bkg = len(bkg_scores_dict)
         n_sig = len(sig_scores_dict)
         if plot_config.apply_data:
-            order = [-1] + list(range(n_bkg, n_bkg + n_sig)) + list(range(n_bkg))
+            order = (
+                [-1] + list(range(n_bkg, n_bkg + n_sig)) + list(range(n_bkg))
+            )
         else:
             order = list(range(n_bkg, n_bkg + n_sig)) + list(range(n_bkg))
         handles, labels = ax.get_legend_handles_labels()
@@ -235,25 +259,38 @@ def plot_mva_scores(
             else:
                 desc = None
             ampl.plot.draw_atlas_label(
-                0.05, 0.95, ax=ax, **(ac.atlas_label.get_config_dict()), desc=desc
+                0.05,
+                0.95,
+                ax=ax,
+                **(ac.atlas_label.get_config_dict()),
+                desc=desc,
             )
-        ax.set_xlabel("DNN score")
+
+        # Plot patch
+        for func, args in plot_config.plot_patch.get_config_dict().items():
+            getattr(ax, func)(**args)
+
+        if plot_config.show_ratio:
+            ratio_ax.set_xlabel("DNN score")
+        else:
+            ax.set_xlabel("DNN score")
         # Save lin/log plots
         _, y_max = ax.get_ylim()
+        formats = plot_config.save_format
+        if not isinstance(formats, list):
+            formats = [formats]
         ## save lin
         ax.set_ylim(0, y_max * 1.4)
-        fig.savefig(
-            f"{save_dir}/{file_name}_node_{node}_lin.{plot_config.save_format}"
-        )
+        for fm in formats:
+            fig.savefig(f"{save_dir}/{file_name}_node_{node}_lin.{fm}")
         ## save log
         ax.set_yscale("log")
         ax.set_ylim(
             plot_config.logy_min,
             y_max * np.power(10, np.log10(y_max / plot_config.logy_min) * 0.8),
         )
-        fig.savefig(
-            f"{save_dir}/{file_name}_node_{node}_log.{plot_config.save_format}"
-        )
+        for fm in formats:
+            fig.savefig(f"{save_dir}/{file_name}_node_{node}_log.{fm}")
 
     return 0  # success run
 
@@ -376,7 +413,11 @@ def plot_train_test_compare(
             else:
                 desc = None
             ampl.plot.draw_atlas_label(
-                0.05, 0.95, ax=ax, **(ac.atlas_label.get_config_dict()), desc=desc
+                0.05,
+                0.95,
+                ax=ax,
+                **(ac.atlas_label.get_config_dict()),
+                desc=desc,
             )
         ax.set_xlabel("DNN score")
         # Save lin/log plots

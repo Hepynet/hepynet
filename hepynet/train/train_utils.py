@@ -305,7 +305,6 @@ def ray_tune(model_wrapper, job_config: ht.config, resume: bool = False):
     tuner = job_config.tune.clone().tuner
     log_dir = pathlib.Path(job_config.run.save_sub_dir) / "tmp_log"
     log_dir.mkdir(parents=True, exist_ok=True)
-
     # set up config
     config = get_hypers_tune(job_config)
     # set up scheduler
@@ -350,7 +349,6 @@ def ray_tune(model_wrapper, job_config: ht.config, resume: bool = False):
     if not "raise_on_failed_trial" in run_config:
         run_config["raise_on_failed_trial"] = False
     tune_func = getattr(hep_model, model_wrapper._tune_fun_name)
-
     # start tuning jobs
     if os.name == "posix":
         logger.info(f"Ignoring tune.tmp.tmp_dir setting on Unix OS")

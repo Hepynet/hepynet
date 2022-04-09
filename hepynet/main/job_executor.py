@@ -120,8 +120,10 @@ class job_executor(object):
         # Prepare tmp inputs
         feedbox = feed_box.Feedbox(self.job_config.clone())
         ## get input
-        #input_df = feedbox.get_processed_df(keep_unreset=True) #KeyError: 'RESET_FEATURE_NAME_DEF' from out_df
-        input_df = feedbox.get_processed_df()
+        if ic.reset_feature:
+            input_df = feedbox.get_processed_df(keep_unreset=True)
+        else:
+            input_df = feedbox.get_processed_df()
         cols = ic.selected_features
         ## load and save train/test
         train_index = (
@@ -260,6 +262,11 @@ class job_executor(object):
             train_history.plot_history(
                 self.model_wrapper, self.job_config, save_dir=rc.save_dir
             )
+        ## input statistics
+        if ac.show_input_stats:
+            logger.info("Calculating input statistics.")
+            evaluate_utils.get_input_statistics(df_raw, self.job_config)
+
         ## input kinematic plots
         if ac.book_kine:
             logger.info("Plotting input (raw) distributions.")
