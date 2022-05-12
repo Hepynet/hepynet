@@ -38,6 +38,13 @@ class Hepy_Config(object):
                 )
                 raise ValueError
 
+    def __getitem__(self, item):
+        return getattr(self, item)
+
+    def __iter__(self):
+        for key, val in self.items():
+            yield (key, val)
+
     def clone(self):
         return copy.deepcopy(self)
 
@@ -65,7 +72,7 @@ class Hepy_Config(object):
                 if key in self.__dict__.keys():
                     getattr(self, key).update(value)
                 else:
-                    setattr(self, key, Hepy_Config_Section(value))
+                    setattr(self, str(key), Hepy_Config_Section(value))
             elif value is None:
                 pass
             else:
@@ -75,8 +82,7 @@ class Hepy_Config(object):
                 raise ValueError
 
     def print(self) -> None:
-        """Shows all configs
-        """
+        """Shows all configs"""
         print("")
         print("Config details " + ">" * 80)
         for key, value in self.__dict__.items():
@@ -85,6 +91,15 @@ class Hepy_Config(object):
         print("Config ends " + "<" * 83)
         print("")
 
+    def keys(self):
+        return self.get_config_dict().keys()
+
+    def values(self):
+        return self.get_config_dict().values()
+
+    def items(self):
+        return self.get_config_dict().items()
+
 
 class Hepy_Config_Section(object):
     """Helper class to handle job configs in a section"""
@@ -92,9 +107,9 @@ class Hepy_Config_Section(object):
     def __init__(self, section_config_dict: dict) -> None:
         for key, value in section_config_dict.items():
             if type(value) is dict:
-                setattr(self, key, Hepy_Config_Section(value))
+                setattr(self, str(key), Hepy_Config_Section(value))
             else:
-                setattr(self, key, value)
+                setattr(self, str(key), value)
 
     def __deepcopy__(self, memo):
         clone_obj = Hepy_Config_Section(self.get_config_dict())
@@ -103,6 +118,13 @@ class Hepy_Config_Section(object):
     def __getattr__(self, item):
         """Called when an attribute lookup has not found the attribute in the usual places"""
         return None
+
+    def __getitem__(self, item):
+        return getattr(self, item)
+
+    def __iter__(self):
+        for key, val in self.items():
+            yield (key, val)
 
     def clone(self):
         return copy.deepcopy(self)
@@ -133,13 +155,12 @@ class Hepy_Config_Section(object):
                 ):
                     getattr(self, key).update(value)
                 else:
-                    setattr(self, key, Hepy_Config_Section(value))
+                    setattr(self, str(key), Hepy_Config_Section(value))
             else:
-                setattr(self, key, value)
+                setattr(self, str(key), value)
 
     def print(self, tabs=0) -> None:
-        """Shows all section configs
-        """
+        """Shows all section configs"""
         for key, value in self.__dict__.items():
             if key != "_config_dict":
                 if isinstance(value, Hepy_Config_Section):
@@ -151,6 +172,15 @@ class Hepy_Config_Section(object):
                         print(f"{' '*4*tabs}        - {ele}")
                 else:
                     print(f"{' '*4*tabs}    {key} : {value}")
+
+    def keys(self):
+        return self.get_config_dict().keys()
+
+    def values(self):
+        return self.get_config_dict().values()
+
+    def items(self):
+        return self.get_config_dict().items()
 
 
 def load_current_platform_meta() -> dict:

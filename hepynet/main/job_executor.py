@@ -340,7 +340,13 @@ class job_executor(object):
             y_pred, _, _ = evaluate_utils.k_folds_predict(
                 self.model_wrapper.get_model(), df[ic.selected_features].values
             )
-            df.loc[:, "y_pred"] = y_pred
+            if tc.use_multi_label:
+                for node in range(
+                    len(ic.multi_label.keys())
+                ):  # node is just an index
+                    df[f"y_pred_{node}"] = y_pred[:, node]
+            else:
+                df.loc[:, "y_pred_0"] = y_pred
 
             # metrics (PR, ROC, confusion matrix)
             if ac.book_confusion_matrix or ac.book_roc or ac.book_pr:
@@ -364,11 +370,17 @@ class job_executor(object):
             if ac.book_significance_scan:
                 if ac.significance_raw_weight:
                     significance.plot_significance_scan(
-                        df, df_raw, self.job_config, epoch_subdir #Use df_raw for s_b calculation
+                        df,
+                        df_raw,
+                        self.job_config,
+                        epoch_subdir,  # Use df_raw for s_b calculation
                     )
                 else:
                     significance.plot_significance_scan(
-                        df, df, self.job_config, epoch_subdir #Use df_raw for s_b calculation
+                        df,
+                        df,
+                        self.job_config,
+                        epoch_subdir,  # Use df_raw for s_b calculation
                     )
             # kinematics with DNN cuts
             if ac.book_cut_kine_study:

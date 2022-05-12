@@ -93,12 +93,12 @@ def get_significances(
     # prepare signal
     sig_df = array_utils.extract_sig_df(df)
     sig_df_raw = array_utils.extract_sig_df(df_raw)
-    sig_predictions = sig_df[["y_pred"]].values
+    sig_predictions = sig_df[["y_pred_0"]].values
     sig_predictions = sig_predictions[:, multi_class_cut_branch]
     # prepare background
     bkg_df = array_utils.extract_bkg_df(df)
     bkg_df_raw = array_utils.extract_bkg_df(df_raw)
-    bkg_predictions = bkg_df[["y_pred"]].values
+    bkg_predictions = bkg_df[["y_pred_0"]].values
     bkg_predictions = bkg_predictions[:, multi_class_cut_branch]
     # prepare thresholds
     bin_array = np.array(range(-1000, 1000))

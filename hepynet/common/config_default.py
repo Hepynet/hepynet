@@ -49,6 +49,7 @@ DEFAULT_CFG = {
         "cut_types": [],
         "cut_expression": None,
         "test_rate": 0.2,
+        "multi_label": {},
     },
     "tune": {
         "tuner": {
@@ -119,6 +120,7 @@ DEFAULT_CFG = {
     "train": {
         "model_name": "MODEL_NAME_DEF",
         "model_class": "Model_Sequential_Flat",
+        "use_multi_label": True,
         "output_bkg_node_names": [],
         "layers": 1,
         "nodes": 1,
@@ -131,6 +133,7 @@ DEFAULT_CFG = {
         "dropout_rate": 0,
         "sig_class_weight": 1,
         "bkg_class_weight": 1,
+        "class_weight": None,
         "val_split": 0.25,
         "k_folds": None,
         "use_early_stop": False,

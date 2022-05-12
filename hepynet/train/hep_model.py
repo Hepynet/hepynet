@@ -47,8 +47,7 @@ def plain_acc(y_true, y_pred):
 
 
 class Model_Base(object):
-    """Base model of deep neural network
-    """
+    """Base model of deep neural network"""
 
     def __init__(self, job_config: ht.config):
         self._job_config = job_config.clone()
@@ -129,7 +128,9 @@ class Model_Base(object):
             if model_path.exists():
                 fold_model = keras.models.load_model(
                     model_path,
-                    custom_objects={"plain_acc": plain_acc,},
+                    custom_objects={
+                        "plain_acc": plain_acc,
+                    },
                     compile=False,
                 )  # it's important to specify custom_objects
                 self._model.append(fold_model)
@@ -263,6 +264,7 @@ class Model_Sequential_Base(Model_Base):
 
     def get_hypers(self):
         """Gets a dictionary of hyper-parameters that defines a training"""
+        ic = self._job_config.input.clone()
         tc = self._job_config.train.clone()
         hypers = {
             # hypers for building model
@@ -276,6 +278,8 @@ class Model_Sequential_Base(Model_Base):
             "learn_rate_decay": tc.learn_rate_decay,
             "momentum": tc.momentum,
             "nesterov": tc.nesterov,
+            "multi_label": ic.multi_label.get_config_dict(),
+            "class_weight": tc.class_weight,
             # hypers for training
             "val_split": tc.val_split,
             "batch_size": tc.batch_size,
@@ -392,7 +396,6 @@ class Model_Sequential_Base(Model_Base):
             val_x_fold = x_train[val_index]
             val_y_fold = y_train[val_index]
             val_wt_fold = wt_train[val_index]
-            val_fold = (val_x_fold, val_y_fold, val_wt_fold)
             unique, counts = np.unique(y_fold, return_counts=True)
             logger.info(
                 f"> Training on {len(y_fold)} events -> composition: {dict(zip(unique, counts))}"
@@ -401,17 +404,35 @@ class Model_Sequential_Base(Model_Base):
             logger.info(
                 f"> Validating on {len(val_y_fold)} events -> composition: {dict(zip(unique, counts))}"
             )
+            # Process category for multiclass
+            class_weight = None
+            if tc.use_multi_label:
+                logger.info("Preprocessing for multiclass")
+                num_classes = len(hypers["multi_label"])
+                print("#### y shape", y_fold.shape)
+                print("#### num_classes", num_classes)
+                y_fold = tf.keras.utils.to_categorical(y_fold, num_classes=num_classes)
+                print("#### y shape", y_fold.shape)
+                y_test = tf.keras.utils.to_categorical(y_test, num_classes=num_classes)
+                val_y_fold = tf.keras.utils.to_categorical(val_y_fold, num_classes=num_classes)
+            else:
+                class_weight = {
+                    1: hypers["sig_class_weight"],
+                    0: hypers["bkg_class_weight"],
+                }
+            if hypers["class_weight"] is not None:
+                class_weight = hypers["class_weight"]
+            # Train
+            print("#### x shape", x_fold.shape)
+            print("#### y shape", y_fold.shape)
             history_obj = fold_model.fit(
                 x_fold,
                 y_fold,
                 batch_size=hypers["batch_size"],
                 epochs=hypers["epochs"],
-                validation_data=val_fold,
+                validation_data=(val_x_fold, val_y_fold, val_wt_fold),
                 shuffle=True,
-                class_weight={
-                    1: hypers["sig_class_weight"],
-                    0: hypers["bkg_class_weight"],
-                },
+                class_weight=class_weight,
                 sample_weight=wt_fold,
                 callbacks=self.get_train_callbacks(fold_num=fold_num),
                 verbose=verbose,
@@ -420,7 +441,10 @@ class Model_Sequential_Base(Model_Base):
             # evaluation
             logger.info("Evaluate with test dataset:")
             score = fold_model.evaluate(
-                x_test, y_test, verbose=verbose, sample_weight=wt_test,
+                x_test,
+                y_test,
+                verbose=verbose,
+                sample_weight=wt_test,
             )
             if not isinstance(score, Iterable):
                 logger.info(f"> test loss: {score}")
@@ -477,17 +501,24 @@ class Model_Sequential_Flat(Model_Sequential_Base):
             if hypers["dropout_rate"] != 0:
                 fold_model.add(Dropout(hypers["dropout_rate"]))
         # output layer
-        if hypers["output_bkg_node_names"]:
-            num_nodes_out = len(hypers["output_bkg_node_names"]) + 1
+        if hypers["multi_label"]:
+            num_nodes_out = len(hypers["multi_label"])
+            fold_model.add(
+                Dense(
+                    num_nodes_out,
+                    kernel_initializer="glorot_uniform",
+                    activation="softmax",
+                )
+            )
         else:
             num_nodes_out = 1
-        fold_model.add(
-            Dense(
-                num_nodes_out,
-                kernel_initializer="glorot_uniform",
-                activation="sigmoid",
+            fold_model.add(
+                Dense(
+                    num_nodes_out,
+                    kernel_initializer="glorot_uniform",
+                    activation="sigmoid",
+                )
             )
-        )
         # Compile
         # transfer self-defined metrics into real function
         metrics = copy.deepcopy(hypers["train_metrics"])
@@ -621,7 +652,10 @@ def tune_Model_Sequential_Flat(
             epoch_report[metric] = history_obj.history[metric][-1]
 
         train_utils.calculate_custom_tune_metrics(
-            model, config, epoch_report, last_report=last_report,
+            model,
+            config,
+            epoch_report,
+            last_report=last_report,
         )
 
         epoch_report["epoch_num"] = epoch_id + 1

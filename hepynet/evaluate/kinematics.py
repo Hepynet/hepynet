@@ -181,8 +181,8 @@ def plot_input_dnn(
     bkg_wt = bkg_df_raw["weight"].to_numpy("float32")
     sig_wt = sig_df_raw["weight"].to_numpy("float32")
     # get predictions
-    bkg_pred = array_utils.extract_bkg_df(df)[["y_pred"]].to_numpy("float32")
-    sig_pred = array_utils.extract_sig_df(df)[["y_pred"]].to_numpy("float32")
+    bkg_pred = array_utils.extract_bkg_df(df)[["y_pred_0"]].to_numpy("float32")
+    sig_pred = array_utils.extract_sig_df(df)[["y_pred_0"]].to_numpy("float32")
     # normalize
     if plot_cfg.density:
         bkg_wt = bkg_wt / np.sum(bkg_wt)

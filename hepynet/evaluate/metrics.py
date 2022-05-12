@@ -9,8 +9,12 @@ import numpy as np
 import pandas as pd
 import yaml
 from seaborn.matrix import heatmap
-from sklearn.metrics import (classification_report, confusion_matrix,
-                             precision_recall_curve, roc_curve)
+from sklearn.metrics import (
+    classification_report,
+    confusion_matrix,
+    precision_recall_curve,
+    roc_curve,
+)
 
 import hepynet.common.hepy_type as ht
 
@@ -24,38 +28,51 @@ def make_metrics_plot(
     save_dir: ht.pathlike,
 ):
     """Plots PR curve."""
+    ic = job_config.input.clone()
+    tc = job_config.train.clone()
     ac = job_config.apply.clone()
     if ac.sample_large_inputs and df.shape[0] > ac.metric_max_events:
         logger.warn(
             f"Too large input detected ({df.shape[0]} rows), randomly sampling {ac.metric_max_events} rows for metrics calculation"
         )
         df = df.sample(n=ac.metric_max_events)
-        df_raw =df_raw.loc[df.index]
+        df_raw = df_raw.loc[df.index]
     train_index = df["is_train"] == True
     test_index = df["is_train"] == False
-    y_train = df.loc[train_index, ["y"]].values
-    y_train_pred = df.loc[train_index, ["y_pred"]].values
-    y_test = df.loc[test_index, ["y"]].values
-    y_test_pred = df.loc[test_index, ["y_pred"]].values
     wt_raw_train = df_raw.loc[train_index, "weight"].values  # need raw weights
     wt_raw_test = df_raw.loc[test_index, "weight"].values
-    train_inputs = (y_train, y_train_pred, wt_raw_train)
-    test_inputs = (y_test, y_test_pred, wt_raw_test)
-
     save_dir = pathlib.Path(save_dir) / "metrics"
     save_dir.mkdir(parents=True, exist_ok=True)
-    if ac.book_confusion_matrix:
-        make_confusion_matrix_plot(
-            train_inputs, test_inputs, job_config, save_dir
-        )
-    if ac.book_pr:
-        make_pr_curve_plot(train_inputs, test_inputs, job_config, save_dir)
-    if ac.book_roc:
-        roc_auc = make_roc_curve_plot(train_inputs, test_inputs, job_config, save_dir)
-        #roc_auc = {ky: int(val) for ky, val in roc_auc.items()}
-        with open(save_dir / "roc_auc.yaml", "w") as f:
-            yaml.dump({"roc_auc": roc_auc}, f, default_flow_style=False)
+    # Loop over all nodes
+    n_nodes = 1
+    all_nodes = [1]
+    if tc.use_multi_label:
+        all_nodes = list(ic.multi_label.keys())
+        n_nodes = len(all_nodes)
+    for node in range(n_nodes):
+        node_label = all_nodes[node]
+        y_train = (df.loc[train_index, ["y"]].values == node_label).astype(int)
+        y_train_pred = df.loc[train_index, [f"y_pred_{node}"]].values
+        y_test = (df.loc[test_index, ["y"]].values == node_label).astype(int)
+        y_test_pred = df.loc[test_index, [f"y_pred_{node}"]].values
+        train_inputs = (y_train, y_train_pred, wt_raw_train)
+        test_inputs = (y_test, y_test_pred, wt_raw_test)
 
+        if ac.book_confusion_matrix:
+            make_confusion_matrix_plot(
+                train_inputs, test_inputs, job_config, save_dir
+            )
+        if ac.book_pr:
+            make_pr_curve_plot(
+                train_inputs, test_inputs, job_config, save_dir, tag=node
+            )
+        if ac.book_roc:
+            roc_auc = make_roc_curve_plot(
+                train_inputs, test_inputs, job_config, save_dir, tag=node
+            )
+            # roc_auc = {ky: int(val) for ky, val in roc_auc.items()}
+            with open(save_dir / f"roc_auc_{node}.yaml", "w") as f:
+                yaml.dump({"roc_auc": roc_auc}, f, default_flow_style=False)
 
 
 def make_confusion_matrix_plot(
@@ -136,6 +153,7 @@ def make_pr_curve_plot(
     test_inputs: Tuple[np.ndarray],
     job_config: ht.config,
     save_dir: ht.pathlike,
+    tag: int = 0,
 ):
     """Plots PR curve."""
     logger.info("Plotting train/test PR curve.")
@@ -196,11 +214,11 @@ def make_pr_curve_plot(
             0.05, 0.95, ax=ax, **(ac.atlas_label.get_config_dict())
         )
     ## save linear scale plot
-    fig.savefig(save_dir / "pr_linear.png")
+    fig.savefig(save_dir / f"pr_{tag}.linear.png")
     ## log scale x
     ax.set_xlim(1e-5, 1)
     ax.set_xscale("log")
-    fig.savefig(save_dir / "pr_logx.png")
+    fig.savefig(save_dir / f"pr_{tag}.logx.png")
     return auc_dict
 
 
@@ -209,6 +227,7 @@ def make_roc_curve_plot(
     test_inputs: Tuple[np.ndarray],
     job_config: ht.config,
     save_dir: ht.pathlike,
+    tag: int = 0,
 ):
     """Plots ROC curve."""
     logger.info("Plotting train/test ROC curve.")
@@ -269,11 +288,11 @@ def make_roc_curve_plot(
             0.05, 0.95, ax=ax, **(ac.atlas_label.get_config_dict())
         )
     ## save linear scale plot
-    fig.savefig(save_dir / "roc_linear.png")
+    fig.savefig(save_dir / f"roc_{tag}.linear.png")
     ## log scale x
     ax.set_xlim(1e-5, 1)
     ax.set_xscale("log")
-    fig.savefig(save_dir / "roc_logx.png")
+    fig.savefig(save_dir / f"roc_{tag}.logx.png")
     return auc_dict
 
 

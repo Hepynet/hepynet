@@ -188,11 +188,16 @@ class Feedbox(object):
                 p=(1 / sump) * ref_weight_positive.to_numpy("float32"),
             )
             out_df.loc[out_df["is_sig"] == False, physic_para] = reset_values
-
         # set y
-        logger.info("> Setting up y values")
         out_df.loc[:, "y"] = 0
-        out_df.loc[out_df["is_sig"] == True, "y"] = 1
+        if ic.multi_label:
+            logger.info("> Setting up multi-label y")
+            for label, processes in ic.multi_label.items():
+                for process in processes:
+                    out_df.loc[out_df["sample_name"] == process, "y"] = label
+        else:
+            logger.info("> Setting up binary-label y")
+            out_df.loc[out_df["is_sig"] == True, "y"] = 1
         # tag train / test
         logger.info("> Tagging train / test")
         sss = StratifiedShuffleSplit(n_splits=1, test_size=ic.test_rate)

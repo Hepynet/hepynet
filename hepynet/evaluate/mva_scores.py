@@ -37,7 +37,7 @@ def plot_mva_scores(
         else:
             sig_name = item_info[0]
         sig_score = df.loc[
-            df["sample_name"].isin(sig_samples), "y_pred"
+            df["sample_name"].isin(sig_samples), "y_pred_0"
         ].values
         if sig_score.ndim == 1:
             sig_score = sig_score.reshape((-1, 1))
@@ -59,7 +59,7 @@ def plot_mva_scores(
         else:
             bkg_name = item_info[0]
         bkg_score = df.loc[
-            df["sample_name"].isin(bkg_samples), "y_pred"
+            df["sample_name"].isin(bkg_samples), "y_pred_0"
         ].values
         if bkg_score.ndim == 1:
             bkg_score = bkg_score.reshape((-1, 1))
@@ -71,7 +71,7 @@ def plot_mva_scores(
     # prepare data
     if plot_config.apply_data:
         data_key = plot_config.data_key
-        data_scores = df.loc[df["sample_name"] == data_key, "y_pred"].values
+        data_scores = df.loc[df["sample_name"] == data_key, "y_pred_0"].values
         if data_scores.ndim == 1:
             data_scores = data_scores.reshape((-1, 1))
         data_weights = df_raw.loc[
@@ -325,27 +325,43 @@ def plot_train_test_compare(
     """Plots train/test datasets' cores distribution comparison"""
     # initialize
     logger.info("Plotting train/test scores.")
+    ic = job_config.input.clone()
     tc = job_config.train.clone()
     ac = job_config.apply.clone()
     plot_config = job_config.apply.cfg_train_test_compare
-    all_nodes = ["sig"] + tc.output_bkg_node_names
+    if tc.use_multi_label:
+        all_nodes = ic.multi_label.keys()
+    else:
+        all_nodes = [1]
+
     # get inputs
     train_index = df["is_train"] == True
     test_index = df["is_train"] == False
     sig_index = (df["is_sig"] == True) & (df["is_mc"] == True)
     bkg_index = (df["is_sig"] == False) & (df["is_mc"] == True)
-    xs_train_scores = df.loc[sig_index & train_index, ["y_pred"]].values
-    xs_test_scores = df.loc[sig_index & test_index, ["y_pred"]].values
+    # get weights
     xs_train_weight = df.loc[sig_index & train_index, ["weight"]].values
     xs_test_weight = df.loc[sig_index & test_index, ["weight"]].values
-    xb_train_scores = df.loc[bkg_index & train_index, ["y_pred"]].values
-    xb_test_scores = df.loc[bkg_index & test_index, ["y_pred"]].values
     xb_train_weight = df.loc[bkg_index & train_index, ["weight"]].values
     xb_test_weight = df.loc[bkg_index & test_index, ["weight"]].values
 
     # plot for each nodes
     num_nodes = len(all_nodes)
     for node_num in range(num_nodes):
+        # get scores
+        xs_train_scores = df.loc[
+            sig_index & train_index, [f"y_pred_{node_num}"]
+        ].values
+        xs_test_scores = df.loc[
+            sig_index & test_index, [f"y_pred_{node_num}"]
+        ].values
+        xb_train_scores = df.loc[
+            bkg_index & train_index, [f"y_pred_{node_num}"]
+        ].values
+        xb_test_scores = df.loc[
+            bkg_index & test_index, [f"y_pred_{node_num}"]
+        ].values
+        # Plot
         fig, ax = plt.subplots()
         # plot test scores
         bkg_bins, bkg_edges = np.histogram(
