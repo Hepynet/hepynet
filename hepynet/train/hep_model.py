@@ -50,6 +50,7 @@ class Model_Base(object):
     """Base model of deep neural network"""
 
     def __init__(self, job_config: ht.config):
+        # Define member variables
         self._job_config = job_config.clone()
         self._model_create_time = str(datetime.datetime.now())
         self._model_is_compiled = False
@@ -59,12 +60,18 @@ class Model_Base(object):
         self._model_name = self._job_config.train.model_name
         self._model_save_path = None
         self._train_history = list()
-
+        self._model_meta = {
+            "norm_dict": None,
+        }
+        # Check k-folds number
         num_folds = self._job_config.train.k_folds
         if isinstance(num_folds, int) and num_folds >= 2:
             self._num_folds = num_folds
         else:
             self._num_folds = 1
+        # Check multi-label
+        ml = self._job_config.input.multi_label.get_config_dict()
+        self._n_labels = len(ml) if ml else 1
 
     def build(self):
         logger.warn(
@@ -110,7 +117,7 @@ class Model_Base(object):
         feedbox = feed_box.Feedbox(job_config, norm_dict=norm_dict)
         self._model_meta["norm_dict"] = copy.deepcopy(feedbox.get_norm_dict())
         self._feedbox = feedbox
-        self._array_prepared = feedbox._array_prepared
+        self._feedbox_prepared = feedbox._prepared
 
     def load_model(self, epoch: Optional[int] = None):
         """Loads saved model."""
@@ -174,17 +181,18 @@ class Model_Base(object):
             self._train_history[fold_num] = fold_paras_dict["train_history"]
 
     def save_model(
-        self, file_name: Optional[str] = None, fold_num: Optional[int] = None
+        self,
+        file_name: Optional[str] = None,
+        fold_num: Optional[int] = None,
     ):
         """Saves trained model."""
         # Define save path
         save_dir = self.get_model_save_dir(fold_num=fold_num)
         if file_name is None:
             file_name = self._model_name
-        # Check path
-        save_path = f"{save_dir}/{file_name}.h5"
-        pathlib.Path(save_dir).mkdir(parents=True, exist_ok=True)
         # Save
+        pathlib.Path(save_dir).mkdir(parents=True, exist_ok=True)
+        save_path = f"{save_dir}/{file_name}.h5"
         if fold_num is not None:
             self._model[fold_num].save(save_path)
         else:
@@ -196,11 +204,13 @@ class Model_Base(object):
         self._model_is_saved = True
 
     def save_model_paras(
-        self, file_name: Optional[str] = None, fold_num: Optional[int] = None
+        self,
+        file_name: Optional[str] = None,
+        fold_num: Optional[int] = None,
     ):
         """Save model parameters to yaml file."""
         rc = self._job_config.run.clone()
-        # prepare paras
+        # Prepare paras
         paras_dict = dict()
         model_meta_save = copy.deepcopy(self._model_meta)
         model_meta_save["model_name"] = self._model_name
@@ -212,7 +222,7 @@ class Model_Base(object):
         model_meta_save["model_is_trained"] = self._model_is_trained
         paras_dict["model_meta"] = model_meta_save
         paras_dict["train_history"] = self._train_history[fold_num]
-        # save to file
+        # Save to file
         save_dir = self.get_model_save_dir(fold_num=fold_num)
         if file_name is None:
             file_name = self._model_name
@@ -220,7 +230,6 @@ class Model_Base(object):
         with open(save_path, "w") as write_file:
             yaml.dump(paras_dict, write_file, indent=2)
         logger.debug(f"model parameters has been saved to: {save_path}")
-
         norm_dict_path = (
             pathlib.Path(rc.save_sub_dir) / "models" / "norm_dict.yaml"
         )
@@ -243,51 +252,14 @@ class Model_Sequential_Base(Model_Base):
         self._model_label = "mod_seq_base"
         self._model_note = "Basic sequential model."
         self._model_input_dim = len(ic.selected_features)
-        if isinstance(tc.k_folds, int) and tc.k_folds >= 2:
-            self._num_folds = tc.k_folds
-            models = list()
-            for _ in range(tc.k_folds):
-                models.append(Sequential())
-            self._model = models
-        else:
-            self._num_folds = 1
-            self._model = [Sequential()]
+        # Set models according to the number of folds
+        self._model = [Sequential() for _ in range(self._num_folds)]
         self._train_history = [None] * self._num_folds
         # Arrays
-        self._array_prepared = False
-        self._model_meta = {
-            "norm_dict": None,
-        }
+        self._feedbox_prepared = False
         # Report
         self._save_tb_logs = tc.save_tb_logs
         self._tb_logs_path = tc.tb_logs_path
-
-    def get_hypers(self):
-        """Gets a dictionary of hyper-parameters that defines a training"""
-        ic = self._job_config.input.clone()
-        tc = self._job_config.train.clone()
-        hypers = {
-            # hypers for building model
-            "layers": tc.layers,
-            "nodes": tc.nodes,
-            "dropout_rate": tc.dropout_rate,
-            "output_bkg_node_names": tc.output_bkg_node_names,
-            "train_metrics": tc.train_metrics,
-            "train_metrics_weighted": tc.train_metrics_weighted,
-            "learn_rate": tc.learn_rate,
-            "learn_rate_decay": tc.learn_rate_decay,
-            "momentum": tc.momentum,
-            "nesterov": tc.nesterov,
-            "multi_label": ic.multi_label.get_config_dict(),
-            "class_weight": tc.class_weight,
-            # hypers for training
-            "val_split": tc.val_split,
-            "batch_size": tc.batch_size,
-            "epochs": tc.epochs,
-            "sig_class_weight": tc.sig_class_weight,
-            "bkg_class_weight": tc.bkg_class_weight,
-        }
-        return hypers
 
     def get_inputs(
         self,
@@ -311,7 +283,6 @@ class Model_Sequential_Base(Model_Base):
         if ic.rm_negative_weight_events == True:
             wt_train = wt_train.clip(min=0)
             wt_test = wt_test.clip(min=0)
-
         return {
             "train": (x_train, y_train, wt_train),
             "test": (x_test, y_test, wt_test),
@@ -357,14 +328,13 @@ class Model_Sequential_Base(Model_Base):
         if not self._model_is_compiled:
             logger.critical("DNN model is not yet built, rebuilding")
             self.build()
-        if not self._array_prepared:
+        if not self._feedbox_prepared:
             logger.critical("Training data is not ready, pleas set up inputs")
             exit(1)
         # Prepare
         tc = self._job_config.train.clone()
         input_dict = self.get_inputs()
         model = self.get_model()
-        hypers = self.get_hypers()
         n_folds = self._num_folds
         verbose = tc.verbose
         # Input
@@ -377,7 +347,7 @@ class Model_Sequential_Base(Model_Base):
             train_index_list,
             validation_index_list,
         ) = train_utils.get_train_val_indices(
-            y_train, y_train, wt_train, hypers["val_split"], k_folds=tc.k_folds
+            y_train, y_train, wt_train, tc.val_split, k_folds=tc.k_folds
         )
         for fold_num in range(n_folds):
             logger.info(f"Training start. Using model: {self._model_name}")
@@ -408,28 +378,26 @@ class Model_Sequential_Base(Model_Base):
             class_weight = None
             if tc.use_multi_label:
                 logger.info("Preprocessing for multiclass")
-                num_classes = len(hypers["multi_label"])
-                print("#### y shape", y_fold.shape)
-                print("#### num_classes", num_classes)
-                y_fold = tf.keras.utils.to_categorical(y_fold, num_classes=num_classes)
-                print("#### y shape", y_fold.shape)
-                y_test = tf.keras.utils.to_categorical(y_test, num_classes=num_classes)
-                val_y_fold = tf.keras.utils.to_categorical(val_y_fold, num_classes=num_classes)
+                y_fold = tf.keras.utils.to_categorical(
+                    y_fold, num_classes=self._n_labels
+                )
+                y_test = tf.keras.utils.to_categorical(
+                    y_test, num_classes=self._n_labels
+                )
+                val_y_fold = tf.keras.utils.to_categorical(
+                    val_y_fold, num_classes=self._n_labels
+                )
             else:
-                class_weight = {
-                    1: hypers["sig_class_weight"],
-                    0: hypers["bkg_class_weight"],
-                }
-            if hypers["class_weight"] is not None:
-                class_weight = hypers["class_weight"]
+                class_weight = {1: tc.sig_class_weight, 0: tc.bkg_class_weight}
+            # Overwrite with class_weight if specified
+            if tc.class_weight is not None:
+                class_weight = tc.class_weight
             # Train
-            print("#### x shape", x_fold.shape)
-            print("#### y shape", y_fold.shape)
             history_obj = fold_model.fit(
                 x_fold,
                 y_fold,
-                batch_size=hypers["batch_size"],
-                epochs=hypers["epochs"],
+                batch_size=tc.batch_size,
+                epochs=tc.epochs,
                 validation_data=(val_x_fold, val_y_fold, val_wt_fold),
                 shuffle=True,
                 class_weight=class_weight,
@@ -464,26 +432,25 @@ class Model_Sequential_Flat(Model_Sequential_Base):
 
     def __init__(self, job_config):
         super().__init__(job_config)
-
         self._model_label = "mod_seq"
         self._model_note = "Sequential model with flexible layers and nodes."
         self._tune_fun_name = "tune_Model_Sequential_Flat"
 
     def build(self):
-        hypers = self.get_hypers()
         for fold_num in range(self._num_folds):
             fold_model = self._model[fold_num]
-            self.build_single(fold_model, hypers)
+            self.build_single(fold_model)
         self._model_is_compiled = True
 
-    def build_single(self, fold_model, hypers):
+    def build_single(self, fold_model):
+        tc = self._job_config.train
         # Add layers
-        for layer in range(int(hypers["layers"])):
+        for layer in range(tc.layers):
             # input layer
             if layer == 0:
                 fold_model.add(
                     Dense(
-                        hypers["nodes"],
+                        tc.nodes,
                         kernel_initializer="glorot_uniform",
                         activation="relu",
                         input_dim=self._model_input_dim,
@@ -493,36 +460,29 @@ class Model_Sequential_Flat(Model_Sequential_Base):
             else:
                 fold_model.add(
                     Dense(
-                        hypers["nodes"],
+                        tc.nodes,
                         kernel_initializer="glorot_uniform",
                         activation="relu",
                     )
                 )
-            if hypers["dropout_rate"] != 0:
-                fold_model.add(Dropout(hypers["dropout_rate"]))
-        # output layer
-        if hypers["multi_label"]:
-            num_nodes_out = len(hypers["multi_label"])
-            fold_model.add(
-                Dense(
-                    num_nodes_out,
-                    kernel_initializer="glorot_uniform",
-                    activation="softmax",
-                )
+            if tc.dropout_rate != 0:
+                fold_model.add(Dropout(tc.dropout_rate))
+        # Output layer
+        if self._n_labels == 1:
+            activation = "sigmoid"
+        elif self._n_labels > 1:
+            activation = "softmax"
+        fold_model.add(
+            Dense(
+                self._n_labels,
+                kernel_initializer="glorot_uniform",
+                activation=activation,
             )
-        else:
-            num_nodes_out = 1
-            fold_model.add(
-                Dense(
-                    num_nodes_out,
-                    kernel_initializer="glorot_uniform",
-                    activation="sigmoid",
-                )
-            )
+        )
         # Compile
         # transfer self-defined metrics into real function
-        metrics = copy.deepcopy(hypers["train_metrics"])
-        weighted_metrics = copy.deepcopy(hypers["train_metrics_weighted"])
+        metrics = copy.deepcopy(tc.train_metrics)
+        weighted_metrics = copy.deepcopy(tc.train_metrics_weighted)
         if "plain_acc" in metrics:
             index = metrics.index("plain_acc")
             metrics[index] = plain_acc
@@ -536,10 +496,10 @@ class Model_Sequential_Flat(Model_Sequential_Base):
         fold_model.compile(
             loss="binary_crossentropy",
             optimizer=SGD(
-                lr=hypers["learn_rate"],
-                decay=hypers["learn_rate_decay"],
-                momentum=hypers["momentum"],
-                nesterov=hypers["nesterov"],
+                lr=tc.learn_rate,
+                decay=tc.learn_rate_decay,
+                momentum=tc.momentum,
+                nesterov=tc.nesterov,
             ),
             metrics=metrics,
             weighted_metrics=weighted_metrics,

@@ -15,23 +15,32 @@ def execute():
     parser.add_argument(
         "-d",
         "--debug",
+        action="store_true",
         required=False,
         help="run in debug mode",
-        action="store_true",
     )
     parser.add_argument(
         "-r",
         "--resume",
+        action="store_true",
         required=False,
         help="resume (tune) job",
-        action="store_true",
     )
     parser.add_argument(
         "-t",
         "--time",
+        action="store_true",
         required=False,
         help="display time",
-        action="store_true",
+    )
+    parser.add_argument(
+        "-n",
+        "--num_events",
+        action="store",
+        default=-1,
+        type=int,
+        required=False,
+        help="number of events to run, default is -1 to run all",
     )
     parser.add_argument(
         "-v",
@@ -76,7 +85,7 @@ def execute():
             logger.info(f"Executing: {yaml_cfg}")
             time.sleep(2)
             job_start_time = time.perf_counter()
-            executor = job_executor.job_executor(yaml_cfg)
+            executor = job_executor.job_executor(yaml_cfg, args)
             executor.execute_jobs(resume=args.resume)
             job_end_time = time.perf_counter()
             time_consumed = job_end_time - job_start_time

@@ -288,7 +288,6 @@ DEFAULT_CFG = {
     },
     "run": {
         "datestr": "",
-        "config_collected": False,
         "input_dim": None,
     },
 }

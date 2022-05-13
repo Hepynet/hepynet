@@ -1,3 +1,4 @@
+import argparse
 import datetime
 import logging
 import pathlib
@@ -33,41 +34,36 @@ logger = logging.getLogger("hepynet")
 class job_executor(object):
     """Core class to execute a pdnn job based on given cfg file."""
 
-    def __init__(self, yaml_config_path: ht.pathlike):
+    def __init__(
+        self,
+        yaml_config_path: ht.pathlike,
+        cmd_args: argparse.Namespace,
+    ):
         """Initialize executor."""
         self.job_config = None
+        self.cmd_args = cmd_args
         self.get_config(yaml_config_path)
-        # Set up global plot style and color cycle
+        self.set_plot_style()
+
+    def set_plot_style(self):
+        """Set plot style."""
         ampl.use_atlas_style(usetex=False)
         color_cycle = self.job_config.apply.color_cycle
         default_cycler = cycler(color=color_cycle)
         plt.rc("axes", prop_cycle=default_cycler)
 
     def execute_jobs(self, resume: bool = False):
-        """Execute all planned jobs.
-
-        TODO: This function is no longer needed as tune job has been designed to
-        be an independent job type. Consider merge with execute_single_job in
-        future.
-
-        """
+        """Execute all planned jobs."""
+        # Prepare
         self.job_config.print()
         self.set_save_dir(resume=resume)
-        # Execute single job if parameter scan is not needed
-        self.execute_single_job(resume=resume)
-
-    def execute_single_job(self, resume: bool = False):
-        """Execute single DNN training with given configuration."""
-        # Prepare
         jc = self.job_config.job
         rc = self.job_config.run
         if jc.job_type == "apply":
             if rc.load_dir == None:
                 rc.load_dir = jc.save_dir
-
         if jc.fix_rdm_seed:
             self.fix_random_seed()
-
         # Check best tuned config overwrite
         if self.job_config.config.best_tune_overwrite:
             logger.info("Overwriting training config with best tuned results")
@@ -77,13 +73,14 @@ class job_executor(object):
             if best_hypers_path.is_file():
                 with open(best_hypers_path, "r") as best_hypers_file:
                     best_hypers = yaml.load(
-                        best_hypers_file, Loader=yaml.FullLoader
+                        best_hypers_file,
+                        Loader=yaml.FullLoader,
                     )
                     self.job_config.train.update(best_hypers)
-
+        # Set model and inputs
         self.set_model()
         self.set_model_input()
-
+        # Execute jobs
         if jc.job_type == "train":
             self.execute_train_job()
         elif jc.job_type == "tune":
@@ -94,7 +91,6 @@ class job_executor(object):
             logger.critical(
                 f"job.job_type must be train or apply, {jc.job_type} is not supported"
             )
-
         # Post procedure
         plt.close("all")
 
@@ -459,7 +455,7 @@ class job_executor(object):
             self.job_config.update(yaml_dict)
         else:
             self.job_config = job_config_temp
-
+        # Set up runtime config
         jc = self.job_config.job
         ic = self.job_config.input
         rc = self.job_config.run
@@ -469,7 +465,7 @@ class job_executor(object):
             rc.datestr = jc.date_str
         if ic.selected_features:
             rc.input_dim = len(ic.selected_features)
-        rc.config_collected = True
+        rc.cmd_args = config_utils.Hepy_Config_Section(vars(self.cmd_args))
 
     def set_model(self):
         logger.info("Setting up model")
@@ -482,6 +478,10 @@ class job_executor(object):
             self.model_wrapper.load_model()
 
     def set_model_input(self):
+        """
+        Sets up model input
+        Note: This function is called after set_model()
+        """
         logger.info("Processing inputs")
         self.model_wrapper.set_inputs(self.job_config)
 
@@ -489,7 +489,6 @@ class job_executor(object):
         """Sets the directory to save the outputs"""
         jc = self.job_config.job
         rc = self.job_config.run
-
         # Determine sub-directory for result saving
         create_new = True
         job_dir_name = jc.job_name
@@ -514,7 +513,7 @@ class job_executor(object):
         else:
             logger.critical(f"Unknown job_type {jc.job_type}!")
             exit()
-
+        # Determine directory to save outputs
         if create_new:
             dir_pattern = f"{jc.save_dir}/{rc.datestr}_{job_dir_name}_v{{}}"
             output_match = common_utils.get_newest_file_version(dir_pattern)
@@ -538,7 +537,6 @@ class job_executor(object):
                 exit()
         logger.info(f"Setup work directory: {rc.save_sub_dir}")
         pathlib.Path(rc.save_sub_dir).mkdir(parents=True, exist_ok=True)
-
         # Set input cache for tune job
         if jc.job_type == "tune":
             tune_input_cache = pathlib.Path(rc.save_sub_dir) / "tmp"

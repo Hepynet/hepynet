@@ -1,13 +1,11 @@
-from __future__ import nested_scopes
-
 import copy
 import logging
 import pathlib
+import time
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
-import yaml
 from sklearn.model_selection import StratifiedShuffleSplit
 
 from hepynet.common import config_utils
@@ -20,46 +18,52 @@ class Feedbox(object):
     """DNN inputs management class."""
 
     def __init__(
-        self, job_config: config_utils.Hepy_Config, norm_dict=None,
+        self,
+        job_config: config_utils.Hepy_Config,
+        norm_dict=None,
     ):
-        # get config
+        # Get config
         self._job_config = job_config.clone()
         self._data_dir = pathlib.Path(numpy_io.get_data_dir())
-        jc = self._job_config.job.clone()
-        self._array_prepared = False
-
-        # get norm dict
+        self._prepared = False
+        # Get norm dict
         if norm_dict is None:
-            if jc.job_name == "apply":
+            if self._job_config.job.job_name == "apply":
                 logger.warning(
                     f"No norm_dict found, but this is not expected as the job type is 'apply'! The normalization parameters may not be consistent with the training!"
                 )
             self._norm_dict = {}
         else:
             self._norm_dict = copy.deepcopy(norm_dict)
-
-        self._array_prepared = True
+        self._prepared = True
 
     def get_raw_df(self) -> pd.DataFrame:
         logger.info("Loading raw input DataFrame...")
-        ic = self._job_config.input.clone()
+        ic = self._job_config.input
+        rc = self._job_config.run
         raw_df: pd.DataFrame = pd.read_feather(self._data_dir / ic.input_path)
-        # select events in sig/bkg sample_list
+        # Select all events in sig/bkg/data sample_list
         sample_list = ic.sig_list + ic.bkg_list + ic.data_list
         logger.info(f"> Loading samples in list: {sample_list}")
-        # raw_df = raw_df[raw_df["sample_name"].isin(sample_list)]
-        # raw_df.drop(raw_df[~raw_df["sample_name"].isin(sample_list)], inplace=True)
         raw_df.drop(
             raw_df.index[~raw_df["sample_name"].isin(sample_list)],
             inplace=True,
         )
-        # select events by extra cut features
+        # Select events by extra cut features
         if ic.cut_expression:
             logger.info(
                 f"> Cutting inputs according to expression: {ic.cut_expression}"
             )
             raw_df.query(ic.cut_expression, inplace=True)
-        # return
+        # Sample part of the data
+        if rc.cmd_args.num_events > 0:
+            n_samples = int(rc.cmd_args.num_events)
+            logger.warn(
+                f"Randomly sampling {n_samples} events as input as specified."
+            )
+            time.sleep(3)
+            raw_df = raw_df.sample(n=n_samples)
+        # Return
         raw_df.reset_index(drop=True, inplace=True)
         logger.info("> Successfully loaded raw input DataFrame...")
         return raw_df
@@ -148,9 +152,16 @@ class Feedbox(object):
             logger.info(f"> Reweighting inputs with key {ic.bkg_key}")
             # custom scale
             if ic.custom_sample_scale:
-                logger.info(f"> Scaling process with factor: {ic.custom_sample_scale.get_config_dict()}")
-                for sample, scale_factor in ic.custom_sample_scale.get_config_dict().items():
-                    out_df.loc[out_df["sample_name"] == sample, "weight"] *= scale_factor
+                logger.info(
+                    f"> Scaling process with factor: {ic.custom_sample_scale.get_config_dict()}"
+                )
+                for (
+                    sample,
+                    scale_factor,
+                ) in ic.custom_sample_scale.get_config_dict().items():
+                    out_df.loc[
+                        out_df["sample_name"] == sample, "weight"
+                    ] *= scale_factor
             # reweight signal
             self.reweight_df(
                 out_df, ic.sig_list, ic.sig_key, ic.sig_sumofweight, True, True
