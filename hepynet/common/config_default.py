@@ -168,7 +168,10 @@ DEFAULT_CFG = {
         "check_model_epoch": False,
         "epoch_check_interval": 5,
         "book_history": False,
-        "cfg_history": {},
+        "cfg_history": {
+            "save_format": ["png", "pdf", "eps"],
+            "y_lim": {},
+        },
         "book_kine": False,
         "cfg_kine": {
             "separate_bkg_sig": False,

@@ -293,9 +293,9 @@ def merge_unequal_length_arrays(array_list: List[np.ndarray]):
                 if ele > max_value:
                     max_value = ele
         mean_value = sum_value / num_values
-        mean.append(mean_value)
-        low.append(min_value)
-        high.append(max_value)
+        mean.append(float(mean_value))
+        low.append(float(min_value))
+        high.append(float(max_value))
     return mean, low, high
 
 
