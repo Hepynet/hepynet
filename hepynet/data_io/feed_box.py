@@ -59,7 +59,7 @@ class Feedbox(object):
         if rc.cmd_args.num_events > 0:
             n_samples = int(rc.cmd_args.num_events)
             logger.warn(
-                f"Randomly sampling {n_samples} events as input as specified."
+                f"Randomly sampling {n_samples} events (out of {raw_df.shape[0]}) as input as specified."
             )
             time.sleep(3)
             raw_df = raw_df.sample(n=n_samples)

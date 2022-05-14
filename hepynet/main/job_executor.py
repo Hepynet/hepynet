@@ -245,7 +245,7 @@ class job_executor(object):
         df_raw = self.model_wrapper.get_feedbox().get_raw_df()
         if logger.level == logging.DEBUG:
             logger.warn(
-                f"Randomly sampling 10000 events as input for debugging purpose."
+                f"Randomly sampling 10000 events (out of {df_raw.shape[0]} as input for debugging purpose."
             )
             time.sleep(3)
             df_raw = df_raw.sample(n=10000)

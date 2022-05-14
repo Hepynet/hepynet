@@ -17,70 +17,57 @@ def plot_mva_scores(
     df: pd.DataFrame,
     job_config: ht.config,
     save_dir: ht.pathlike,
-    file_name: str = "mva_scores",
 ):
-    # initialize
+    # Initialize
     logger.info("Plotting MVA scores")
-    tc = job_config.train.clone()
-    ac = job_config.apply.clone()
+    ic = job_config.input
+    tc = job_config.train
+    ac = job_config.apply
     plot_config = ac.cfg_mva_scores_data_mc.clone()
-    # prepare signal
-    sig_scores_dict = {}
-    sig_weights_dict = {}
-    for sig_item in plot_config.sig_list:
-        item_info = sig_item.split(":")
-        item_info = [x.strip() for x in item_info]
-        sig_samples = item_info[0].split("+")
-        sig_samples = [x.strip() for x in sig_samples]
-        if len(item_info) > 1:
-            sig_name = item_info[1]
-        else:
-            sig_name = item_info[0]
-        sig_score = df.loc[
-            df["sample_name"].isin(sig_samples), "y_pred_0"
-        ].values
-        if sig_score.ndim == 1:
-            sig_score = sig_score.reshape((-1, 1))
-        sig_scores_dict[sig_name] = sig_score
-        sig_weight = df_raw.loc[
-            df["sample_name"].isin(sig_samples), "weight"
-        ].values
-        sig_weights_dict[sig_name] = sig_weight
-    # prepare background
-    bkg_scores_dict = {}
-    bkg_weights_dict = {}
-    for bkg_item in plot_config.bkg_list:
-        item_info = bkg_item.split(":")
-        item_info = [x.strip() for x in item_info]
-        bkg_samples = item_info[0].split("+")
-        bkg_samples = [x.strip() for x in bkg_samples]
-        if len(item_info) > 1:
-            bkg_name = item_info[1]
-        else:
-            bkg_name = item_info[0]
-        bkg_score = df.loc[
-            df["sample_name"].isin(bkg_samples), "y_pred_0"
-        ].values
-        if bkg_score.ndim == 1:
-            bkg_score = bkg_score.reshape((-1, 1))
-        bkg_scores_dict[bkg_name] = bkg_score
-        bkg_weight = df_raw.loc[
-            df["sample_name"].isin(bkg_samples), "weight"
-        ].values
-        bkg_weights_dict[bkg_name] = bkg_weight
-    # prepare data
-    if plot_config.apply_data:
-        data_key = plot_config.data_key
-        data_scores = df.loc[df["sample_name"] == data_key, "y_pred_0"].values
-        if data_scores.ndim == 1:
-            data_scores = data_scores.reshape((-1, 1))
-        data_weights = df_raw.loc[
-            df["sample_name"] == data_key, "weight"
-        ].values
-
-    # make plots
-    all_nodes = ["sig"] + tc.output_bkg_node_names
-    for node_id, node in enumerate(all_nodes):
+    # Plot for each nodes
+    if tc.use_multi_label:
+        all_nodes = list(ic.multi_label.keys())
+    else:
+        all_nodes = [1]
+    num_nodes = len(all_nodes)
+    for node_num in range(num_nodes):
+        # Prepare inputs
+        sig_scores_dict = {}
+        sig_weights_dict = {}
+        for sig_process in plot_config.sig_list:
+            load_input(
+                df_raw,
+                df,
+                node_num,
+                sig_scores_dict,
+                sig_weights_dict,
+                sig_process,
+                plot_config.sig_scale,
+            )
+        bkg_scores_dict = {}
+        bkg_weights_dict = {}
+        for bkg_process in plot_config.bkg_list:
+            load_input(
+                df_raw,
+                df,
+                node_num,
+                bkg_scores_dict,
+                bkg_weights_dict,
+                bkg_process,
+                plot_config.bkg_scale,
+            )
+        if plot_config.apply_data:
+            data_key = plot_config.data_key
+            data_scores = df.loc[
+                df["sample_name"] == data_key, f"y_pred_{node_num}"
+            ].values
+            if data_scores.ndim == 1:
+                data_scores = data_scores.reshape((-1, 1))
+            data_weights = (
+                df_raw.loc[df["sample_name"] == data_key, "weight"].values
+                * plot_config.data_scale
+            )
+        # Make plots
         if plot_config.show_ratio:
             if plot_config.fig_size:
                 fig = plt.figure(figsize=plot_config.fig_size)
@@ -90,11 +77,6 @@ def plot_mva_scores(
             ax = fig.add_subplot(gs[0:3])
             ax.tick_params(labelbottom=False)
             ratio_ax = fig.add_subplot(gs[3], sharex=ax)
-            # ratio_ax.yaxis.set_major_locator(
-            #    mpl.ticker.MaxNLocator(
-            #        symmetric=True, prune="both", min_n_ticks=5, nbins=4
-            #    )
-            # )
             ratio_ax.autoscale(axis="x", tight=True)
             plt.sca(ax)
         else:
@@ -104,38 +86,19 @@ def plot_mva_scores(
                 fig, ax = plt.subplots(figsize=(50 / 3, 100 / 9))
         colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
         color_cycle = itertools.cycle(colors)
-        # plot bkg
+        # Plot bkg
         bkg_collect = list()
         bkg_scores_all = None
         bkg_weights_all = None
-        for key, value in bkg_scores_dict.items():
-            node_score = value[:, node_id].flatten()
-            bkg_scale = 1
-            if not type(plot_config.bkg_scale) in (float, int):
-                scale_dict = plot_config.bkg_scale.get_config_dict()
-                if key in scale_dict:
-                    bkg_scale = scale_dict[key]
-                else:
-                    logger.error(
-                        f"Missing bkg_scale for {key}, will not scale this process"
-                    )
-            else:
-                bkg_scale = plot_config.bkg_scale
-            node_weight = bkg_weights_dict[key] * bkg_scale
+        for key, node_score in bkg_scores_dict.items():
+            node_weight = bkg_weights_dict[key]
             bkg_bins, _ = np.histogram(
-                node_score,
+                node_score.flatten(),
                 bins=plot_config.bins,
                 range=plot_config.range,
-                weights=node_weight,
-                density=plot_config.density,
+                weights=node_weight.flatten(),
             )
-            if plot_config.label_scale and bkg_scale != 1:
-                bkg_label = f"{key} x{bkg_scale}"
-            else:
-                bkg_label = key
-            bkg = ampl.plot.Background(
-                bkg_label, bkg_bins, color=next(color_cycle)
-            )
+            bkg = ampl.plot.Background(key, bkg_bins, color=next(color_cycle))
             bkg_collect.append(bkg)
             if bkg_scores_all is None:
                 bkg_scores_all = node_score
@@ -146,71 +109,47 @@ def plot_mva_scores(
                     (bkg_weights_all, node_weight)
                 )
         bkg_all_bins, bkg_edges = np.histogram(
-            bkg_scores_all,
+            bkg_scores_all.flatten(),
             bins=plot_config.bins,
             range=plot_config.range,
-            weights=bkg_weights_all,
-            density=plot_config.density,
+            weights=bkg_weights_all.flatten(),
         )
         sumw2, _ = np.histogram(
-            bkg_scores_all,
+            bkg_scores_all.flatten(),
             bins=plot_config.bins,
             range=plot_config.range,
-            weights=np.power(bkg_weights_all, 2),
+            weights=np.power(bkg_weights_all, 2).flatten(),
         )
         bkg_stats_errs = np.sqrt(sumw2)
-        if plot_config.density:
-            norm_sum = np.sum(bkg_weights_all) * (1 / plot_config.bins)
-            bkg_stats_errs /= norm_sum
         ampl.plot.plot_backgrounds(bkg_collect, bkg_edges, ax=ax)
-        # plot sig
+        # Plot sig
         for key, value in sig_scores_dict.items():
-            sig_scale = 1
-            if not type(plot_config.sig_scale) in (float, int):
-                scale_dict = plot_config.sig_scale.get_config_dict()
-                if key in scale_dict:
-                    sig_scale = scale_dict[key]
-                else:
-                    logger.error(
-                        f"Missing sig_scale for {key}, will not scale this process"
-                    )
-            else:
-                sig_scale = plot_config.sig_scale
             sig_bins, sig_edges = np.histogram(
-                value[:, node_id].flatten(),
+                value.flatten(),
                 bins=plot_config.bins,
                 range=plot_config.range,
-                weights=sig_weights_dict[key] * sig_scale,
-                density=plot_config.density,
+                weights=(sig_weights_dict[key]).flatten(),
             )
-            if plot_config.label_scale and sig_scale != 1:
-                sig_label = f"{key} x{sig_scale}"
-            else:
-                sig_label = key
             ampl.plot.plot_signal(
-                sig_label, sig_edges, sig_bins, color=next(color_cycle), ax=ax
+                key, sig_edges, sig_bins, color=next(color_cycle), ax=ax
             )
-        # plot data
+        # Plot data
         if plot_config.apply_data:
             data_bins, data_edges = np.histogram(
-                data_scores[:, node_id].flatten(),
+                data_scores.flatten(),
                 bins=plot_config.bins,
                 range=plot_config.range,
-                weights=data_weights * plot_config.data_scale,
-                density=plot_config.density,
+                weights=(data_weights * plot_config.data_scale).flatten(),
             )
             sumw2, _ = np.histogram(
-                data_scores[:, node_id].flatten(),
+                data_scores.flatten(),
                 bins=plot_config.bins,
                 range=plot_config.range,
-                weights=np.power(data_weights * plot_config.data_scale, 2),
+                weights=np.power(
+                    data_weights * plot_config.data_scale, 2
+                ).flatten(),
             )
             data_stats_errs = np.sqrt(sumw2)
-            if plot_config.density:
-                norm_sum = np.sum(data_weights * plot_config.data_scale) * (
-                    1 / plot_config.bins
-                )
-                data_stats_errs /= norm_sum
             if plot_config.label_scale and plot_config.data_scale != 1:
                 data_label = f"Data x{plot_config.data_scale}"
             else:
@@ -236,8 +175,7 @@ def plot_mva_scores(
                 )
                 ratio_ax.set_ylim(0, 2)
         ax.set_xlim(plot_config.range[0], plot_config.range[1])
-
-        # reorder legends, data on top, background at bottom
+        # Reorder legends, data on top, background at bottom
         n_bkg = len(bkg_scores_dict)
         n_sig = len(sig_scores_dict)
         if plot_config.apply_data:
@@ -252,20 +190,13 @@ def plot_mva_scores(
         ax.legend(
             handles, labels, **(plot_config.legend_paras.get_config_dict())
         )
-
         if ac.plot_atlas_label:
-            if plot_config.density:
-                desc = "Density Plot"
-            else:
-                desc = None
             ampl.plot.draw_atlas_label(
                 0.05,
                 0.95,
                 ax=ax,
                 **(ac.atlas_label.get_config_dict()),
-                desc=desc,
             )
-
         # Plot patch
         for func, args in plot_config.plot_patch.get_config_dict().items():
             getattr(ax, func)(**args)
@@ -279,18 +210,19 @@ def plot_mva_scores(
         formats = plot_config.save_format
         if not isinstance(formats, list):
             formats = [formats]
-        ## save lin
+        file_prefix = f"mva_scores_data_mc_{node_num}"
+        # save with lin scale
         ax.set_ylim(0, y_max * 1.4)
         for fm in formats:
-            fig.savefig(f"{save_dir}/{file_name}_node_{node}_lin.{fm}")
-        ## save log
+            fig.savefig(f"{save_dir}/{file_prefix}_lin.{fm}")
+        # save with log scale
         ax.set_yscale("log")
         ax.set_ylim(
             plot_config.logy_min,
             y_max * np.power(10, np.log10(y_max / plot_config.logy_min) * 0.8),
         )
         for fm in formats:
-            fig.savefig(f"{save_dir}/{file_name}_node_{node}_log.{fm}")
+            fig.savefig(f"{save_dir}/{file_prefix}_log.{fm}")
         if plot_config.symlog_x:
             ax.set_xscale(
                 "symlog",
@@ -301,9 +233,7 @@ def plot_mva_scores(
             ax.set_yscale("linear")
             ax.set_ylim(0, y_max * 1.4)
             for fm in formats:
-                fig.savefig(
-                    f"{save_dir}/{file_name}_node_{node}_lin_symlog_x.{fm}"
-                )
+                fig.savefig(f"{save_dir}/{file_prefix}_lin_symlog_x.{fm}")
             ## save log
             ax.set_yscale("log")
             ax.set_ylim(
@@ -312,43 +242,75 @@ def plot_mva_scores(
                 * np.power(10, np.log10(y_max / plot_config.logy_min) * 0.8),
             )
             for fm in formats:
-                fig.savefig(
-                    f"{save_dir}/{file_name}_node_{node}_log_symlog_x.{fm}"
-                )
+                fig.savefig(f"{save_dir}/{file_prefix}_log_symlog_x.{fm}")
 
-    return 0  # success run
+
+def load_input(
+    df_raw,
+    df,
+    node_num,
+    scores_dict,
+    weights_dict,
+    process_def,
+    scale=1,
+):
+    """Load input data for a node."""
+    item_info = process_def.split(":")
+    item_info = [x.strip() for x in item_info]
+    samples = item_info[0].split("+")
+    samples = [x.strip() for x in samples]
+    if len(item_info) > 1:
+        name = item_info[1]
+    else:
+        name = item_info[0]
+    # Load score
+    score = df.loc[
+        df["sample_name"].isin(samples), f"y_pred_{node_num}"
+    ].values
+    if score.ndim == 1:
+        score = score.reshape((-1, 1))
+    scores_dict[name] = score
+    # Load weights
+    sub_df = df_raw.loc[
+        df_raw["sample_name"].isin(samples), ["sample_name", "weight"]
+    ]
+    if type(scale) == int or type(scale) == float:
+        sub_df["weight"] *= scale
+    else:
+        for samp, k in scale.items():
+            sub_df.loc[sub_df["sample_name"] == samp, "weight"] *= k
+    weights_dict[name] = sub_df["weight"].values
 
 
 def plot_train_test_compare(
     df: pd.DataFrame, job_config: ht.config, save_dir: ht.pathlike
 ):
     """Plots train/test datasets' cores distribution comparison"""
-    # initialize
+    # Initialize
     logger.info("Plotting train/test scores.")
     ic = job_config.input.clone()
     tc = job_config.train.clone()
     ac = job_config.apply.clone()
     plot_config = job_config.apply.cfg_train_test_compare
     if tc.use_multi_label:
-        all_nodes = ic.multi_label.keys()
+        all_nodes = list(ic.multi_label.keys())
     else:
         all_nodes = [1]
-
-    # get inputs
+    # Get inputs
     train_index = df["is_train"] == True
     test_index = df["is_train"] == False
     sig_index = (df["is_sig"] == True) & (df["is_mc"] == True)
     bkg_index = (df["is_sig"] == False) & (df["is_mc"] == True)
-    # get weights
+    # Get weights
     xs_train_weight = df.loc[sig_index & train_index, ["weight"]].values
     xs_test_weight = df.loc[sig_index & test_index, ["weight"]].values
     xb_train_weight = df.loc[bkg_index & train_index, ["weight"]].values
     xb_test_weight = df.loc[bkg_index & test_index, ["weight"]].values
 
-    # plot for each nodes
+    # Plot for each nodes
     num_nodes = len(all_nodes)
     for node_num in range(num_nodes):
-        # get scores
+        # Get scores
         xs_train_scores = df.loc[
             sig_index & train_index, [f"y_pred_{node_num}"]
         ].values
@@ -385,7 +347,7 @@ def plot_train_test_compare(
         ampl.plot.plot_signal(
             "signal (test)", sig_edges, sig_bins, color=plot_config.sig_color
         )
-        # plot train scores
+        # Plot train scores
         ## bkg
         bkg_bins, bkg_edges = np.histogram(
             xb_train_scores,
@@ -448,26 +410,21 @@ def plot_train_test_compare(
         ax.set_xlim(0, 1)
         ax.legend(loc="upper right")
         if ac.plot_atlas_label:
-            if plot_config.density:
-                desc = "Density Plot"
-            else:
-                desc = None
             ampl.plot.draw_atlas_label(
                 0.05,
                 0.95,
                 ax=ax,
                 **(ac.atlas_label.get_config_dict()),
-                desc=desc,
             )
         ax.set_xlabel("DNN score")
         # Save lin/log plots
         file_name = f"mva_scores_{all_nodes[node_num]}"
         _, y_max = ax.get_ylim()
-        ## save lin
+        # save lin
         ax.set_ylim(0, y_max * 1.4)
         ax.set_xlabel("DNN score")
         fig.savefig(save_dir / f"{file_name}_lin.{plot_config.save_format}")
-        ## save log
+        # save log
         ax.set_yscale("log")
         ax.set_ylim(
             plot_config.logy_min, y_max * np.power(10, np.log10(y_max) / 2)
