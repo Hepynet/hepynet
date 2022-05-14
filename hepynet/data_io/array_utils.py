@@ -34,14 +34,6 @@ def corr_matrix(x, w=None):
     return corr_m
 
 
-def extract_bkg_df(df: pd.DataFrame):
-    return df.loc[(df["is_mc"] == True) & (df["is_sig"] == False)]
-
-
-def extract_sig_df(df: pd.DataFrame):
-    return df.loc[df["is_sig"] == True]
-
-
 def get_cut_index(np_array, cut_values, cut_types):
     """Parses cuts arguments and returns cuts indexes."""
     assert len(cut_values) == len(

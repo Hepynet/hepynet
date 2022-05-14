@@ -364,20 +364,12 @@ class job_executor(object):
                 )
             # Make significance scan plot
             if ac.book_significance_scan:
-                if ac.significance_raw_weight:
-                    significance.plot_significance_scan(
-                        df,
-                        df_raw,
-                        self.job_config,
-                        epoch_subdir,  # Use df_raw for s_b calculation
-                    )
-                else:
-                    significance.plot_significance_scan(
-                        df,
-                        df,
-                        self.job_config,
-                        epoch_subdir,  # Use df_raw for s_b calculation
-                    )
+                wt_df = df
+                if ac.cfg_significance_scan.use_raw_weight:
+                    wt_df = df_raw
+                significance.plot_significance_scan(
+                    df, wt_df, self.job_config, epoch_subdir
+                )
             # kinematics with DNN cuts
             if ac.book_cut_kine_study:
                 for dnn_cut in ac.cfg_cut_kine_study.dnn_cut_list:

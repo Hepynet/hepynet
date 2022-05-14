@@ -27,7 +27,7 @@ def plot_correlation_matrix(
     fig, ax = plt.subplots(ncols=2, figsize=figsize)
     # plot bkg
     ax[0].set_title("bkg correlation")
-    bkg_df = array_utils.extract_bkg_df(df)
+    bkg_df = df.loc[df["sample_name"].isin(ic.bkg_list)]
     if bkg_df.shape[0] > 1000000:
         logger.warn(
             f"Too large input detected ({bkg_df.shape[0]} rows), randomly sampling 1000000 rows for background corr_matrix calculation"
@@ -40,7 +40,7 @@ def plot_correlation_matrix(
     paint_correlation_matrix(ax[0], bkg_matrix, features)
     # plot sig
     ax[1].set_title("sig correlation")
-    sig_df = array_utils.extract_sig_df(df)
+    sig_df = df.loc[df["sample_name"].isin(ic.sig_list)]
     if sig_df.shape[0] > 1000000:
         logger.warn(
             f"Too large input detected ({sig_df.shape[0]} rows), randomly sampling 1000000 rows for signal corr_matrix calculation"
@@ -95,9 +95,9 @@ def plot_input(
     save_dir = pathlib.Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
     # get bkg/sig dataframes and weights (to be reused)
-    bkg_df = array_utils.extract_bkg_df(df)
+    bkg_df = df.loc[df["sample_name"].isin(ic.bkg_list)]
     bkg_wt = bkg_df["weight"]
-    sig_df = array_utils.extract_sig_df(df)
+    sig_df = df.loc[df["sample_name"].isin(ic.sig_list)]
     sig_wt = sig_df["weight"]
     # plot
     for feature in plot_features:
@@ -176,13 +176,17 @@ def plot_input_dnn(
     ac = job_config.apply.clone()
     plot_cfg = ac.cfg_cut_kine_study
     # get sig/bkg DataFrame and weights
-    bkg_df_raw = array_utils.extract_bkg_df(df_raw)
-    sig_df_raw = array_utils.extract_sig_df(df_raw)
+    bkg_df_raw = df_raw.loc[df_raw["sample_name"].isin(ic.bkg_list)]
+    sig_df_raw = df_raw.loc[df_raw["sample_name"].isin(ic.sig_list)]
     bkg_wt = bkg_df_raw["weight"].to_numpy("float32")
     sig_wt = sig_df_raw["weight"].to_numpy("float32")
     # get predictions
-    bkg_pred = array_utils.extract_bkg_df(df)[["y_pred_0"]].to_numpy("float32")
-    sig_pred = array_utils.extract_sig_df(df)[["y_pred_0"]].to_numpy("float32")
+    bkg_pred = df.loc[df["sample_name"].isin(ic.bkg_list)][
+        ["y_pred_0"]
+    ].to_numpy("float32")
+    sig_pred = df.loc[df["sample_name"].isin(ic.sig_list)][
+        ["y_pred_0"]
+    ].to_numpy("float32")
     # normalize
     if plot_cfg.density:
         bkg_wt = bkg_wt / np.sum(bkg_wt)
