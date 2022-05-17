@@ -1,5 +1,6 @@
 import itertools
 import logging
+import pathlib
 
 import atlas_mpl_style as ampl
 import matplotlib as mpl
@@ -10,6 +11,89 @@ import pandas as pd
 import hepynet.common.hepy_type as ht
 
 logger = logging.getLogger("hepynet")
+
+
+def plot_mva_shape(
+    df_raw: pd.DataFrame,
+    df: pd.DataFrame,
+    job_config: ht.config,
+    save_dir: ht.pathlike,
+):
+    # Initialize
+    logger.info("Plotting MVA scores shape")
+    ic = job_config.input
+    tc = job_config.train
+    ac = job_config.apply
+    plot_config = ac.cfg_mva_shape
+    save_dir = pathlib.Path(save_dir)
+    save_dir.mkdir(exist_ok=True, parents=True)
+    # Plot for each nodes
+    if tc.use_multi_label:
+        all_nodes = list(ic.multi_label.keys())
+    else:
+        all_nodes = [1]
+    num_nodes = len(all_nodes)
+    for node_num in range(num_nodes):
+        # Prepare inputs
+        scores_dict = {}
+        weights_dict = {}
+        for process in plot_config.process_list:
+            load_input(
+                df_raw,
+                df,
+                node_num,
+                scores_dict,
+                weights_dict,
+                process,
+            )
+        # Plot process shape (normed to 1)
+        fig, ax = plt.subplots(figsize=plot_config.fig_size)
+        colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+        color_cycle = itertools.cycle(colors)
+        for key, value in scores_dict.items():
+            bins, edges = np.histogram(
+                value.flatten(),
+                bins=plot_config.bins,
+                range=plot_config.range,
+                weights=(weights_dict[key]).flatten(),
+                density=True,
+            )
+            ampl.plot.plot_signal(
+                key, edges, bins, color=next(color_cycle), ax=ax
+            )
+        ax.set_xlim(plot_config.range[0], plot_config.range[1])
+        # Reorder legends, data on top, background at bottom
+        ax.legend(**(plot_config.legend_paras.get_config_dict()))
+        if ac.plot_atlas_label:
+            ampl.plot.draw_atlas_label(
+                0.05,
+                0.95,
+                ax=ax,
+                **(ac.atlas_label.get_config_dict()),
+            )
+        # Plot patch
+        for func, args in plot_config.plot_patch.get_config_dict().items():
+            getattr(ax, func)(**args)
+        ax.set_xlabel("DNN score")
+        # Save lin/log plots
+        _, y_max = ax.get_ylim()
+        formats = plot_config.save_format
+        if not isinstance(formats, list):
+            formats = [formats]
+        file_prefix = f"mva_scores_process_{node_num}"
+        # save with lin scale
+        ax.set_ylim(0, y_max * 1.4)
+        for fm in formats:
+            fig.savefig(f"{save_dir}/{file_prefix}_lin.{fm}")
+        # save with log scale
+        ax.set_yscale("log")
+        ax.set_ylim(
+            plot_config.logy_min,
+            y_max * np.power(10, np.log10(y_max / plot_config.logy_min) * 0.8),
+        )
+        for fm in formats:
+            fig.savefig(f"{save_dir}/{file_prefix}_log.{fm}")
+        plt.close(fig)
 
 
 def plot_mva_scores(
@@ -24,6 +108,8 @@ def plot_mva_scores(
     tc = job_config.train
     ac = job_config.apply
     plot_config = ac.cfg_mva_scores_data_mc.clone()
+    save_dir = pathlib.Path(save_dir)
+    save_dir.mkdir(exist_ok=True, parents=True)
     # Plot for each nodes
     if tc.use_multi_label:
         all_nodes = list(ic.multi_label.keys())
@@ -243,6 +329,7 @@ def plot_mva_scores(
             )
             for fm in formats:
                 fig.savefig(f"{save_dir}/{file_prefix}_log_symlog_x.{fm}")
+        plt.close(fig)
 
 
 def load_input(
@@ -296,6 +383,8 @@ def plot_train_test_compare(
         all_nodes = list(ic.multi_label.keys())
     else:
         all_nodes = [1]
+    save_dir = pathlib.Path(save_dir)
+    save_dir.mkdir(exist_ok=True, parents=True)
     # Get inputs
     train_index = df["is_train"] == True
     test_index = df["is_train"] == False
