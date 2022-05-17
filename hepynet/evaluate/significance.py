@@ -76,7 +76,6 @@ def get_significances(
     df_raw: pd.DataFrame,
     job_config: ht.config,
     significance_algo: str = "asimov",
-    multi_class_cut_branch: int = 0,
     node_num: int = 0,
 ):
     """Gets significances scan arrays.
@@ -91,16 +90,26 @@ def get_significances(
 
     """
     ic = job_config.input.clone()
+    tc = job_config.train.clone()
+    target_list = []
+    other_list = []
+    if tc.use_multi_label:
+        for node, node_list in ic.multi_label.items():
+            if str(node_num) == str(node):
+                target_list += node_list
+            else:
+                other_list += node_list
+    else:
+        target_list = ic.sig_list
+        other_list = ic.bkg_list
     # prepare signal
-    sig_df = df.loc[df["sample_name"].isin(ic.sig_list)]
-    sig_df_raw = df_raw.loc[df_raw["sample_name"].isin(ic.sig_list)]
-    sig_predictions = sig_df[[f"y_pred_{node_num}"]].values
-    sig_predictions = sig_predictions[:, multi_class_cut_branch]
+    sig_df = df.loc[df["sample_name"].isin(target_list)]
+    sig_df_raw = df_raw.loc[df_raw["sample_name"].isin(target_list)]
+    sig_predictions = sig_df[f"y_pred_{node_num}"].values
     # prepare background
-    bkg_df = df.loc[df["sample_name"].isin(ic.bkg_list)]
-    bkg_df_raw = df_raw.loc[df_raw["sample_name"].isin(ic.bkg_list)]
-    bkg_predictions = bkg_df[[f"y_pred_{node_num}"]].values
-    bkg_predictions = bkg_predictions[:, multi_class_cut_branch]
+    bkg_df = df.loc[df["sample_name"].isin(other_list)]
+    bkg_df_raw = df_raw.loc[df_raw["sample_name"].isin(other_list)]
+    bkg_predictions = bkg_df[f"y_pred_{node_num}"].values
     # prepare thresholds
     bin_array = np.array(range(-1000, 1000))
     thresholds = 1.0 / (1.0 + 1.0 / np.exp(bin_array * 0.02))
@@ -219,12 +228,12 @@ def plot_significance_scan(
             plot_thresholds,
             sig_eff_above_threshold,
             color="orange",
-            label="sig",
+            label="target process",
         )
         ax2.plot(
-            plot_thresholds, bkg_eff_above_threshold, color="blue", label="bkg"
+            plot_thresholds, bkg_eff_above_threshold, color="blue", label="other process"
         )
-        ax2.set_ylabel("sig(bkg) ratio after cut")
+        ax2.set_ylabel("target(other) ratio after cut")
         # reference threshold
         ax.axvline(x=max_significance_threshold, color="green", linestyle="-.")
         # more infomation
@@ -241,13 +250,13 @@ def plot_significance_scan(
             + str(
                 common_utils.get_significant_digits(original_significance, 6)
             )
-            + "\nsig events above threshold:"
+            + "\ntarget events above threshold:"
             + str(
                 common_utils.get_significant_digits(
                     max_significance_sig_total, 6
                 )
             )
-            + "\nbkg events above threshold:"
+            + "\nother events above threshold:"
             + str(
                 common_utils.get_significant_digits(
                     max_significance_bkg_total, 6
@@ -336,62 +345,62 @@ def plot_significance_scan(
             )
             writer.writerows(row_list)
         # make table for different sig efficiency
-        save_path = save_dir / f"scan_sig_eff_{node_num}.csv"
-        with open(save_path, "w", newline="") as file:
-            writer = csv.writer(file)
-            for index in range(1, 100):
-                sig_eff_cut = (100 - index) / 100.0
-                threshold_id = (
-                    np.abs(np.array(sig_eff_above_threshold) - sig_eff_cut)
-                ).argmin()
-                new_row = [
-                    plot_thresholds[threshold_id],
-                    sig_above_threshold[threshold_id],
-                    sig_eff_cut,
-                    bkg_above_threshold[threshold_id],
-                    bkg_eff_above_threshold[threshold_id],
-                    significances[threshold_id],
-                ]
-                row_list.append(new_row)
-            row_list.append([""])
-            row_list.append(
-                [
-                    "total sig",
-                    max_sig_events,
-                    "total bkg",
-                    max_bkg_events,
-                    "base significance",
-                    original_significance,
-                ]
-            )
-            writer.writerows(row_list)
+        #save_path = save_dir / f"scan_sig_eff_{node_num}.csv"
+        #with open(save_path, "w", newline="") as file:
+        #    writer = csv.writer(file)
+        #    for index in range(1, 100):
+        #        sig_eff_cut = (100 - index) / 100.0
+        #        threshold_id = (
+        #            np.abs(np.array(sig_eff_above_threshold) - sig_eff_cut)
+        #        ).argmin()
+        #        new_row = [
+        #            plot_thresholds[threshold_id],
+        #            sig_above_threshold[threshold_id],
+        #            sig_eff_cut,
+        #            bkg_above_threshold[threshold_id],
+        #            bkg_eff_above_threshold[threshold_id],
+        #            significances[threshold_id],
+        #        ]
+        #        row_list.append(new_row)
+        #    row_list.append([""])
+        #    row_list.append(
+        #        [
+        #            "total sig",
+        #            max_sig_events,
+        #            "total bkg",
+        #            max_bkg_events,
+        #            "base significance",
+        #            original_significance,
+        #        ]
+        #    )
+        #    writer.writerows(row_list)
         # make table for different bkg efficiency
-        save_path = save_dir / f"scan_bkg_eff_{node_num}.csv"
-        with open(save_path, "w", newline="") as file:
-            writer = csv.writer(file)
-            for index in range(1, 100):
-                bkg_eff_cut = (100 - index) / 100.0
-                threshold_id = (
-                    np.abs(np.array(bkg_eff_above_threshold) - bkg_eff_cut)
-                ).argmin()
-                new_row = [
-                    plot_thresholds[threshold_id],
-                    sig_above_threshold[threshold_id],
-                    sig_eff_above_threshold[threshold_id],
-                    bkg_above_threshold[threshold_id],
-                    bkg_eff_cut,
-                    significances[threshold_id],
-                ]
-                row_list.append(new_row)
-            row_list.append([""])
-            row_list.append(
-                [
-                    "total sig",
-                    max_sig_events,
-                    "total bkg",
-                    max_bkg_events,
-                    "base significance",
-                    original_significance,
-                ]
-            )
-            writer.writerows(row_list)
+        #save_path = save_dir / f"scan_bkg_eff_{node_num}.csv"
+        #with open(save_path, "w", newline="") as file:
+        #    writer = csv.writer(file)
+        #    for index in range(1, 100):
+        #        bkg_eff_cut = (100 - index) / 100.0
+        #        threshold_id = (
+        #            np.abs(np.array(bkg_eff_above_threshold) - bkg_eff_cut)
+        #        ).argmin()
+        #        new_row = [
+        #            plot_thresholds[threshold_id],
+        #            sig_above_threshold[threshold_id],
+        #            sig_eff_above_threshold[threshold_id],
+        #            bkg_above_threshold[threshold_id],
+        #            bkg_eff_cut,
+        #            significances[threshold_id],
+        #        ]
+        #        row_list.append(new_row)
+        #    row_list.append([""])
+        #    row_list.append(
+        #        [
+        #            "total sig",
+        #            max_sig_events,
+        #            "total bkg",
+        #            max_bkg_events,
+        #            "base significance",
+        #            original_significance,
+        #        ]
+        #    )
+        #    writer.writerows(row_list)

@@ -315,12 +315,12 @@ class job_executor(object):
         for epoch in epoch_checklist:
             logger.info(">" * 80)
             if epoch is None:
-                logger.info(f"Checking model(s) at final epoch")
                 epoch_str = "final"
             else:
-                logger.info(f"Checking model(s) at epoch {epoch}")
                 epoch_str = str(epoch)
-            self.model_wrapper.load_model(epoch=epoch)
+            if self.model_wrapper.load_model(epoch=epoch) == -1:
+                continue
+            logger.info(f"Checking model(s) at epoch {epoch_str}")
 
             # create epoch sub-directory
             epoch_subdir = evaluate_utils.create_epoch_subdir(
@@ -362,6 +362,14 @@ class job_executor(object):
                     self.job_config,
                     epoch_subdir,
                 )
+            # Process score shape compare
+            if ac.book_mva_shape:
+                mva_scores.plot_mva_shape(
+                    df_raw,
+                    df,
+                    self.job_config,
+                    epoch_subdir,
+                )
             # Make significance scan plot
             if ac.book_significance_scan:
                 wt_df = df
@@ -372,26 +380,12 @@ class job_executor(object):
                 )
             # kinematics with DNN cuts
             if ac.book_cut_kine_study:
-                for dnn_cut in ac.cfg_cut_kine_study.dnn_cut_list:
-                    if isinstance(dnn_cut, list):
-                        dnn_cut_down = dnn_cut[0]
-                        dnn_cut_up = dnn_cut[1]
-                    else:
-                        dnn_cut_down = dnn_cut
-                        dnn_cut_up = 1
-                    dnn_kine_path = (
-                        epoch_subdir
-                        / f"kine_cut_dnn_p{dnn_cut_down * 100}_p{dnn_cut_up * 100}"
-                    )
-                    dnn_kine_path.mkdir(parents=True, exist_ok=True)
-                    kinematics.plot_input_dnn(
-                        df_raw,
-                        df,
-                        self.job_config,
-                        dnn_cut_down=dnn_cut_down,
-                        dnn_cut_up=dnn_cut_up,
-                        save_dir=dnn_kine_path,
-                    )
+                kinematics.plot_input_dnn(
+                    df_raw,
+                    df,
+                    self.job_config,
+                    save_dir=epoch_subdir,
+                )
             # feature permuted importance
             if ac.book_importance_study:
                 logger.info("Checking input feature importance")

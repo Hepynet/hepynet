@@ -142,6 +142,8 @@ class Model_Base(object):
                 )  # it's important to specify custom_objects
                 self._model.append(fold_model)
                 num_exist_models += 1
+        if num_exist_models == 0:
+            return -1
         self._model_is_loaded = True
         # Load parameters
         model_dir = self.get_model_save_dir()

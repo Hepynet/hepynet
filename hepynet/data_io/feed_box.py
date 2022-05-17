@@ -55,6 +55,7 @@ class Feedbox(object):
                 f"> Cutting inputs according to expression: {ic.cut_expression}"
             )
             raw_df.query(ic.cut_expression, inplace=True)
+        self._n_total = raw_df.shape[0]
         # Sample part of the data
         if rc.cmd_args.num_events > 0:
             n_samples = int(rc.cmd_args.num_events)
@@ -73,6 +74,7 @@ class Feedbox(object):
     ):
         logger.info("Loading processed input DataFrame...")
         ic = self._job_config.input.clone()
+        rc = self._job_config.run
         if raw_df is None:
             out_df: pd.DataFrame = self.get_raw_df()
         else:
@@ -217,7 +219,15 @@ class Feedbox(object):
             break
         out_df.loc[:, "is_train"] = False
         out_df.loc[train_index, "is_train"] = True
-
+        # Correct the weight due to sampling
+        if rc.cmd_args.num_events > 0:
+            n_samples = int(rc.cmd_args.num_events)
+            n_total = self._n_total
+            correct_factor = n_samples * 1.0 / n_total
+            logger.info(
+                f"> Correcting weight due to sampling with factor {correct_factor}"
+            )
+            out_df["weight"] = out_df["weight"] * correct_factor
         logger.info("> Successfully loaded processed input DataFrame...")
         return out_df
 

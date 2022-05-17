@@ -162,95 +162,104 @@ def plot_input_dnn(
     df_raw: pd.DataFrame,
     df: pd.DataFrame,
     job_config: ht.config,
-    dnn_cut_down: float = None,
-    dnn_cut_up: float = 1,
-    multi_class_cut_branch: int = 0,
     save_dir: ht.pathlike = None,
 ):
     """Plots input distributions comparision plots with DNN cuts applied"""
     logger.info(
-        f"Plotting input distributions with DNN cuts [{dnn_cut_down}, {dnn_cut_up}] applied."
+        f"Plotting input distributions with DNN cuts applied."
     )
-    # prepare
+    # Prepare
     ic = job_config.input.clone()
     ac = job_config.apply.clone()
     plot_cfg = ac.cfg_cut_kine_study
-    # get sig/bkg DataFrame and weights
+    # Get raw weights
     bkg_df_raw = df_raw.loc[df_raw["sample_name"].isin(ic.bkg_list)]
     sig_df_raw = df_raw.loc[df_raw["sample_name"].isin(ic.sig_list)]
     bkg_wt = bkg_df_raw["weight"].to_numpy("float32")
     sig_wt = sig_df_raw["weight"].to_numpy("float32")
-    # get predictions
-    bkg_pred = df.loc[df["sample_name"].isin(ic.bkg_list)][
-        ["y_pred_0"]
-    ].to_numpy("float32")
-    sig_pred = df.loc[df["sample_name"].isin(ic.sig_list)][
-        ["y_pred_0"]
-    ].to_numpy("float32")
-    # normalize
+    # Normalize for density plot
     if plot_cfg.density:
         bkg_wt = bkg_wt / np.sum(bkg_wt)
         sig_wt = sig_wt / np.sum(sig_wt)
-    # plot kinematics with dnn cuts
-    if dnn_cut_down < 0 or dnn_cut_down > 1:
-        logger.error(f"DNN cut {dnn_cut_down} is out of range [0, 1]!")
-        return
-    if dnn_cut_up < 0 or dnn_cut_up > 1:
-        logger.error(f"DNN cut {dnn_cut_down} is out of range [0, 1]!")
-        return
-    if dnn_cut_down > dnn_cut_up:
-        logger.error(
-            f"DNN cut lower cut {dnn_cut_down} has higher value than {dnn_cut_up}!"
-        )
-        return
-    # get signal weights with dnn applied
-    sig_pred = sig_pred[:, multi_class_cut_branch]
-    sig_cut_id = np.argwhere(
-        (sig_pred < dnn_cut_down) | (sig_pred > dnn_cut_up)
-    )
-    sig_wt_dnn = sig_wt.copy()
-    sig_wt_dnn[sig_cut_id] = 0
-    # get background weights with dnn applied
-    bkg_pred = bkg_pred[:, multi_class_cut_branch]
-    bkg_cut_id = np.argwhere(
-        (bkg_pred < dnn_cut_down) | (bkg_pred > dnn_cut_up)
-    )
-    bkg_wt_dnn = bkg_wt.copy()
-    bkg_wt_dnn[bkg_cut_id] = 0
-    # normalize weights for density plots
-    if plot_cfg.density:
-        bkg_wt_dnn = bkg_wt_dnn / np.sum(bkg_wt)
-        sig_wt_dnn = sig_wt_dnn / np.sum(sig_wt)
-    # plot
-    plot_feature_list = ic.selected_features + ic.validation_features
-    for feature in plot_feature_list:
-        logger.debug(f"Plotting kinematics for {feature}")
-        bkg_array = bkg_df_raw[feature].to_numpy("float32")
-        sig_array = sig_df_raw[feature].to_numpy("float32")
-
-        note = f"DNN cut: [{dnn_cut_down}, {dnn_cut_up}]"
-        # plot sig
-        plot_input_dnn_single(
-            job_config,
-            feature,
-            "sig",
-            sig_array,
-            sig_wt,
-            sig_wt_dnn,
-            save_dir,
-            note=note,
-        )
-        # plot bkg
-        plot_input_dnn_single(
-            job_config,
-            feature,
-            "bkg",
-            bkg_array,
-            bkg_wt,
-            bkg_wt_dnn,
-            save_dir,
-            note=note,
-        )
+    # Check different nodes
+    for node_num in plot_cfg.node_nums:
+        node_dir = pathlib.Path(save_dir) / f"node_{node_num}"
+        node_dir.mkdir(parents=True, exist_ok=True)
+        # get predictions
+        bkg_pred = df.loc[df["sample_name"].isin(ic.bkg_list)][
+            f"y_pred_{node_num}"
+        ].to_numpy("float32")
+        sig_pred = df.loc[df["sample_name"].isin(ic.sig_list)][
+            f"y_pred_{node_num}"
+        ].to_numpy("float32")
+        # Check different cuts
+        for dnn_cut in ac.cfg_cut_kine_study.dnn_cut_list:
+            if isinstance(dnn_cut, list):
+                dnn_cut_down = dnn_cut[0]
+                dnn_cut_up = dnn_cut[1]
+            else:
+                dnn_cut_down = dnn_cut
+                dnn_cut_up = 1
+            sub_dir = (
+                node_dir / f"cut_dnn_p{dnn_cut_down * 100}_p{dnn_cut_up * 100}"
+            )
+            sub_dir.mkdir(parents=True, exist_ok=True)
+            # Check DNN cut
+            if dnn_cut_down < 0 or dnn_cut_down > 1:
+                logger.error(f"DNN cut {dnn_cut_down} is out of range [0, 1]!")
+                return
+            if dnn_cut_up < 0 or dnn_cut_up > 1:
+                logger.error(f"DNN cut {dnn_cut_down} is out of range [0, 1]!")
+                return
+            if dnn_cut_down > dnn_cut_up:
+                logger.error(
+                    f"DNN cut lower cut {dnn_cut_down} has higher value than {dnn_cut_up}!"
+                )
+                return
+            # get signal/background weights with dnn applied
+            sig_cut_id = np.argwhere(
+                (sig_pred < dnn_cut_down) | (sig_pred > dnn_cut_up)
+            )
+            sig_wt_dnn = sig_wt.copy()
+            sig_wt_dnn[sig_cut_id] = 0
+            bkg_cut_id = np.argwhere(
+                (bkg_pred < dnn_cut_down) | (bkg_pred > dnn_cut_up)
+            )
+            bkg_wt_dnn = bkg_wt.copy()
+            bkg_wt_dnn[bkg_cut_id] = 0
+            # normalize weights for density plots
+            if plot_cfg.density:
+                bkg_wt_dnn = bkg_wt_dnn / np.sum(bkg_wt)
+                sig_wt_dnn = sig_wt_dnn / np.sum(sig_wt)
+            # plot
+            plot_feature_list = ic.selected_features + ic.validation_features
+            for feature in plot_feature_list:
+                logger.debug(f"Plotting kinematics for {feature}")
+                bkg_array = bkg_df_raw[feature].to_numpy("float32")
+                sig_array = sig_df_raw[feature].to_numpy("float32")
+                note = f"DNN cut: [{dnn_cut_down}, {dnn_cut_up}]"
+                # plot sig
+                plot_input_dnn_single(
+                    job_config,
+                    feature,
+                    "sig",
+                    sig_array,
+                    sig_wt,
+                    sig_wt_dnn,
+                    sub_dir,
+                    note=note,
+                )
+                # plot bkg
+                plot_input_dnn_single(
+                    job_config,
+                    feature,
+                    "bkg",
+                    bkg_array,
+                    bkg_wt,
+                    bkg_wt_dnn,
+                    sub_dir,
+                    note=note,
+                )
 
 
 def plot_input_dnn_single(
@@ -276,7 +285,6 @@ def plot_input_dnn_single(
         color = feature_cfg.bkg_color
     else:
         color = None
-
     # plot with/without dnn cuts
     fig, main_ax, ratio_ax = ampl.ratio_axes()
     main_ax.hist(

@@ -76,7 +76,6 @@ DEFAULT_CFG = {
         },
         "model_class": "Model_Sequential_Flat",
         "model": {
-            "output_bkg_node_names": [],
             "layers": 1,
             "nodes": 1,
             "learn_rate": 0.01,
@@ -121,7 +120,6 @@ DEFAULT_CFG = {
         "model_name": "MODEL_NAME_DEF",
         "model_class": "Model_Sequential_Flat",
         "use_multi_label": True,
-        "output_bkg_node_names": [],
         "layers": 1,
         "nodes": 1,
         "learn_rate": 0.01,
@@ -267,6 +265,19 @@ DEFAULT_CFG = {
             "fig_size": [8.333, 8.333],
             "plot_patch": {},
         },
+        "book_mva_shape": False,
+        "cfg_mva_shape": {
+            "process_list": {},
+            "plot_title": "MVA scores",
+            "bins": 25,
+            "range": [0, 1],
+            "log": False,
+            "logy_min": 0.0005,
+            "legend_paras": {"loc": "upper right", "ncol": 1},
+            "save_format": "png",
+            "fig_size": [8.333, 8.333],
+            "plot_patch": {},
+        },
         "book_significance_scan": False,
         "cfg_significance_scan": {
             "significance_algo": "s_sqrt_b_rel",
@@ -284,6 +295,7 @@ DEFAULT_CFG = {
             "bkg_color": "#f99157",  # orange
             "sig_color": "#5fb3b3",  # cyan
             "dnn_cut_list": None,
+            "node_nums": [0],
             "save_format": "png",
         },
         "book_importance_study": False,

@@ -231,68 +231,60 @@ def make_roc_curve_plot(
 ):
     """Plots ROC curve."""
     logger.info("Plotting train/test ROC curve.")
-    tc = job_config.train.clone()
-    ac = job_config.apply.clone()
-    # prepare
-    output_bkg_node_names = tc.output_bkg_node_names
-    output_bkg_node_names = tc.output_bkg_node_names
-    all_nodes = ["sig"] + output_bkg_node_names
+    # Prepare
+    ac = job_config.apply
     y_train, y_train_pred, wt_train = train_inputs
     y_test, y_test_pred, wt_test = test_inputs
-    # plot node by node
-    num_nodes = len(all_nodes)
+    # Set up figure
     colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
     color_cycle = itertools.cycle(colors)
     auc_labels = []
     auc_contents = []
     fig, ax = plt.subplots()
-    for node_num in range(num_nodes):
-        color = next(color_cycle)
-        # plot roc for train dataset without reseting mass
-        auc_train, _, _ = plot_single_roc(
-            ax,
-            y_train[:, node_num],
-            y_train_pred[:, node_num],
-            wt_train,
-            node_num=node_num,
-            color=color,
-            linestyle="dashed",
-        )
-        # plot roc for test dataset without reseting mass
-        auc_test, _, _ = plot_single_roc(
-            ax,
-            y_test[:, node_num],
-            y_test_pred[:, node_num],
-            wt_test,
-            node_num=node_num,
-            color=color,
-            linestyle="solid",
-        )
-        auc_labels += [
-            f"tr-{all_nodes[node_num]} (AUC: {round(auc_train, 5)})",
-            f"te-{all_nodes[node_num]} (AUC: {round(auc_test, 5)})",
-        ]
-        auc_contents += [round(auc_train, 5), round(auc_test, 5)]
-    # extra plot config
+    color = next(color_cycle)
+    auc_train, _, _ = plot_single_roc(
+        ax,
+        y_train[:, 0],
+        y_train_pred[:, 0],
+        wt_train,
+        node_num=0,
+        color=color,
+        linestyle="dashed",
+    )
+    auc_test, _, _ = plot_single_roc(
+        ax,
+        y_test[:, 0],
+        y_test_pred[:, 0],
+        wt_test,
+        node_num=0,
+        color=color,
+        linestyle="solid",
+    )
+    # Plot AUC
+    auc_labels += [
+        f"tr_{tag} (AUC: {round(auc_train, 5)})",
+        f"te_{tag} (AUC: {round(auc_test, 5)})",
+    ]
+    auc_contents += [round(auc_train, 5), round(auc_test, 5)]
     ax.legend(auc_labels, loc="lower right")
+    # Config plot
     ax.grid()
-    # collect meta data
-    auc_dict = {}
-    auc_dict["auc_train_original"] = float(auc_train)
-    auc_dict["auc_test_original"] = float(auc_test)
-    # make plots
     ax.set_ylim(0, 1.4)
     ax.set_yscale("linear")
     if ac.plot_atlas_label:
         ampl.plot.draw_atlas_label(
             0.05, 0.95, ax=ax, **(ac.atlas_label.get_config_dict())
         )
-    ## save linear scale plot
+    # Save with linear scale x
     fig.savefig(save_dir / f"roc_{tag}.linear.png")
-    ## log scale x
+    # Save with log scale x
     ax.set_xlim(1e-5, 1)
     ax.set_xscale("log")
     fig.savefig(save_dir / f"roc_{tag}.logx.png")
+    # collect meta data
+    auc_dict = {}
+    auc_dict["auc_train_original"] = float(auc_train)
+    auc_dict["auc_test_original"] = float(auc_test)
     return auc_dict
 
 
