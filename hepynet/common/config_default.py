@@ -119,7 +119,7 @@ DEFAULT_CFG = {
     "train": {
         "model_name": "MODEL_NAME_DEF",
         "model_class": "Model_Sequential_Flat",
-        "use_multi_label": True,
+        "use_multi_label": False,
         "layers": 1,
         "nodes": 1,
         "learn_rate": 0.01,

@@ -203,7 +203,7 @@ class Feedbox(object):
             out_df.loc[out_df["is_sig"] == False, physic_para] = reset_values
         # set y
         out_df.loc[:, "y"] = 0
-        if ic.multi_label:
+        if len(ic.multi_label.keys()) > 0:
             logger.info("> Setting up multi-label y")
             for label, processes in ic.multi_label.items():
                 for process in processes:

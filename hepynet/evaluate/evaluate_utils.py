@@ -61,13 +61,13 @@ def dump_fit_df(
             model_wrapper.get_model(), input_df.values, silence=True
         )
         # dump
-        if len(tc.output_bkg_node_names) == 0:
-            dump_df["dnn_out_sig"] = predictions
-        else:
+        if tc.output_bkg_node_names and len(tc.output_bkg_node_names) > 0:
             for i, out_node in enumerate(["sig"] + tc.output_bkg_node_names):
                 out_node = out_node.replace("+", "_")
                 branch_name = f"dnn_out_{out_node}"
                 dump_df[branch_name] = predictions[:, i]
+        else:
+            dump_df["dnn_out_sig"] = predictions
         dump_df.reset_index(inplace=True)
         save_path = save_dir / f"{sample}.feather"
         dump_df.to_feather(save_path)
